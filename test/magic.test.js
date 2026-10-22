@@ -154,6 +154,8 @@ test('?next= survives the link only when it is ours', async () => {
       const form = await b.get(`/login?next=${encodeURIComponent(given)}`);
       assert.equal(form.body.includes(`name="next" value="${landing === '/' ? '' : landing}"`), true, given);
       await b.post('/login', { email: 'dana@example.com', next: given });
+      // Checked when it is stored, and again when it is used.
+      assert.equal(t.db.get('SELECT next_url FROM tokens ORDER BY id DESC LIMIT 1').next_url, landing === '/' ? null : landing, given);
       const r = await b.post('/auth/link', { t: tokenOf(t.mails[0].link) });
       assert.equal(r.headers.location, landing, given);
       // Past the three-per-15-minutes limit for this address.
