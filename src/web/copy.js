@@ -1,0 +1,169 @@
+// Every Hebrew word the site and its emails say, in one place.
+//
+// OpenFrequency speaks as "we" (אנחנו); the reader is addressed in the plural
+// (אתם), which fits a website and does not guess anyone's gender. Plain words,
+// no exclamation marks: this is about getting into an account, so the serious
+// register (see the hebrew-voice skill).
+
+export const PRODUCT_NAMES = { teder: 'תדר', toran: 'תורן' };
+export const ROLE_NAMES = { client_owner: 'בעלים', client_member: 'צוות', superadmin: 'מנהל' };
+
+const minutes = (seconds) => Math.max(1, Math.ceil(seconds / 60));
+
+export const T = {
+  brand: 'OpenFrequency',
+
+  // ---- sign in with an emailed link
+  loginTitle: 'כניסה',
+  loginHeading: 'כניסה ל-OpenFrequency',
+  loginLead: 'כתבו את כתובת המייל שלכם ונשלח אליה קישור כניסה. הקישור עובד פעם אחת, במשך 15 דקות.',
+  emailLabel: 'כתובת מייל',
+  loginButton: 'שלחו לי קישור',
+  loginNoAccount: 'עוד אין לכם חשבון? אנחנו פותחים אותו ושולחים לכם הזמנה במייל.',
+  badEmail: 'הכתובת הזאת לא נראית כמו כתובת מייל. בדקו אותה ונסו שוב.',
+  tooMany: (seconds) => `ביקשתם הרבה קישורים בזמן קצר. נסו שוב בעוד ${minutes(seconds)} דקות.`,
+  signedOut: 'יצאתם. כדי לחזור, בקשו קישור כניסה חדש.',
+  signedOutAll: (n) => `יצאתם מכל המכשירים (${n}). כדי לחזור, בקשו קישור כניסה חדש.`,
+
+  sentTitle: 'בדקו את המייל',
+  sentLead: (email) => `אם הכתובת ${email} רשומה אצלנו, שלחנו אליה קישור כניסה. הוא עובד פעם אחת, במשך 15 דקות.`,
+  sentSpam: 'לא הגיע תוך כמה דקות? בדקו בתיקיית הספאם, או בקשו קישור חדש.',
+  sentAgain: 'לקישור חדש',
+
+  linkTitle: 'כניסה',
+  linkLead: (email) => `לחצו כדי להיכנס בתור ${email}.`,
+  linkButton: 'כניסה',
+  linkDeadTitle: 'הקישור הזה כבר לא עובד',
+  linkDeadLead: 'קישור כניסה עובד פעם אחת, במשך 15 דקות. אפשר לבקש קישור חדש.',
+
+  // ---- invites
+  inviteTitle: (ws) => `הוזמנתם ל-${ws}`,
+  inviteLead: (email) => `ההזמנה נשלחה אל ${email}. לחצו כדי להצטרף ולהיכנס.`,
+  inviteNameLabel: 'השם שלכם (לא חובה)',
+  inviteButton: 'הצטרפות',
+  inviteDeadTitle: 'ההזמנה הזאת כבר לא בתוקף',
+  inviteDeadLead: 'הזמנה עובדת פעם אחת, במשך 72 שעות. ענו למייל ההזמנה ונשלח לכם חדשה.',
+
+  // ---- signed in
+  homeHello: (name) => `שלום ${name}`,
+  homeWho: (email, ws) => `אתם מחוברים בתור ${email}, בחשבון של ${ws}.`,
+  homeOpen: (product) => `כניסה ל${product}`,
+  homeNoProducts: 'עוד לא הפעלנו מוצר בחשבון הזה. נעדכן אתכם במייל כשזה יקרה.',
+  homeSwitch: 'החלפת חשבון',
+  homeSignOut: 'יציאה',
+  homeClosed: (ws) => `החשבון של ${ws} סגור כרגע. אם זו טעות, ענו לאחד המיילים שקיבלתם מאיתנו.`,
+  homeNoWorkspace: 'עוד לא חיברנו אתכם לאף עסק. ענו למייל ההזמנה ונבדוק מה קרה.',
+
+  pickTitle: 'לאיזה חשבון נכנסים?',
+  pickLead: 'אתם רשומים בכמה חשבונות. אפשר להחליף אחר כך מהדף הראשי.',
+
+  logoutTitle: 'יציאה',
+  logoutLead: (email) => `אפשר לצאת רק מהדפדפן הזה, או מכל מקום שבו נכנסתם עם ${email}. היציאה חלה על כל המוצרים של OpenFrequency.`,
+  logoutHere: 'יציאה מהדפדפן הזה',
+  logoutAll: 'יציאה מכל המכשירים',
+
+  // ---- errors
+  staleForm: 'הדף הזה ישן מדי. רעננו אותו ונסו שוב.',
+  crossSite: 'חסמנו את הבקשה כי היא הגיעה מאתר אחר.',
+  notFound: 'הדף הזה לא קיים.',
+  notFoundBack: 'לדף הכניסה',
+  serverError: 'משהו אצלנו נשבר. נסו שוב בעוד רגע.',
+  httpsOnly: 'האתר הזה עובד רק ב-HTTPS.',
+
+  // ---- superadmin sign-in
+  adminLoginTitle: 'כניסת מנהל',
+  adminEmail: 'מייל',
+  adminPassword: 'סיסמה',
+  adminCode: 'קוד מאפליקציית האימות',
+  adminCodeHint: 'אין לכם את הטלפון? אפשר להזין במקום אחד מקודי הגיבוי.',
+  adminLoginButton: 'כניסה',
+  adminLoginFailed: 'אחד הפרטים לא נכון. נסו שוב.',
+  adminTooMany: (seconds) => `יותר מדי ניסיונות. נסו שוב בעוד ${minutes(seconds)} דקות.`,
+  adminRecoveryUsed: (left) => `נכנסתם עם קוד גיבוי. נשארו ${left} קודים. כדי ליצור חדשים, הריצו npm run admin:create.`,
+
+  // ---- superadmin console
+  adminTitle: 'חשבונות',
+  adminSignOut: 'יציאה',
+  newWorkspace: 'פתיחת חשבון',
+  wsName: 'שם העסק',
+  wsSlug: 'מזהה באנגלית',
+  wsSlugHint: 'אותיות קטנות באנגלית, ספרות ומקפים. לדוגמה: dana-shop',
+  wsOwner: 'מייל של בעל החשבון',
+  wsProducts: 'מוצרים',
+  wsCreate: 'פתיחה ושליחת הזמנה',
+  colWorkspace: 'עסק',
+  colProducts: 'מוצרים',
+  colMembers: 'אנשים',
+  colStatus: 'מצב',
+  statusActive: 'פעיל',
+  statusDisabled: 'מושבת',
+  noWorkspaces: 'עוד אין חשבונות. אפשר לפתוח את הראשון למעלה.',
+  noMembers: 'עוד אף אחד לא הצטרף.',
+  pendingInvite: (email, until) => `הזמנה ל-${email} מחכה, עד ${until}`,
+  revokeInvite: 'ביטול',
+  inviteMore: 'הזמנה',
+  inviteRole: 'תפקיד',
+  turnOn: (p) => `הפעלת ${p}`,
+  turnOff: (p) => `כיבוי ${p}`,
+  disableWs: 'השבתת החשבון',
+  enableWs: 'הפעלה מחדש',
+  viewAs: 'צפייה כלקוח',
+  viewIn: 'ב',
+  auditTitle: 'מה קרה לאחרונה',
+  lastLogin: (when) => `כניסה אחרונה: ${when}`,
+  neverLoggedIn: 'אין כניסות עדיין',
+
+  viewAsBanner: (ws) => `אתם צופים ב-${ws} כמו שהלקוח רואה אותו. זו צפייה בלבד, ושום שינוי לא נשמר.`,
+  viewAsStop: 'סיום צפייה',
+
+  flashCreated: (name, email) => `פתחנו את ${name} ושלחנו הזמנה ל-${email}.`,
+  flashInvited: (email) => `שלחנו הזמנה ל-${email}.`,
+  flashInviteRevoked: (email) => `ביטלנו את ההזמנה ל-${email}.`,
+  flashProductOn: (p, name) => `${p} פועל עכשיו ב-${name}.`,
+  flashProductOff: (p, name) => `${p} כבוי עכשיו ב-${name}. מי שבתוכו יוצא ממנו בבקשה הבאה.`,
+  flashDisabled: (name) => `${name} מושבת. מי שבתוכו יוצא בבקשה הבאה.`,
+  flashEnabled: (name) => `${name} פעיל שוב.`,
+  flashViewStopped: 'סיימתם לצפות.',
+
+  errors: {
+    bad_name: 'צריך שם לעסק, עד 80 תווים.',
+    bad_slug: 'המזהה יכול להכיל רק אותיות קטנות באנגלית, ספרות ומקפים, עד 40 תווים.',
+    slug_taken: 'המזהה הזה כבר תפוס. בחרו אחר.',
+    bad_email: 'המייל הזה לא נראה תקין.',
+    bad_role: 'צריך לבחור תפקיד.',
+    superadmin_email: 'זה המייל של המנהל. אי אפשר להזמין אותו כלקוח.',
+    workspace_disabled: 'החשבון הזה מושבת. הפעילו אותו מחדש לפני שמזמינים אליו.',
+    no_workspace: 'החשבון הזה לא קיים.',
+    bad_product: 'המוצר הזה לא קיים.',
+  },
+};
+
+// ---- emails
+
+export const MAIL = {
+  magicSubject: 'קישור הכניסה שלכם ל-OpenFrequency',
+  magicLines: (link) => [
+    'שלום,',
+    'ביקשתם להיכנס ל-OpenFrequency. זה הקישור:',
+    { link },
+    'הוא עובד פעם אחת, במשך 15 דקות.',
+    'לא ביקשתם? אפשר להתעלם מהמייל הזה. בלי הקישור אף אחד לא נכנס לחשבון שלכם.',
+  ],
+  magicButton: 'כניסה',
+
+  inviteSubject: (ws) => `הזמנה ל-${ws} ב-OpenFrequency`,
+  inviteLines: (ws, link, until) => [
+    'שלום,',
+    `פתחנו לכם חשבון ב-OpenFrequency עבור ${ws}. כדי להיכנס בפעם הראשונה, לחצו על הקישור:`,
+    { link },
+    `ההזמנה עובדת פעם אחת, עד ${until}.`,
+    'אין סיסמה לזכור. בכל כניסה נשלח לכם קישור חדש לכתובת הזאת.',
+    'אם עבר הזמן, ענו למייל הזה ונשלח הזמנה חדשה.',
+  ],
+  inviteButton: 'הצטרפות',
+  signature: 'OpenFrequency',
+};
+
+const DATE = new Intl.DateTimeFormat('he-IL', { timeZone: 'Asia/Jerusalem', day: 'numeric', month: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+/** An Israel-time date and hour, like "25.10.2026, 13:00". */
+export const when = (iso) => DATE.format(new Date(iso)).replace(/\s*,\s*/, ', ');

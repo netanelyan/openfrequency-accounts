@@ -1,0 +1,178 @@
+/* accounts.openfrequency.co.il: Teder's palette and type, so the products and
+   their login look like one family. Light and dark follow the system. */
+
+:root {
+  --text: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Hebrew', system-ui, 'Segoe UI', 'Noto Sans Hebrew', 'Helvetica Neue', Arial, sans-serif;
+  --bg: #eeeff2;
+  --surface: #ffffff;
+  --line: rgba(0, 0, 0, 0.08);
+  --ink: #1d1d1f;
+  --ink-p: #56565b;
+  --accent: #0066cc;
+  --accent-fill: #0071e3;
+  --accent-ink: #ffffff;
+  --field: #ffffff;
+  --fill: rgba(118, 118, 128, 0.12);
+  --ok: #19702f;
+  --ok-bg: #eaf6ec;
+  --warn: #a44200;
+  --warn-bg: #fff4e5;
+  --bad: #c8001b;
+  --bad-bg: #fff0f0;
+  --radius: 14px;
+  color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #000000;
+    --surface: #1c1c1e;
+    --line: rgba(255, 255, 255, 0.12);
+    --ink: #f5f5f7;
+    --ink-p: #a1a1a6;
+    --accent: #4da3ff;
+    --accent-fill: #0a84ff;
+    --field: #2c2c2e;
+    --fill: rgba(118, 118, 128, 0.24);
+    --ok: #30d158;
+    --ok-bg: rgba(48, 209, 88, 0.14);
+    --warn: #ffb340;
+    --warn-bg: rgba(255, 159, 10, 0.16);
+    --bad: #ff6961;
+    --bad-bg: rgba(255, 69, 58, 0.16);
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 16px/1.6 var(--text);
+  -webkit-text-size-adjust: 100%;
+}
+
+main { margin: 0 auto; padding: 32px 16px 64px; }
+main.narrow { max-width: 460px; }
+main.wide { max-width: 980px; }
+
+.brand { margin: 0 0 20px; font-weight: 700; letter-spacing: -0.01em; color: var(--ink-p); }
+
+h1 { font-size: 26px; line-height: 1.25; margin: 0 0 12px; letter-spacing: -0.02em; }
+h2 { font-size: 19px; margin: 0 0 12px; }
+h3 { font-size: 17px; margin: 0; }
+p { margin: 0 0 14px; }
+a { color: var(--accent); }
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 24px 20px;
+  margin-bottom: 20px;
+}
+
+label { display: block; font-weight: 600; margin: 14px 0 6px; }
+label.check { display: inline-flex; gap: 6px; align-items: center; font-weight: 400; margin: 4px 0 4px 16px; }
+small { display: block; font-weight: 400; margin-top: 4px; }
+
+input, select {
+  font: inherit;
+  color: var(--ink);
+  background: var(--field);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px 12px;
+  width: 100%;
+  min-height: 44px;
+}
+input[type='checkbox'] { width: auto; min-height: 0; }
+input:focus-visible, select:focus-visible, button:focus-visible, a:focus-visible {
+  outline: 3px solid var(--accent-fill);
+  outline-offset: 2px;
+}
+input[aria-invalid='true'] { border-color: var(--bad); }
+
+button, a.button {
+  font: inherit;
+  font-weight: 600;
+  border: 0;
+  border-radius: 10px;
+  padding: 10px 18px;
+  min-height: 44px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+}
+button.primary, a.button { background: var(--accent-fill); color: var(--accent-ink); }
+form > button.primary { width: 100%; margin-top: 18px; }
+button.quiet, button.choice { background: var(--fill); color: var(--ink); }
+button.choice { width: 100%; justify-content: flex-start; }
+button.danger { background: var(--bad-bg); color: var(--bad); }
+
+form.inline { display: inline-flex; gap: 8px; align-items: center; margin: 0; }
+form.inline input, form.inline select { width: auto; }
+
+.row { display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: center; margin-top: 18px; }
+.muted { color: var(--ink-p); font-size: 14px; }
+.error { color: var(--bad); background: var(--bad-bg); border-radius: 10px; padding: 10px 12px; margin: 10px 0 0; }
+.notice, .flash { color: var(--ok); background: var(--ok-bg); border-radius: 10px; padding: 10px 12px; }
+
+ul.products, ul.pick { list-style: none; padding: 0; margin: 18px 0 0; display: grid; gap: 10px; }
+ul.products a.button { width: 100%; }
+ul.pick li { display: grid; gap: 4px; }
+ul.pick form.inline { display: block; }
+
+.banner {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  background: var(--warn-bg);
+  color: var(--warn);
+  font-weight: 600;
+  border-bottom: 1px solid var(--line);
+}
+
+header.top { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 16px; }
+header.top h1 { margin: 0; }
+
+form.grid { display: grid; gap: 4px 16px; grid-template-columns: 1fr; }
+form.grid fieldset { border: 0; padding: 0; margin: 14px 0 0; }
+form.grid legend { font-weight: 600; padding: 0; margin-bottom: 4px; }
+@media (min-width: 720px) {
+  form.grid { grid-template-columns: 1fr 1fr; }
+  form.grid > button, form.grid > .error, form.grid > fieldset { grid-column: 1 / -1; }
+}
+
+article.ws {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 18px 20px;
+  margin-bottom: 14px;
+}
+article.ws.disabled { opacity: 0.7; }
+article.ws header { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.tag { font-size: 13px; font-weight: 600; padding: 2px 10px; border-radius: 999px; background: var(--ok-bg); color: var(--ok); }
+article.ws.disabled .tag { background: var(--bad-bg); color: var(--bad); }
+ul.toggles { list-style: none; padding: 0; margin: 12px 0; display: flex; flex-wrap: wrap; gap: 8px 20px; }
+ul.toggles li { display: flex; align-items: center; gap: 8px; }
+ul.toggles li.on::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: var(--ok); }
+ul.toggles li.off::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: var(--ink-p); }
+ul.people { list-style: none; padding: 0; margin: 0; font-size: 15px; }
+ul.people li { padding: 4px 0; border-top: 1px solid var(--line); }
+
+table.audit { width: 100%; border-collapse: collapse; font-size: 14px; }
+table.audit td { padding: 6px 8px 6px 0; border-top: 1px solid var(--line); vertical-align: top; overflow-wrap: anywhere; }
+@media (max-width: 560px) {
+  table.audit tr { display: grid; grid-template-columns: 1fr 1fr; }
+}
