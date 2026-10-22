@@ -12,6 +12,32 @@ delete process.env.RESEND_API_KEY;
 /** Databases opened by a test, closed before its folder is removed (Windows will not delete an open file). */
 const opened = [];
 
+const T0 = '2026-10-22T10:00:00.000Z';
+
+/** A customer, or the superadmin with { superadmin: true }. Returns the row. */
+export function makeUser(db, email, { superadmin = false, name = '' } = {}) {
+  const id = db.insert('users', {
+    email,
+    name,
+    is_superadmin: superadmin ? 1 : 0,
+    password_hash: superadmin ? 'scrypt$00$00' : null,
+    totp_secret: superadmin ? 'JBSWY3DPEHPK3PXP' : null,
+    created_at: T0,
+  });
+  return db.get('SELECT * FROM users WHERE id = ?', id);
+}
+
+/** A workspace with its products turned on, and members as { email: role }. Returns the row. */
+export function makeWorkspace(db, slug, { products = ['teder'], members = {}, name = slug } = {}) {
+  const id = db.insert('workspaces', { slug, name, created_at: T0 });
+  for (const p of products) db.insert('workspace_products', { workspace_id: id, product: p, enabled: 1, updated_at: T0 });
+  for (const [email, role] of Object.entries(members)) {
+    const u = db.get('SELECT id FROM users WHERE email = ?', email) || makeUser(db, email);
+    db.insert('memberships', { user_id: u.id, workspace_id: id, role, created_at: T0 });
+  }
+  return db.get('SELECT * FROM workspaces WHERE id = ?', id);
+}
+
 /** A fresh private folder with an empty, migrated database. */
 export function tempHome() {
   const home = mkdtempSync(path.join(os.tmpdir(), 'of-accounts-test-'));

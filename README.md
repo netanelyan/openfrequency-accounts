@@ -30,7 +30,9 @@ npm start              # the site on 127.0.0.1:4740, /internal/session on 127.0.
 |---|---|
 | `src/db` | the SQLite database (`node:sqlite`) and its migrations |
 | `src/core` | paths, the `.env` loader, the clock, the audit log |
-| `src/web` | the two listeners |
+| `src/auth` | passwords, TOTP, tokens, rate limits, the `?next=` allowlist, sessions |
+| `src/web` | the two listeners; `internal.js` is `/internal/session` |
+| `docs/internal-session.md` | what Teder and Toran send and get back |
 | `scripts` | start, backup, `check:public`, `init-private` |
 | `ecosystem.config.cjs` | the pm2 job, `of-accounts` |
 
@@ -46,9 +48,9 @@ workspace in the local database.
 
 Built one item at a time:
 
-1. Skeleton: database, migrations, audit log, pm2, `check:public` (this commit)
-2. Auth core ported from Teder: scrypt, rate limits by any key, TOTP, the `?next=` allowlist
-3. Sessions and `/internal/session`, with its response format in `docs/internal-session.md`
+1. Skeleton: database, migrations, audit log, pm2, `check:public` (done)
+2. Auth core ported from Teder: scrypt, rate limits by any key, TOTP, the `?next=` allowlist (done)
+3. Sessions and `/internal/session`, with its response format in `docs/internal-session.md` (done)
 4. Magic links and email through Resend; the Hebrew login page
 5. Superadmin sign-in: password and TOTP
 6. Superadmin pages: workspaces, invites, products, disable, view as

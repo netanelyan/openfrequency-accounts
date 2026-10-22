@@ -1,4 +1,5 @@
 import { createServer } from 'node:http';
+import { internalHandler } from './internal.js';
 
 // Two listeners, both on 127.0.0.1:
 //
@@ -8,8 +9,8 @@ import { createServer } from 'node:http';
 //                         Caddy never proxies it, so no request from outside can
 //                         reach it even if a proxy rule is too broad.
 //
-// Only /healthz answers so far. The login, the sessions and the superadmin pages
-// arrive in the next items.
+// The public site answers only /healthz so far: the login and the superadmin
+// pages arrive in the next items.
 
 export const HOST = '127.0.0.1';
 
@@ -26,14 +27,6 @@ export function publicHandler() {
   };
 }
 
-export function internalHandler() {
-  return (req, res) => {
-    const p = new URL(req.url, 'http://x').pathname;
-    if (p === '/healthz') return text(res, 200, 'ok');
-    return text(res, 404, 'not found');
-  };
-}
-
 const listenOn = (handler, port) =>
   new Promise((resolve, reject) => {
     const server = createServer(handler);
@@ -42,9 +35,15 @@ const listenOn = (handler, port) =>
   });
 
 /** Start both listeners. Port 0 picks a free one (the tests). */
-export async function listen({ env = process.env, port = Number(env.PORT || 4740), internalPort = Number(env.INTERNAL_PORT || 4741) } = {}) {
+export async function listen(db, { env = process.env, port = Number(env.PORT || 4740), internalPort = Number(env.INTERNAL_PORT || 4741) } = {}) {
   const pub = await listenOn(publicHandler(), port);
-  const internal = await listenOn(internalHandler(), internalPort);
+  let internal;
+  try {
+    internal = await listenOn(internalHandler(db, { env }), internalPort);
+  } catch (e) {
+    pub.close();
+    throw e;
+  }
   return {
     port: pub.address().port,
     internalPort: internal.address().port,
