@@ -40,6 +40,8 @@ export function layout({ title, body, banner = '', flash = '', wide = false, v =
 <meta name="theme-color" content="#111113" media="(prefers-color-scheme: dark)">
 <title>${esc(title)} · ${esc(T.brand)}</title>
 <link rel="stylesheet" href="/static/site.css?v=${esc(v)}">
+<link rel="icon" href="/static/icon.svg?v=${esc(v)}" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/static/icon-180.png?v=${esc(v)}">
 </head>
 <body>
 ${banner}

@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { audit } from '../core/audit.js';
+import { ROOT } from '../core/paths.js';
 import { PRODUCTS } from '../db/schema.js';
 import { clientIp, cookies, csrfFor, csrfOk, isHttps, sessionSecret } from '../auth/http.js';
 import { createLimiter, LIMITS } from '../auth/limiter.js';
@@ -30,7 +31,13 @@ import * as P from './html.js';
 // on our own forms and the Origin check above would refuse every one of them.
 
 const STATIC = path.join(path.dirname(fileURLToPath(import.meta.url)), 'static');
-const CSS = readFileSync(path.join(STATIC, 'site.css'));
+const BRAND = path.join(ROOT, 'assets', 'brand');
+// The stylesheet and the company's icon (Teder's brand files, unchanged), read once.
+const FILES = {
+  '/static/site.css': [readFileSync(path.join(STATIC, 'site.css')), 'text/css; charset=utf-8'],
+  '/static/icon.svg': [readFileSync(path.join(BRAND, 'svg', 'openfrequency-small.svg')), 'image/svg+xml'],
+  '/static/icon-180.png': [readFileSync(path.join(BRAND, 'png', 'openfrequency-180.png')), 'image/png'],
+};
 const V = Date.now().toString(36);
 
 export function defaultLimiters() {
@@ -103,9 +110,10 @@ export function publicHandler({ db, env = process.env, mailer, limiters = defaul
       const url = new URL(req.url, 'http://x');
       const p = url.pathname;
       if (req.method === 'GET' && p === '/healthz') return text(200, 'ok');
-      if (req.method === 'GET' && p === '/static/site.css') {
-        res.writeHead(200, { 'content-type': 'text/css; charset=utf-8', 'cache-control': 'public, max-age=86400', 'x-content-type-options': 'nosniff' });
-        return res.end(CSS);
+      if (req.method === 'GET' && Object.hasOwn(FILES, p)) {
+        const [body, type] = FILES[p];
+        res.writeHead(200, { 'content-type': type, 'cache-control': 'public, max-age=86400', 'x-content-type-options': 'nosniff' });
+        return res.end(body);
       }
 
       const ip = clientIp(req);
