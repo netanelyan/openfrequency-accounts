@@ -15,7 +15,7 @@ export const T = {
 
   // ---- sign in with an emailed link
   loginTitle: 'כניסה',
-  loginHeading: 'כניסה ל-OpenFrequency',
+  loginHeading: 'כניסה',
   loginLead: 'כתבו את כתובת המייל שלכם ונשלח אליה קישור כניסה. הקישור עובד פעם אחת, במשך 15 דקות.',
   emailLabel: 'כתובת מייל',
   loginButton: 'שלחו לי קישור',
@@ -61,6 +61,7 @@ export const T = {
   logoutLead: (email) => `אפשר לצאת רק מהדפדפן הזה, או מכל מקום שבו נכנסתם עם ${email}. היציאה חלה על כל המוצרים של OpenFrequency.`,
   logoutHere: 'יציאה מהדפדפן הזה',
   logoutAll: 'יציאה מכל המכשירים',
+  logoutBack: 'חזרה לדף הראשי',
 
   // ---- errors
   staleForm: 'הדף הזה ישן מדי. רעננו אותו ונסו שוב.',
@@ -87,7 +88,7 @@ export const T = {
   newWorkspace: 'פתיחת חשבון',
   wsName: 'שם העסק',
   wsSlug: 'מזהה באנגלית',
-  wsSlugHint: 'אותיות קטנות באנגלית, ספרות ומקפים. לדוגמה: dana-shop',
+  wsSlugHint: 'אותיות קטנות באנגלית, ספרות ומקפים. לדוגמה:',
   wsOwner: 'מייל של בעל החשבון',
   wsProducts: 'מוצרים',
   wsCreate: 'פתיחה ושליחת הזמנה',
@@ -98,6 +99,11 @@ export const T = {
   statusActive: 'פעיל',
   statusDisabled: 'מושבת',
   noWorkspaces: 'עוד אין חשבונות. אפשר לפתוח את הראשון למעלה.',
+  workspacesTitle: 'כל החשבונות',
+  workspacesCount: (n) => (n === 1 ? 'חשבון אחד' : `${n} חשבונות`),
+  productOn: 'פועל',
+  productOff: 'כבוי',
+  inviteEmailPlaceholder: 'כתובת מייל להזמנה',
   noMembers: 'עוד אף אחד לא הצטרף.',
   pendingInvite: (email, until) => `הזמנה ל-${email} מחכה, עד ${until}`,
   revokeInvite: 'ביטול',
@@ -136,6 +142,27 @@ export const T = {
     no_workspace: 'החשבון הזה לא קיים.',
     bad_product: 'המוצר הזה לא קיים.',
   },
+};
+
+// What each audit entry means, for the console. The log itself keeps the codes.
+export const AUDIT_NAMES = {
+  sign_in: 'כניסה',
+  sign_out: 'יציאה',
+  sign_out_all: 'יציאה מכל המכשירים',
+  magic_link_requested: 'בקשה לקישור כניסה',
+  admin_login_failed: 'כניסת מנהל שנכשלה',
+  invite_sent: 'הזמנה נשלחה',
+  invite_accepted: 'הזמנה התקבלה',
+  invite_revoked: 'הזמנה בוטלה',
+  workspace_created: 'חשבון נפתח',
+  workspace_disabled: 'חשבון הושבת',
+  workspace_enabled: 'חשבון הופעל מחדש',
+  product_enabled: 'מוצר הופעל',
+  product_disabled: 'מוצר כובה',
+  view_as_start: 'תחילת צפייה כלקוח',
+  view_as_stop: 'סיום צפייה כלקוח',
+  superadmin_created: 'המנהל נוצר',
+  superadmin_reset: 'המנהל הוגדר מחדש',
 };
 
 // ---- emails

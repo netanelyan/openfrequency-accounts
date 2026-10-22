@@ -74,7 +74,7 @@ test('opening a workspace sends its owner a 72-hour invite; accepting it signs t
     // The invite is spent, and the console shows the member.
     assert.equal((await t.browser().get(pathOf(mail.link))).status, 410);
     const after = await t.admin.get('/admin');
-    assert.match(after.body, /dana@example\.com<\/span> · בעלים/);
+    assert.match(after.body, /dana@example\.com<\/span><span class="muted">בעלים<\/span>/);
     assert.doesNotMatch(after.body, /הזמנה ל-dana@example\.com מחכה/);
   } finally {
     await t.done();
@@ -247,7 +247,8 @@ test('every console action is in the audit log, with who did it, and shown on th
     const actions = t.db.all('SELECT action, actor FROM audit WHERE actor = ? ORDER BY id', EMAIL).map((a) => a.action);
     assert.deepEqual(actions, ['superadmin_created', 'sign_in', 'workspace_created', 'invite_sent', 'product_enabled', 'workspace_disabled', 'workspace_enabled']);
     const page = await t.admin.get('/admin');
-    for (const a of ['workspace_created', 'invite_sent', 'product_enabled', 'workspace_disabled']) assert.ok(page.body.includes(a), a);
+    // Shown in Hebrew, with the product named where there is one.
+    for (const a of ['חשבון נפתח', 'הזמנה נשלחה', 'מוצר הופעל: תורן', 'חשבון הושבת', 'חשבון הופעל מחדש']) assert.ok(page.body.includes(a), a);
   } finally {
     await t.done();
   }

@@ -303,7 +303,7 @@ export function publicHandler({ db, env = process.env, mailer, limiters = defaul
         const session = found.session;
         const banner = session.view_as_workspace_id ? P.viewAsBanner(db.get('SELECT name FROM workspaces WHERE id = ?', session.view_as_workspace_id)?.name || '', csrf) : '';
         const console_ = (status, extra = {}) =>
-          page(status, T.adminTitle, P.adminPage({ csrf, workspaces: listWorkspaces(db), audit: recentAudit(db), ...extra }), { wide: true, banner });
+          page(status, T.adminTitle, P.adminPage({ csrf, workspaces: listWorkspaces(db), audit: recentAudit(db), flash, ...extra }), { wide: true, banner });
         const by = { by: me, ip };
         const problem = (e, form_) => {
           if (e instanceof WorkspaceError || e instanceof InviteError) return console_(400, { error: T.errors[e.code] || e.code, form: form_ });
