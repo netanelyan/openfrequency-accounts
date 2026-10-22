@@ -262,7 +262,7 @@ test('every page is Hebrew, right to left, escapes what it shows, and sends its 
     assert.doesNotMatch(r.body, /<script>/);
     assert.match(r.headers['content-security-policy'], /script-src 'none'/);
     assert.match(r.headers['content-security-policy'], /form-action 'self' https:\/\/\*\.openfrequency\.co\.il/);
-    assert.equal(r.headers['referrer-policy'], 'no-referrer');
+    assert.equal(r.headers['referrer-policy'], 'same-origin');
     assert.equal(r.headers['x-frame-options'], 'DENY');
     assert.equal(r.headers['cache-control'], 'no-store');
     assert.match(r.setCookies.join('\n'), /__Host-of_csrf=[^;]+; Path=\/; HttpOnly; SameSite=Lax; Secure/);

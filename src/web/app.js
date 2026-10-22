@@ -24,8 +24,10 @@ import * as P from './html.js';
 //   - every POST has an Origin that is ours (when the browser sends one) and a
 //     CSRF token derived from a random per-browser cookie, checked in constant time
 //   - /admin needs a superadmin session
-// Server-rendered HTML, no script. Tokens in URLs (magic links, invites) are
-// never sent on as a Referer.
+// Server-rendered HTML, no script. Referrer-Policy is same-origin: a token in a
+// URL (magic links, invites) is never sent to another site as a Referer, Teder
+// and Toran included. Not no-referrer: with that, browsers send "Origin: null"
+// on our own forms and the Origin check above would refuse every one of them.
 
 const STATIC = path.join(path.dirname(fileURLToPath(import.meta.url)), 'static');
 const CSS = readFileSync(path.join(STATIC, 'site.css'));
@@ -73,7 +75,7 @@ export function publicHandler({ db, env = process.env, mailer, limiters = defaul
       'cache-control': 'no-store',
       'x-content-type-options': 'nosniff',
       'x-frame-options': 'DENY',
-      'referrer-policy': 'no-referrer',
+      'referrer-policy': 'same-origin',
       'content-security-policy': CSP,
       ...(out.cookies.length ? { 'set-cookie': out.cookies } : {}),
       ...extra,
@@ -122,13 +124,15 @@ export function publicHandler({ db, env = process.env, mailer, limiters = defaul
       }
       const csrf = csrfFor(nonce, secret);
 
-      // A one-request message after a redirect.
+      // A one-request message after a redirect. __Host- behind HTTPS, so a sibling
+      // *.openfrequency.co.il site cannot set one and put its words on our page.
+      const flashName = secure ? '__Host-of_flash' : 'of_flash';
       let flash = '';
-      if (jar.of_flash && req.method === 'GET') {
-        flash = jar.of_flash.slice(0, 300);
-        out.cookies.push(`of_flash=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax${sec}`);
+      if (jar[flashName] && req.method === 'GET') {
+        flash = jar[flashName].slice(0, 300);
+        out.cookies.push(`${flashName}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax${sec}`);
       }
-      const setFlash = (msg) => out.cookies.push(`of_flash=${encodeURIComponent(msg)}; Path=/; Max-Age=30; HttpOnly; SameSite=Lax${sec}`);
+      const setFlash = (msg) => out.cookies.push(`${flashName}=${encodeURIComponent(msg)}; Path=/; Max-Age=30; HttpOnly; SameSite=Lax${sec}`);
 
       let form = null;
       if (req.method === 'POST') {

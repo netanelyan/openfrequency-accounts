@@ -1,0 +1,19 @@
+# Append to /etc/caddy/Caddyfile, then:
+#   caddy validate --config /etc/caddy/Caddyfile && sudo systemctl reload caddy
+#
+# Only the public site (4740) is proxied. Never add 4741 (/internal/session):
+# Teder and Toran reach it on 127.0.0.1, and nothing else should.
+#
+# Caddy sets X-Forwarded-Proto and X-Forwarded-For itself (it ignores the ones a
+# client sends), which is what the site uses to know a request is HTTPS and whose
+# it is.
+
+accounts.openfrequency.co.il {
+	encode zstd gzip
+	reverse_proxy 127.0.0.1:4740
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Robots-Tag "noindex, nofollow"
+		-Server
+	}
+}

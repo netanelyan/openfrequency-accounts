@@ -125,7 +125,7 @@ export const logoutPage = ({ csrf, email }) => `
 <section class="card">
 <h1>${esc(T.logoutTitle)}</h1>
 <p>${esc(T.logoutLead(email))}</p>
-<p class="row">${button('/logout', T.logoutHere, csrf)}${button('/logout-all', T.logoutAll, csrf, { kind: 'danger' })}</p>
+<div class="row">${button('/logout', T.logoutHere, csrf)}${button('/logout-all', T.logoutAll, csrf, { kind: 'danger' })}</div>
 </section>`;
 
 // ---- superadmin
@@ -190,7 +190,7 @@ export function adminPage({ csrf, workspaces, audit, form = {}, error = '' }) {
 ${csrfField(csrf)}
 <label>${esc(T.wsName)}<input name="name" required maxlength="80" value="${esc(form.name)}"></label>
 <label>${esc(T.wsSlug)}<input name="slug" required maxlength="40" dir="ltr" pattern="[a-z0-9][a-z0-9-]*" value="${esc(form.slug)}" aria-describedby="slug-hint"><small id="slug-hint" class="muted">${esc(T.wsSlugHint)}</small></label>
-<label>${esc(T.wsOwner)}<input name="owner" type="email" required dir="ltr" value="${esc(form.owner)}"></label>
+<label class="full">${esc(T.wsOwner)}<input name="owner" type="email" required dir="ltr" value="${esc(form.owner)}"></label>
 <fieldset><legend>${esc(T.wsProducts)}</legend>${Object.entries(PRODUCT_NAMES)
     .map(([p, name]) => `<label class="check"><input type="checkbox" name="products" value="${p}"${checked(p)}> ${esc(name)}</label>`)
     .join('')}</fieldset>
