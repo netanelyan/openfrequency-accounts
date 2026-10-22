@@ -1,0 +1,20 @@
+{
+  "name": "openfrequency-accounts",
+  "version": "0.1.0",
+  "description": "accounts.openfrequency.co.il: the one login for Teder and Toran. Users, workspaces, memberships, products, sessions.",
+  "type": "module",
+  "private": true,
+  "license": "UNLICENSED",
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "test": "node --test --test-concurrency=1 \"test/*.test.js\" && node scripts/check-public.js",
+    "check:public": "node scripts/check-public.js",
+    "prepare": "node scripts/hooks.js",
+    "init-private": "node scripts/init-private.js",
+    "web": "node scripts/web.js",
+    "start": "node scripts/web.js",
+    "backup": "node scripts/backup.js"
+  }
+}
