@@ -36,4 +36,4 @@ export function loadEnv(env = process.env) {
 }
 
 /** Every secret the service reads: check:public refuses any of them assigned a value. */
-export const SECRET_KEYS = ['OF_INTERNAL_TOKEN', 'SESSION_SECRET', 'RESEND_API_KEY'];
+export const SECRET_KEYS = ['OF_INTERNAL_TOKEN', 'SESSION_SECRET', 'RESEND_API_KEY', 'OF_ADMIN_PASSWORD'];

@@ -15,6 +15,7 @@
     "init-private": "node scripts/init-private.js",
     "web": "node scripts/web.js",
     "start": "node scripts/web.js",
-    "backup": "node scripts/backup.js"
+    "backup": "node scripts/backup.js",
+    "admin:create": "node scripts/admin-create.js"
   }
 }
