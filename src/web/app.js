@@ -15,6 +15,7 @@ import { createWorkspace, getWorkspace, listWorkspaces, recentAudit, setDisabled
 import { inviteMail, magicLinkMail } from '../mail/messages.js';
 import { PRODUCT_NAMES, T, dayHe } from './copy.js';
 import { describe, payMonth, setSubscription, subscriptionsOf } from '../accounts/subscriptions.js';
+import { addInvoice, invoiceIn, invoicesOf, PDF_MAX, removeInvoice } from '../accounts/invoices.js';
 import * as P from './html.js';
 
 // The public site, accounts.openfrequency.co.il, behind Caddy.
@@ -56,7 +57,7 @@ class Refused extends Error {
   }
 }
 
-async function readForm(req, limit = 16_000) {
+async function readBody(req, limit) {
   let size = 0;
   const chunks = [];
   for await (const c of req) {
@@ -64,8 +65,45 @@ async function readForm(req, limit = 16_000) {
     if (size > limit) throw new Refused(413, 'too large');
     chunks.push(c);
   }
-  return new URLSearchParams(Buffer.concat(chunks).toString('utf8'));
+  return Buffer.concat(chunks);
 }
+
+async function readForm(req, limit = 16_000) {
+  return new URLSearchParams((await readBody(req, limit)).toString('utf8'));
+}
+
+/**
+ * A multipart/form-data body: its text fields (as URLSearchParams, like every other form) and its files by field
+ * name, { filename, data }. Only the console's invoice form sends one, for its PDF. Null when it cannot be read.
+ */
+export function parseMultipart(body, contentType) {
+  const m = /boundary=(?:"([^"]+)"|([^;\s]+))/i.exec(String(contentType || ''));
+  if (!m) return null;
+  const boundary = Buffer.from(`\r\n--${m[1] || m[2]}`);
+  const fields = new URLSearchParams();
+  const files = {};
+  // Read as if the body began with a line break, so the first boundary is found like every other.
+  const buf = Buffer.concat([Buffer.from('\r\n'), body]);
+  let at = buf.indexOf(boundary);
+  if (at === -1) return null;
+  for (;;) {
+    at += boundary.length;
+    if (buf.subarray(at, at + 2).toString('latin1') === '--') return { fields, files };
+    const headEnd = buf.indexOf('\r\n\r\n', at);
+    const next = headEnd === -1 ? -1 : buf.indexOf(boundary, headEnd + 4);
+    if (next === -1) return null;
+    const head = buf.subarray(at, headEnd).toString('utf8');
+    const name = /;\s*name="([^"]*)"/i.exec(head)?.[1];
+    const filename = /;\s*filename="([^"]*)"/i.exec(head)?.[1];
+    const data = buf.subarray(headEnd + 4, next);
+    if (name != null && filename != null) files[name] = { filename, data: Buffer.from(data) };
+    else if (name != null) fields.append(name, data.toString('utf8'));
+    at = next;
+  }
+}
+
+// The one form that sends a file: the console's invoice, with its PDF.
+const UPLOAD = /^\/admin\/workspaces\/\d+\/invoices$/;
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -95,6 +133,12 @@ export function publicHandler({ db, env = process.env, mailer, limiters = defaul
     const text = (status, body) => {
       res.writeHead(status, headers({ 'content-type': 'text/plain; charset=utf-8' }));
       res.end(body);
+    };
+    // An invoice's PDF, as the invoicing service made it: never cached, never framed, opened in the browser.
+    const pdf = (inv) => {
+      const name = `invoice-${String(inv.number).replace(/[^A-Za-z0-9_-]/g, '') || inv.id}.pdf`;
+      res.writeHead(200, headers({ 'content-type': 'application/pdf', 'content-disposition': `inline; filename="${name}"`, 'content-security-policy': "default-src 'none'; frame-ancestors 'none'" }));
+      res.end(Buffer.from(inv.pdf));
     };
     const redirect = (to) => {
       res.writeHead(303, headers({ location: to }));
@@ -143,19 +187,28 @@ export function publicHandler({ db, env = process.env, mailer, limiters = defaul
       }
       const setFlash = (msg) => out.cookies.push(`${flashName}=${encodeURIComponent(msg)}; Path=/; Max-Age=30; HttpOnly; SameSite=Lax${sec}`);
 
+      const sid = sessionFromJar(jar, secure);
+      const found = sid ? findSession(db, sid) : null;
+
       let form = null;
+      let files = {};
       if (req.method === 'POST') {
         const o = req.headers.origin;
         if (o && o !== origin) return send(403, P.layout({ title: T.loginTitle, body: P.messagePage({ title: T.crossSite, lead: '' }), v: V }));
-        form = await readForm(req);
+        if (/^multipart\/form-data/i.test(String(req.headers['content-type'] || ''))) {
+          // A file, up to PDF_MAX, only on the invoice form and only from the superadmin; nobody else sends one.
+          if (!UPLOAD.test(p) || !found?.user.is_superadmin) throw new Refused(415, 'unsupported');
+          const parsed = parseMultipart(await readBody(req, PDF_MAX + 64_000), req.headers['content-type']);
+          if (!parsed) throw new Refused(400, 'unreadable form');
+          ({ fields: form, files } = parsed);
+        } else {
+          form = await readForm(req);
+        }
         if (!csrfOk(form.get('_csrf'), nonce, secret)) return send(403, P.layout({ title: T.loginTitle, body: P.messagePage({ title: T.staleForm, lead: '', links: [[p.startsWith('/admin') ? '/admin' : '/login', T.notFoundBack]] }), v: V }));
       } else if (req.method !== 'GET' && req.method !== 'HEAD') {
         return text(405, 'method not allowed');
       }
       const f = (k) => String(form?.get(k) ?? '');
-
-      const sid = sessionFromJar(jar, secure);
-      const found = sid ? findSession(db, sid) : null;
       const page = (status, title, body, opts = {}) => send(status, P.layout({ title, body, flash, v: V, ...opts }));
       const next = (raw) => safeNext(raw, { allowLocal: dev });
       const setSession = (user, opts = {}) => {
@@ -192,7 +245,20 @@ export function publicHandler({ db, env = process.env, mailer, limiters = defaul
         const subscriptions = Object.fromEntries(Object.entries(subscriptionsOf(db, wsId)).map(([prod, row]) => [prod, describe(row)]));
         const members = db.all('SELECT u.id, u.email, u.name, m.role FROM memberships m JOIN users u ON u.id = m.user_id WHERE m.workspace_id = ? AND u.disabled_at IS NULL ORDER BY m.created_at', wsId);
         const others = PRODUCTS.filter((prod) => !d.body.products.includes(prod));
-        return page(200, T.homeHello(found.user.name || found.user.email), P.homePage({ csrf, user: found.user, workspace: d.body.workspace, products: d.body.products, productUrls: urls, canSwitch: mine.length > 1, subscriptions, members, others }), { wide: true });
+        const invoices = invoicesOf(db, wsId);
+        return page(200, T.homeHello(found.user.name || found.user.email), P.homePage({ csrf, user: found.user, workspace: d.body.workspace, products: d.body.products, productUrls: urls, canSwitch: mine.length > 1, subscriptions, members, others, invoices }), { wide: true });
+      }
+
+      // An invoice's PDF, for a customer in its own workspace only. Another workspace's invoice is not found, the
+      // same as one that does not exist, so an id says nothing about another business.
+      const invoiceMatch = /^\/invoices\/(\d+)$/.exec(p);
+      if (invoiceMatch && req.method === 'GET') {
+        if (!found) return redirect('/login');
+        if (found.user.is_superadmin) return redirect('/admin');
+        const d = describeSession(db, sid);
+        const inv = d.status === 200 ? invoiceIn(db, invoiceMatch[1], d.body.workspace.id) : null;
+        if (!inv) return page(404, T.notFound, P.messagePage({ title: T.notFound, lead: '', links: [['/', T.logoutBack]] }));
+        return pdf(inv);
       }
 
       if (p === '/login' && req.method !== 'POST') {
@@ -325,6 +391,11 @@ export function publicHandler({ db, env = process.env, mailer, limiters = defaul
         };
 
         if (p === '/admin' && req.method === 'GET') return console_(200);
+        let m = /^\/admin\/invoices\/(\d+)$/.exec(p);
+        if (m && req.method === 'GET') {
+          const inv = db.get('SELECT * FROM invoices WHERE id = ?', Number(m[1]));
+          if (inv) return pdf(inv);
+        }
         if (req.method !== 'POST') return page(404, T.notFound, P.messagePage({ title: T.notFound, lead: '', links: [['/admin', T.adminTitle]] }), { banner });
 
         if (p === '/admin/workspaces') {
@@ -339,7 +410,27 @@ export function publicHandler({ db, env = process.env, mailer, limiters = defaul
           }
         }
 
-        let m = /^\/admin\/workspaces\/(\d+)\/subscription(\/pay)?$/.exec(p);
+        m = /^\/admin\/workspaces\/(\d+)\/invoices$/.exec(p);
+        if (m) {
+          try {
+            const w = getWorkspace(db, m[1]);
+            const fields = Object.fromEntries(['product', 'number', 'issued_on', 'period_from', 'period_to', 'amount', 'vat'].map((k) => [k, f(k)]));
+            addInvoice(db, w.id, fields, files.pdf?.data, by);
+            setFlash(T.flashInvoiceAdded(fields.number.trim(), w.name));
+            return redirect('/admin');
+          } catch (e) {
+            return problem(e, {});
+          }
+        }
+
+        m = /^\/admin\/invoices\/(\d+)\/remove$/.exec(p);
+        if (m) {
+          const row = removeInvoice(db, m[1], by);
+          if (row) setFlash(T.flashInvoiceRemoved(row.number));
+          return redirect('/admin');
+        }
+
+        m = /^\/admin\/workspaces\/(\d+)\/subscription(\/pay)?$/.exec(p);
         if (m) {
           try {
             const w = getWorkspace(db, m[1]);

@@ -133,4 +133,27 @@ export const MIGRATIONS = [
            CASE product WHEN 'toran' THEN 990 ELSE 1490 END, substr(updated_at, 1, 10), updated_at
     FROM workspace_products WHERE enabled = 1;
   `,
+  `
+  -- A workspace's invoices, for its customer to see and download. The invoice itself is issued by the accountant's
+  -- invoicing service, which owns its number and what Israeli law asks of it: Accounts never makes one. The operator
+  -- records each on /admin, with the PDF the service produced, and the customer's home lists them. The PDF is kept
+  -- here, in the one database file (so the daily backup has it), and is served only through a session in its own
+  -- workspace, never from a public link.
+  CREATE TABLE invoices (
+    id              INTEGER PRIMARY KEY,
+    workspace_id    INTEGER NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+    product         TEXT NOT NULL CHECK (product IN ('teder', 'toran')),
+    number          TEXT NOT NULL,                 -- as the invoicing service issued it
+    issued_on       TEXT NOT NULL,                 -- the date on the invoice, YYYY-MM-DD
+    period_from     TEXT,                          -- the days it pays for; both or neither (a setup fee has none)
+    period_to       TEXT,
+    amount          REAL NOT NULL,                 -- ₪ before VAT
+    vat             REAL NOT NULL,                 -- ₪ of VAT on it, 0 when none
+    pdf             BLOB NOT NULL,
+    created_by      INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    created_at      TEXT NOT NULL,
+    CHECK ((period_from IS NULL) = (period_to IS NULL))
+  );
+  CREATE INDEX invoices_workspace ON invoices(workspace_id, issued_on);
+  `,
 ];

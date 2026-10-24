@@ -3,6 +3,7 @@ import { audit } from '../core/audit.js';
 import { PRODUCTS } from '../db/schema.js';
 import { createInvite, normEmail, validEmail } from './links.js';
 import { ensureSubscription, subscriptionsOf } from './subscriptions.js';
+import { invoicesOf } from './invoices.js';
 
 // What the superadmin does to workspaces: open one (and invite its owner), turn
 // a product on or off, disable or enable it, and view it as its customer does.
@@ -85,7 +86,7 @@ export function getWorkspace(db, id) {
   return w;
 }
 
-/** Every workspace with its members, products, subscriptions and open invites, newest first. */
+/** Every workspace with its members, products, subscriptions, invoices and open invites, newest first. */
 export function listWorkspaces(db) {
   const t = nowIso();
   return db.all('SELECT * FROM workspaces ORDER BY created_at DESC, id DESC').map((w) => ({
@@ -97,6 +98,7 @@ export function listWorkspaces(db) {
     ),
     invites: db.all("SELECT id, email, role, expires_at FROM tokens WHERE kind = 'invite' AND workspace_id = ? AND used_at IS NULL AND expires_at > ? ORDER BY created_at", w.id, t),
     subscriptions: subscriptionsOf(db, w.id),
+    invoices: invoicesOf(db, w.id),
   }));
 }
 

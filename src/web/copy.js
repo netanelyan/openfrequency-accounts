@@ -74,6 +74,14 @@ export const T = {
   subEnded: (d) => `המנוי הסתיים ב-${d}.`,
   subOpen: 'התשלום הראשון יופיע כאן כשנרשום אותו.',
   subSetup: (amount) => `דמי הקמה: ${amount}, פעם אחת`,
+  dashInvoices: 'חשבוניות',
+  invNone: 'עוד אין כאן חשבוניות. כל חשבונית שנוציא לכם תופיע כאן, עם המסמך עצמו להורדה.',
+  invTitle: (product, number) => `${product}, חשבונית ${number}`,
+  invPeriod: (from, to) => `על ${from} עד ${to}`,
+  invVat: (amount, vat) => `${amount} ועוד מע״מ ${vat}`,
+  invNoVat: 'בלי מע״מ',
+  invOpen: 'לחשבונית',
+  invOpenLabel: (number) => `חשבונית ${number}, קובץ PDF`,
   dashMore: 'עוד מאיתנו',
   dashMoreWhat: { teder: 'מצגות בעברית לטיקטוק ולאינסטגרם', toran: 'עונה ללקוחות שלכם בוואטסאפ' },
   dashMoreLink: 'לפרטים',
@@ -171,6 +179,20 @@ export const T = {
   subNone: 'אין מנוי',
   flashSubSaved: (p, name) => `המנוי של ${name} ל${p} נשמר.`,
   flashSubPaid: (p, name, d) => `${name}: ${p} שולם עד ${d}.`,
+  invAdd: 'הוספת חשבונית',
+  invHint: 'החשבונית יוצאת משירות החשבוניות, עם המספר והתאריך שלו. כאן שומרים עותק שלה, כדי שהלקוח ימצא אותה בדף שלו.',
+  invNumber: 'מספר',
+  invIssuedOn: 'תאריך',
+  invFrom: 'על התקופה מ-',
+  invTo: 'עד',
+  invAmount: 'לפני מע״מ, ב-₪',
+  invVatAmount: 'מע״מ, ב-₪',
+  invPdf: 'החשבונית, PDF',
+  invSave: 'שמירה',
+  invRemove: 'הסרה',
+  invAdminLine: (number, d, total) => `חשבונית ${number}, ${d}, ${total}`,
+  flashInvoiceAdded: (number, name) => `חשבונית ${number} נוספה ל-${name}.`,
+  flashInvoiceRemoved: (number) => `חשבונית ${number} הוסרה מהחשבון. בשירות החשבוניות היא נשארת כמו שהיא.`,
 
   errors: {
     bad_name: 'צריך שם לעסק, עד 80 תווים.',
@@ -185,6 +207,11 @@ export const T = {
     bad_price: 'המחיר צריך להיות מספר.',
     bad_date: 'אחד התאריכים לא תקין.',
     bad_dates: 'היום האחרון לפני יום ההתחלה.',
+    bad_number: 'צריך את מספר החשבונית, כמו שהוא מופיע עליה, עד 40 תווים.',
+    bad_period: 'לתקופה צריך גם יום ראשון וגם יום אחרון, והאחרון לא לפני הראשון.',
+    bad_amount: 'צריך סכום לפני מע״מ ואת המע״מ, במספרים. אם אין מע״מ, כתבו 0.',
+    bad_pdf: 'צריך לצרף את החשבונית כקובץ PDF.',
+    pdf_too_large: 'הקובץ גדול מ-5MB. חשבונית רגילה קטנה בהרבה, אז כדאי לבדוק שזה הקובץ הנכון.',
   },
 };
 
@@ -209,6 +236,8 @@ export const AUDIT_NAMES = {
   superadmin_reset: 'המנהל הוגדר מחדש',
   subscription_saved: 'מנוי עודכן',
   subscription_paid: 'תשלום נרשם',
+  invoice_added: 'חשבונית נוספה',
+  invoice_removed: 'חשבונית הוסרה',
 };
 
 // ---- emails
@@ -243,5 +272,5 @@ export const when = (iso) => DATE.format(new Date(iso)).replace(/\s*,\s*/, ', ')
 
 /** A calendar day, YYYY-MM-DD, as Israel writes it: "25.10.2026". */
 export const dayHe = (d) => (d ? `${+d.slice(8, 10)}.${+d.slice(5, 7)}.${d.slice(0, 4)}` : '');
-/** Shekels, as the site writes them: "1,490 ₪". */
-export const ils = (n) => `${Number(n).toLocaleString('he-IL')} ₪`;
+/** Shekels, as the site writes them: "1,490 ₪", or "1,762.82 ₪" when there are agorot. */
+export const ils = (n) => `${Number(n).toLocaleString('he-IL', Number.isInteger(Number(n)) ? {} : { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ₪`;

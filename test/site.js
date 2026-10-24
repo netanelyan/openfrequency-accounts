@@ -45,7 +45,7 @@ export function makeBrowser(port, { host, secure = true, ip = '203.0.113.10', or
     },
     cookie: (name) => jar.get(name)?.value,
     setCookies: [],
-    async go(method, path, fields = null, extra = {}) {
+    async go(method, path, fields = null, extra = {}, files = null) {
       const headers = {
         host,
         'x-forwarded-for': ip,
@@ -54,7 +54,20 @@ export function makeBrowser(port, { host, secure = true, ip = '203.0.113.10', or
         ...extra,
       };
       let body = null;
-      if (fields) {
+      if (fields && files) {
+        // multipart/form-data, as a browser sends a form with a file: { name: { filename, data, type } }.
+        const boundary = `----of-test-${Math.random().toString(36).slice(2)}`;
+        const parts = [];
+        for (const [k, v] of Object.entries({ _csrf: csrf ?? '', ...fields })) parts.push(Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="${k}"\r\n\r\n${v}\r\n`));
+        for (const [k, f] of Object.entries(files)) {
+          parts.push(Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="${k}"; filename="${f.filename}"\r\nContent-Type: ${f.type || 'application/pdf'}\r\n\r\n`), f.data, Buffer.from('\r\n'));
+        }
+        parts.push(Buffer.from(`--${boundary}--\r\n`));
+        body = Buffer.concat(parts);
+        headers['content-type'] = `multipart/form-data; boundary=${boundary}`;
+        const o = origin === undefined ? `${secure ? 'https' : 'http'}://${host}` : origin;
+        if (o) headers.origin = o;
+      } else if (fields) {
         const params = new URLSearchParams();
         const all = { _csrf: csrf ?? '', ...fields };
         for (const [k, v] of Object.entries(all)) for (const x of [].concat(v)) if (x !== undefined) params.append(k, x);
@@ -79,6 +92,7 @@ export function makeBrowser(port, { host, secure = true, ip = '203.0.113.10', or
     },
     get: (path, extra) => b.go('GET', path, null, extra),
     post: (path, fields = {}, extra) => b.go('POST', path, fields, extra),
+    upload: (path, fields, files, extra) => b.go('POST', path, fields, extra, files),
   };
   return b;
 }

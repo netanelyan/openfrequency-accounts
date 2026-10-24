@@ -1,7 +1,8 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { ROOT } from '../core/paths.js';
-import { describe } from '../accounts/subscriptions.js';
+import { addDays, addMonths, describe, israelToday } from '../accounts/subscriptions.js';
+import { total } from '../accounts/invoices.js';
 import { AUDIT_NAMES, PRODUCT_NAMES, ROLE_NAMES, T, dayHe, ils, when } from './copy.js';
 
 // Server-rendered pages: Hebrew, right to left, one stylesheet, no script.
@@ -158,10 +159,25 @@ ${status !== 'ended' ? `<p class="go"><a class="button primary" href="${esc(href
 }
 
 /**
- * The customer's home: each product they have with its subscription (the price, the days left in the month paid
- * for, the next charge), the other products, who is in the account, and their own details.
+ * Every invoice of the workspace, newest first: its date, the product and its number, the days it pays for, the
+ * total with the VAT in it stated, and the PDF. The link goes through /invoices/<id>, which checks the workspace.
  */
-export function homePage({ user, workspace, products, productUrls, canSwitch, subscriptions = {}, members = [], others = [] }) {
+function invoicesCard(invoices) {
+  const rows = invoices
+    .map(
+      (i) => `<li><span class="when">${esc(dayHe(i.issued_on))}</span><span class="what"><b>${esc(T.invTitle(PRODUCT_NAMES[i.product], i.number))}</b>${
+        i.period_from ? `<small>${esc(T.invPeriod(dayHe(i.period_from), dayHe(i.period_to)))}</small>` : ''
+      }</span><span class="sum"><b>${esc(ils(total(i)))}</b><small>${esc(i.vat ? T.invVat(ils(i.amount), ils(i.vat)) : T.invNoVat)}</small></span><a class="button quiet" href="/invoices/${esc(i.id)}" aria-label="${esc(T.invOpenLabel(i.number))}">${esc(T.invOpen)}</a></li>`
+    )
+    .join('');
+  return `<section class="card invoices" id="invoices"><h2>${esc(T.dashInvoices)}</h2>${rows ? `<ul class="invoices">${rows}</ul>` : `<p class="muted">${esc(T.invNone)}</p>`}</section>`;
+}
+
+/**
+ * The customer's home: each product they have with its subscription (the price, the days left in the month paid
+ * for, the next charge), the other products, the invoices, who is in the account, and their own details.
+ */
+export function homePage({ user, workspace, products, productUrls, canSwitch, subscriptions = {}, members = [], others = [], invoices = [] }) {
   const subs = products.length
     ? `<div class="subs">${products.map((p) => subCard(p, subscriptions[p], productUrls[p])).join('')}</div>`
     : `<section class="card"><p class="muted">${esc(T.homeNoProducts)}</p></section>`;
@@ -180,6 +196,7 @@ export function homePage({ user, workspace, products, productUrls, canSwitch, su
 <div class="list-h"><h2>${esc(T.dashProducts)}</h2></div>
 ${subs}
 ${more}
+${invoicesCard(invoices)}
 <div class="pair">
 <section class="card"><h2>${esc(T.dashTeam)}</h2><ul class="people">${team}</ul><p class="muted">${esc(T.dashTeamAdd)}</p></section>
 <section class="card"><h2>${esc(T.dashAccount)}</h2>
@@ -238,6 +255,25 @@ ${error ? `<p class="error" role="alert">${esc(error)}</p>` : ''}
 const roleSelect = (name) =>
   `<select name="${name}" aria-label="${esc(T.inviteRole)}">${['client_member', 'client_owner'].map((r) => `<option value="${r}">${esc(ROLE_NAMES[r])}</option>`).join('')}</select>`;
 
+/**
+ * The operator records an invoice the invoicing service issued, next to the month's payment: its number and date,
+ * the days it pays for (the last month paid for, to start with), the amount before VAT and the VAT, and the PDF.
+ */
+function invoiceForm(base, p, s, csrf) {
+  const from = s.paid_until ? addMonths(addDays(s.paid_until, 1), -1) : '';
+  return `<details class="inv-add"><summary>${esc(T.invAdd)}</summary>
+<form method="post" action="${base}/invoices" enctype="multipart/form-data" class="sub-form">${csrfField(csrf)}<input type="hidden" name="product" value="${p}">
+<small class="full">${esc(T.invHint)}</small>
+<label>${esc(T.invNumber)}<input name="number" required maxlength="40" dir="ltr"></label>
+<label>${esc(T.invIssuedOn)}<input name="issued_on" type="date" required value="${esc(israelToday())}"></label>
+<label>${esc(T.invFrom)}<input name="period_from" type="date" value="${esc(from)}"></label>
+<label>${esc(T.invTo)}<input name="period_to" type="date" value="${esc(s.paid_until ?? '')}"></label>
+<label>${esc(T.invAmount)}<input name="amount" inputmode="decimal" dir="ltr" required></label>
+<label>${esc(T.invVatAmount)}<input name="vat" inputmode="decimal" dir="ltr" required></label>
+<label>${esc(T.invPdf)}<input name="pdf" type="file" accept="application/pdf,.pdf" required></label>
+<button class="quiet">${esc(T.invSave)}</button></form></details>`;
+}
+
 function workspaceTile(w, csrf) {
   const base = `/admin/workspaces/${w.id}`;
   const products = Object.entries(w.products)
@@ -267,7 +303,8 @@ function workspaceTile(w, csrf) {
 <label>${esc(T.subStarted)}<input name="started_on" type="date" value="${esc(s.started_on ?? '')}"></label>
 <label>${esc(T.subPaid)}<input name="paid_until" type="date" value="${esc(s.paid_until ?? '')}"></label>
 <label>${esc(T.subEnds)}<input name="ends_on" type="date" value="${esc(s.ends_on ?? '')}"></label>
-<button class="quiet">${esc(T.subSave)}</button></form>${button(`${base}/subscription/pay`, T.subPayMonth, csrf, { fields: { product: p }, kind: 'quiet' })}</li>`;
+<button class="quiet">${esc(T.subSave)}</button></form>${button(`${base}/subscription/pay`, T.subPayMonth, csrf, { fields: { product: p }, kind: 'quiet' })}
+${invoiceForm(base, p, s, csrf)}</li>`;
     })
     .join('');
   const enabledProducts = Object.entries(w.products).filter(([, on]) => on).map(([p]) => p);
@@ -282,6 +319,9 @@ function workspaceTile(w, csrf) {
 <p class="section-l">${esc(T.colProducts)}</p>
 <ul class="toggles">${products}</ul>
 ${subs ? `<p class="section-l">${esc(T.subTitle)}</p><ul class="subs-admin">${subs}</ul>` : ''}
+${w.invoices?.length ? `<p class="section-l">${esc(T.dashInvoices)}</p><ul class="people">${w.invoices
+    .map((i) => `<li><a class="who" href="/admin/invoices/${esc(i.id)}">${esc(T.invAdminLine(i.number, dayHe(i.issued_on), ils(total(i))))}</a><span class="muted">${esc(PRODUCT_NAMES[i.product])}</span><span class="end">${button(`/admin/invoices/${i.id}/remove`, T.invRemove, csrf, { kind: 'quiet' })}</span></li>`)
+    .join('')}</ul>` : ''}
 <p class="section-l">${esc(T.colMembers)}</p>
 <ul class="people">${people.length ? people.join('') : `<li class="muted">${esc(T.noMembers)}</li>`}</ul>
 <div class="actions">
