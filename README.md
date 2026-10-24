@@ -27,10 +27,12 @@ It owns:
 
 ## The operator's dashboard, /admin
 
-The superadmin's `/admin` has two tabs. **היום** (`/admin`) is the operator's dashboard,
+The superadmin's `/admin` has three tabs. **היום** (`/admin`) is the operator's dashboard,
 which used to be on Toran's home page (toran.openfrequency.co.il now shows Toran only).
 **חשבונות** (`/admin/accounts`) is the console: workspaces, products, subscriptions,
-invoices, invites, view-as and the audit log.
+invoices, invites, view-as and the audit log. **תורן** (`/admin/toran/`) is Toran's operator
+dashboard: the leads, a lead's page, the review queue, the follow-ups, the chats, the settings
+and the pitch pages' previews, rendered by Toran and proxied from it (below).
 
 The dashboard shows:
 
@@ -53,6 +55,25 @@ reaches Toran at `OF_TORAN_INTERNAL` (default `http://127.0.0.1:4710`) with
 from its own subscriptions. When Toran does not answer, its sections say so and the rest of
 the page works. The buttons work without JavaScript. With it (`static/admin.js`, the site's one
 script), they post in the background and the card goes away. In view-as the dashboard is closed.
+
+### /admin/toran, Toran's pages proxied
+
+Every method on `/admin/toran` and `/admin/toran/*` goes to Toran at `OF_TORAN_INTERNAL` as it
+came: the same method, path (with the `/admin/toran` prefix) and query, the body streamed up to
+2 MB (413 past that). Superadmin only, outside view-as: anyone else gets the admin login (with
+`?next=` back to the page) on a GET and a 403 on anything else, and nothing reaches Toran. A path
+with `/internal` under the prefix is 404 here and never asked of Toran.
+
+Toran gets only `cookie`, `content-type`, `accept`, `accept-language`, `accept-encoding`,
+`origin`, `referer`, `user-agent`, `x-tn-ajax` and `content-length` from the browser, and from
+us `host` (Toran's own host:port), `x-of-admin-prefix: /admin/toran`, `x-forwarded-proto` (https
+when the browser reached us over HTTPS through Caddy, as accounts itself decides) and
+`x-of-admin-origin` (`https://<PUBLIC_HOST>`, or this site's own address in development). Never
+the browser's `authorization`, `x-forwarded-for`, `forwarded`, `x-real-ip` or any `x-of-*`. Toran
+strips the prefix, keeps it in its links, forms and redirects, and does its own CSRF checks.
+Toran's answer comes back as it is (status, cookies, location, compression, its own CSP), without
+the hop-by-hop headers and without ours. When Toran is down or does not answer in 30 seconds,
+the page is a 502 that says "תורן לא ענה כרגע" with a link back to `/admin`.
 
 ## Try it
 
@@ -109,7 +130,8 @@ The full steps (DNS, Resend, Caddy, backups, checks) are in [docs/deploy.md](doc
 - The superadmin: password and TOTP (one use per code), 5 tries per address in 15 minutes, 12-hour
   sessions, every action in the audit log, view-as read-only.
 - Every form: a CSRF token and an Origin check. Every page: CSP with no script (except `/admin`,
-  which allows its own `static/admin.js` and nothing inline), no framing.
+  which allows its own `static/admin.js` and nothing inline), no framing. `/admin/toran/*` is
+  Toran's: superadmin only, a foreign Origin refused here, and Toran's own CSRF and CSP on its pages.
 - `/internal/session`, `/internal/owner-phone*` and `/internal/ops/customers`: their own port, never proxied, loopback only,
   a bearer token.
 

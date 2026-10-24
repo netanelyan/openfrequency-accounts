@@ -196,6 +196,10 @@ run("the operator's dashboard on a phone and on a desktop: nothing runs off the 
       const { context, page } = await open(width, height);
       assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), `${width}: no sideways scroll`);
       assert.equal(await page.locator('article.op').count(), 6);
+      // The three tabs on one line, each label whole.
+      const tabs = await page.locator('nav.tabs a').evaluateAll((as) => as.map((a) => ({ label: a.textContent, top: a.getBoundingClientRect().top, left: a.getBoundingClientRect().left, right: a.getBoundingClientRect().right, whole: a.scrollWidth <= a.clientWidth })));
+      assert.deepEqual(tabs.map((x) => x.label), ['היום', 'חשבונות', 'תורן']);
+      assert.ok(tabs.every((x) => x.top === tabs[0].top && x.left >= 0 && x.right <= width && x.whole), `${width}: the tabs fit`);
       if (process.env.OF_SCREENSHOTS) await page.screenshot({ path: `${process.env.OF_SCREENSHOTS}/${name}.png`, fullPage: true });
       await context.close();
     }

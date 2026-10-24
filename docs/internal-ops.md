@@ -6,7 +6,8 @@ Every customer workspace and its money, for Toran. This is section 1 of Toran's
 The operator's dashboard itself is on our `/admin` now (section 4 of the same document), and it
 calls Toran the other way: see [/admin and Toran's /internal/ops](#admin-and-torans-internalops),
 below. `/admin` reads these same rows directly from the database (`opsCustomers()` in
-`src/accounts/ops.js`), for the money and the funnels' last stage.
+`src/accounts/ops.js`), for the money and the funnels' last stage. Toran's own operator pages
+are on our `/admin/toran/`, proxied from Toran: see [/admin/toran](#admintoran).
 
 ## The request
 
@@ -126,6 +127,29 @@ started in the last 30 days.
 
 Toran's links (`target.href`, `page`, `leadUrl`) reach the page only when they are `https:`,
 `http:` or `mailto:` addresses.
+
+## /admin/toran
+
+Toran's operator dashboard (the leads, a lead's page, the review queue, the follow-ups, the
+chats, the settings, the pitch pages' previews) is served on our `/admin/toran/` and rendered by
+Toran: `src/web/admin-toran.js` proxies every method there to `OF_TORAN_INTERNAL`, superadmin
+only, outside view-as. It is a plain HTTP proxy, not one of these JSON calls, and carries no
+bearer token: Toran identifies the superadmin from the session cookie through
+`/internal/session`, like any of its pages.
+
+| Sent to Toran | Value |
+|---|---|
+| method, path, query, body | as the browser sent them; the path keeps `/admin/toran`; the body up to 2 MB |
+| from the browser | `cookie`, `content-type`, `accept`, `accept-language`, `accept-encoding`, `origin`, `referer`, `user-agent`, `x-tn-ajax`, `content-length`, and nothing else |
+| `host` | Toran's host:port from `OF_TORAN_INTERNAL` |
+| `x-of-admin-prefix` | `/admin/toran` |
+| `x-forwarded-proto` | `https` when the browser reached us over HTTPS through Caddy, else `http` |
+| `x-of-admin-origin` | our public origin, `https://<PUBLIC_HOST>` (in development, this site's own address) |
+
+Any path with an `/internal` segment under the prefix is 404 here and never reaches Toran.
+Toran's answer comes back as it is, minus `connection`, `keep-alive`, `transfer-encoding` and
+`upgrade`, with none of our headers added. 30 seconds without an answer, or Toran unreachable:
+our 502 page.
 
 ## Changes to this format
 

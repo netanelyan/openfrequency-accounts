@@ -496,8 +496,8 @@ form.sub-form input[type='file'] { width: 240px; padding: 6px; }
 
 /* ------------------------------------------------------------ the operator's dashboard, /admin (dashboard.js) */
 
-/* Both /admin pages: the mark and the name, the two tabs as one segmented control, sign-out. On a phone the tabs
-   take a line of their own under the other two. */
+/* Both /admin pages: the mark and the name, the three tabs (today, the accounts, Toran) as one segmented control,
+   sign-out. On a phone the tabs take a line of their own under the other two, in three equal parts. */
 header.admin-top { flex-wrap: wrap; }
 nav.tabs { display: inline-flex; gap: 2px; padding: 3px; border-radius: 999px; background: var(--fill); margin-inline-start: auto; }
 nav.tabs a { display: inline-flex; align-items: center; justify-content: center; min-height: 38px; padding: 0 18px; border-radius: 999px; color: var(--ink-2); font-weight: 500; text-decoration: none; }
@@ -505,7 +505,7 @@ nav.tabs a:hover { color: var(--ink); }
 nav.tabs a[aria-current='page'] { background: var(--surface-hi); color: var(--ink); font-weight: 600; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1), inset 0 0 0 1px var(--edge); }
 @media (max-width: 640px) {
   nav.tabs { order: 3; flex: 1 0 100%; margin: 0; }
-  nav.tabs a { flex: 1; }
+  nav.tabs a { flex: 1; padding: 0 10px; }
 }
 
 .flash.bad { color: var(--bad); background: var(--bad-bg); }

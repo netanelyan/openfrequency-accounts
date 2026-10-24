@@ -381,6 +381,7 @@ export const OPS = {
   tabs: 'הלוח',
   tabToday: 'היום',
   tabAccounts: 'חשבונות',
+  tabToran: 'תורן',
   pageTitle: 'מה עושים היום',
 
   kpiContact: 'לפנות היום',
@@ -471,6 +472,11 @@ export const OPS = {
   renewLine: (on, name, product, amount) => `${on} · ${name} · ${product} · ${amount}`,
   moneyNote: 'ההכנסה החודשית בלי מע״מ. ליד כל לקוח מופיע הסכום כמו שנרשם במנוי שלו.',
   moneyManage: 'לניהול הלקוחות והחשבוניות',
+
+  // /admin/toran, when Toran is not up or does not answer in 30 seconds.
+  toranNoAnswerTitle: 'תורן לא ענה כרגע',
+  toranNoAnswerLead: 'הדפים האלה מגיעים מתורן, ותוך 30 שניות לא הגיעה ממנו תשובה, או שהוא לא רץ עכשיו. כדאי לרענן בעוד רגע. הלוח של היום והחשבונות עובדים כרגיל.',
+  toranNoAnswerBack: 'חזרה ללוח',
 
   // After an action, when the line is ours and not Toran's
   toranNoAnswer: 'תורן לא ענה, אז שום דבר לא נרשם. כדאי לנסות שוב בעוד רגע.',

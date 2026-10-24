@@ -329,12 +329,13 @@ ${links([['/', T.logoutBack]])}`;
 
 // ---- superadmin
 
-export const adminLoginPage = ({ csrf, email = '', error = '' }) => `
+export const adminLoginPage = ({ csrf, next = '', email = '', error = '' }) => `
 <section class="card">
 <h1>${esc(T.adminLoginTitle)}</h1>
 <form method="post" action="/admin/login" autocomplete="on">
 ${csrfField(csrf)}
-<label for="email">${esc(T.adminEmail)}</label>
+${next ? `<input type="hidden" name="next" value="${esc(next)}">
+` : ''}<label for="email">${esc(T.adminEmail)}</label>
 <input id="email" name="email" type="email" autocomplete="username" dir="ltr" required value="${esc(email)}">
 <label for="password">${esc(T.adminPassword)}</label>
 <input id="password" name="password" type="password" autocomplete="current-password" dir="ltr" required>
@@ -346,10 +347,13 @@ ${error ? `<p class="error" role="alert">${esc(error)}</p>` : ''}
 </form>
 </section>`;
 
-/** The top of both /admin pages: the mark, the page's name, the two tabs (today, the accounts) and sign-out. */
+/**
+ * The top of both /admin pages: the mark, the page's name, the tabs (today, the accounts, and Toran's operator pages,
+ * which Toran renders under /admin/toran/) and sign-out.
+ */
 export const adminTop = ({ csrf, tab }) => {
   const a = (href, label, on) => `<a href="${href}"${on ? ' aria-current="page"' : ''}>${esc(label)}</a>`;
-  return `<header class="top admin-top"><div class="brand">${ofMark()}<h1>${esc(tab === 'today' ? OPS.pageTitle : T.adminTitle)}</h1></div><nav class="tabs" aria-label="${esc(OPS.tabs)}">${a('/admin', OPS.tabToday, tab === 'today')}${a('/admin/accounts', OPS.tabAccounts, tab === 'accounts')}</nav>${button('/logout', T.adminSignOut, csrf, { kind: 'quiet' })}</header>`;
+  return `<header class="top admin-top"><div class="brand">${ofMark()}<h1>${esc(tab === 'today' ? OPS.pageTitle : T.adminTitle)}</h1></div><nav class="tabs" aria-label="${esc(OPS.tabs)}">${a('/admin', OPS.tabToday, tab === 'today')}${a('/admin/accounts', OPS.tabAccounts, tab === 'accounts')}${a('/admin/toran/', OPS.tabToran, false)}</nav>${button('/logout', T.adminSignOut, csrf, { kind: 'quiet' })}</header>`;
 };
 
 const roleSelect = (name) =>

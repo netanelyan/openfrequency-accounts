@@ -24,6 +24,7 @@ import { opsCustomers } from '../accounts/ops.js';
 import { now } from '../core/clock.js';
 import { dashboardPage } from './dashboard.js';
 import { ACTIONS, ID, LOST_REASONS, toranClient } from './toran.js';
+import { isAdminToran, proxyToToran, toranBase, touchesInternal } from './admin-toran.js';
 import * as P from './html.js';
 
 // The public site, accounts.openfrequency.co.il, behind Caddy.
@@ -35,6 +36,8 @@ import * as P from './html.js';
 //   - every POST has an Origin that is ours (when the browser sends one) and a
 //     CSRF token derived from a random per-browser cookie, checked in constant time
 //   - /admin needs a superadmin session
+//   - /admin/toran/* is Toran's, handed to it as it came (admin-toran.js), after the superadmin's session and
+//     before anything here reads the body; its answer goes back with Toran's headers, not ours
 // Server-rendered HTML, no script, except static/admin.js on the operator's
 // dashboard (/admin), which only that page's CSP allows. Referrer-Policy is same-origin: a token in a
 // URL (magic links, invites) is never sent to another site as a Referer, Teder
@@ -139,7 +142,7 @@ const OPS_ACTION = /^\/admin\/ops\/(toran|teder)\/([^/]{1,300})\/([a-z]{1,20})$/
 // Where each button comes back to on the dashboard, without script.
 const OPS_BACK = ['contact', 'talking'];
 
-export function publicHandler({ db, env = process.env, mailer, limiters = defaultLimiters(), failDelayMs = 400, log = console.error, toran = toranClient({ env, log }), google = googleConfig(env), googleFetch = globalThis.fetch }) {
+export function publicHandler({ db, env = process.env, mailer, limiters = defaultLimiters(), failDelayMs = 400, log = console.error, toran = toranClient({ env, log }), toranProxyMs, google = googleConfig(env), googleFetch = globalThis.fetch }) {
   const secret = sessionSecret(env);
   const publicHost = String(env.PUBLIC_HOST || '').trim().toLowerCase() || null;
   const dev = !publicHost;
@@ -150,6 +153,7 @@ export function publicHandler({ db, env = process.env, mailer, limiters = defaul
   const CSP = `default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action ${formAction}`;
   // The dashboard: our one script file, and nothing inline.
   const CSP_SCRIPT = CSP.replace("script-src 'none'", "script-src 'self'");
+  const toranAt = toranBase(env);
 
   return async (req, res) => {
     const out = { cookies: [] };
@@ -207,6 +211,32 @@ export function publicHandler({ db, env = process.env, mailer, limiters = defaul
       const base = publicHost ? `https://${publicHost}` : origin;
       const sec = secure ? '; Secure' : '';
 
+      const sid = sessionFromJar(jar, secure);
+      const found = sid ? findSession(db, sid) : null;
+
+      // Toran's operator pages, on our /admin: the superadmin's only, outside view-as, as for /admin, and never
+      // Toran's /internal routes. Everything else about the request (its CSRF, its forms) is Toran's to check.
+      if (isAdminToran(p)) {
+        const page_ = (status, title, body) => send(status, P.layout({ title, body, v: V }));
+        if (!found?.user.is_superadmin || found.session.view_as_workspace_id) {
+          if (req.method === 'GET') return redirect(`/admin/login?next=${encodeURIComponent(p + url.search)}`);
+          return page_(403, T.adminLoginTitle, P.messagePage({ title: T.staleForm, lead: '', links: [['/admin/login', T.adminLoginTitle]] }));
+        }
+        if (touchesInternal(p)) return page_(404, T.notFound, P.messagePage({ title: T.notFound, lead: '', links: [['/admin', T.adminTitle]] }));
+        const o = req.headers.origin;
+        if (req.method !== 'GET' && req.method !== 'HEAD' && o && o !== origin) return page_(403, T.loginTitle, P.messagePage({ title: T.crossSite, lead: '' }));
+        return proxyToToran(req, res, {
+          base: toranAt,
+          path: p + url.search,
+          secure,
+          origin: base,
+          timeoutMs: toranProxyMs,
+          log,
+          failed: (status) =>
+            status === 413 ? text(413, 'too large') : page_(502, OPS.toranNoAnswerTitle, P.messagePage({ title: OPS.toranNoAnswerTitle, lead: OPS.toranNoAnswerLead, links: [['/admin', OPS.toranNoAnswerBack]] })),
+        });
+      }
+
       // The CSRF cookie: random, this host only, made on the first visit.
       const csrfName = secure ? '__Host-of_csrf' : 'of_csrf';
       let nonce = jar[csrfName];
@@ -234,9 +264,6 @@ export function publicHandler({ db, env = process.env, mailer, limiters = defaul
       // browser when Google sends it to the callback; __Host- behind HTTPS, so no sibling site can plant one.
       const googleName = secure ? '__Host-of_google' : 'of_google';
       const googleCallback = `${base}/auth/google/callback`;
-
-      const sid = sessionFromJar(jar, secure);
-      const found = sid ? findSession(db, sid) : null;
 
       let form = null;
       let files = {};
@@ -539,25 +566,31 @@ export function publicHandler({ db, env = process.env, mailer, limiters = defaul
       // ---------------------------------------------------------------- superadmin
 
       if (p === '/admin/login') {
+        // ?next= back to the /admin page that sent here (Toran's pages under /admin/toran), and only to one of those.
+        const adminNext = (raw) => {
+          const to = safeNext(raw);
+          return to && /^\/admin(?:[/?#]|$)/.test(to) && !to.startsWith('/admin/login') ? to : '';
+        };
         if (req.method !== 'POST') {
           if (found?.user.is_superadmin) return redirect('/admin');
-          return page(200, T.adminLoginTitle, P.adminLoginPage({ csrf }));
+          return page(200, T.adminLoginTitle, P.adminLoginPage({ csrf, next: adminNext(url.searchParams.get('next')) }));
         }
+        const back = adminNext(f('next'));
         const wait = limiters.adminLogin.check(ip);
-        if (wait) return send(429, P.layout({ title: T.adminLoginTitle, body: P.adminLoginPage({ csrf, email: f('email'), error: T.adminTooMany(wait) }), v: V }), { 'retry-after': String(wait) });
+        if (wait) return send(429, P.layout({ title: T.adminLoginTitle, body: P.adminLoginPage({ csrf, next: back, email: f('email'), error: T.adminTooMany(wait) }), v: V }), { 'retry-after': String(wait) });
         const ok = verifySuperadmin(db, { email: f('email'), password: f('password'), code: f('code') });
         if (!ok) {
           limiters.adminLogin.hit(ip);
           audit(db, { action: 'admin_login_failed', ip, detail: { email: f('email').slice(0, 254) } });
           await sleep(failDelayMs);
-          return page(401, T.adminLoginTitle, P.adminLoginPage({ csrf, email: f('email'), error: T.adminLoginFailed }));
+          return page(401, T.adminLoginTitle, P.adminLoginPage({ csrf, next: back, email: f('email'), error: T.adminLoginFailed }));
         }
         limiters.adminLogin.clear(ip);
         audit(db, { actor: ok.user, action: 'sign_in', ip, detail: { method: ok.method } });
         if (found) revokeSession(db, sid, { reason: 'replaced', ip });
         setSession(ok.user);
         if (ok.method === 'recovery') setFlash(T.adminRecoveryUsed(ok.recoveryLeft));
-        return redirect('/admin');
+        return redirect(back || '/admin');
       }
 
       if (p === '/admin' || p.startsWith('/admin/')) {

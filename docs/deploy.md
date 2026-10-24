@@ -47,7 +47,7 @@ MAIL_FROM=OpenFrequency <accounts@openfrequency.co.il>
 MAIL_REPLY_TO=                # where "reply to this email" lands; your own inbox
 OF_SUPPORT_WA=                # our WhatsApp for "write to us", digits only (972...); unset, the page says to reply to an email
 OF_ASSISTANT_WA=              # the owner line's WhatsApp number, digits only; the same as TORAN_ASSISTANT_WA in Toran's .env
-OF_TORAN_INTERNAL=            # Toran's internal routes, for the dashboard on /admin; empty means http://127.0.0.1:4710
+OF_TORAN_INTERNAL=            # Toran on this machine, for /admin and /admin/toran; empty means http://127.0.0.1:4710
 GOOGLE_CLIENT_ID=             # sign in with Google (below); unset, only the emailed link is offered
 GOOGLE_CLIENT_SECRET=
 ```
@@ -56,6 +56,12 @@ GOOGLE_CLIENT_SECRET=
 each load, and forwards each of its buttons to `POST /internal/ops/<kind>/<id>/<action>`, with
 `OF_INTERNAL_TOKEN` (Toran's `docs/operator.md`, section 4). Toran must have the same token. Set
 `OF_TORAN_INTERNAL` only if Toran listens somewhere other than `127.0.0.1:4710`.
+
+`/admin/toran/` (the **תורן** tab) is Toran's operator dashboard, proxied from Toran at the same
+`OF_TORAN_INTERNAL`, superadmin only. Toran renders it and must know the `/admin/toran` prefix
+(`X-OF-Admin-Prefix`); its own subdomain then shows the product only. Nothing to set here beyond
+`PUBLIC_HOST`, which gives Toran the address to build links on (`X-OF-Admin-Origin`). See the
+README for the headers that are passed.
 
 **Sign in with Google.** In [Google Cloud](https://console.cloud.google.com/), in a project of
 OpenFrequency's own, open *Google Auth Platform*:
@@ -148,6 +154,7 @@ Migrations run on start. Sessions live in the database, so nobody is signed out 
 | No email arrives | `pm2 logs of-accounts`: a `Resend answered 4xx` line says why (an unverified domain, a key without access). |
 | Teder or Toran sends everyone to the login | Their `OF_INTERNAL_TOKEN` must equal this one. `/internal/session` answers `bad_token` when it does not. |
 | `/admin` says "תורן לא ענה עכשיו" | Toran is down, or not at `OF_TORAN_INTERNAL`, or its `OF_INTERNAL_TOKEN` differs from this one. `pm2 logs of-accounts` has a `toran GET /internal/ops` line with the status or the error. The money and the console work in the meantime. |
+| `/admin/toran/` says "תורן לא ענה כרגע" (502) | Toran is down or took over 30 seconds. `pm2 logs of-accounts` has a `toran GET /admin/toran/...` line with the error. |
 | "האתר הזה עובד רק ב-HTTPS" | The request reached 4740 without Caddy's `X-Forwarded-Proto: https`. Check that Caddy proxies it. |
 | "Google לא אישר את הכניסה" | `pm2 logs of-accounts`: `google sign-in: refused` is usually a wrong secret, or a redirect URI in Google Cloud that is not exactly `https://accounts.openfrequency.co.il/auth/google/callback`. |
 | The superadmin lost the phone | Sign in with a recovery code, then run `npm run admin:create` again for a new key and new codes. |
