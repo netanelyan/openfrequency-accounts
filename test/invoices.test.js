@@ -27,7 +27,7 @@ async function setup() {
   const admin = site.browser({ ip: '192.0.2.1' });
   await admin.get('/admin/login');
   await admin.post('/admin/login', { email: EMAIL, password: PASSWORD, code: totpCode(secret, stepAt(now())) });
-  await admin.get('/admin');
+  await admin.get('/admin/accounts');
   return { ...h, ...site, admin, dana, other, done: async () => (await site.close(), h.cleanup()) };
 }
 
@@ -54,7 +54,7 @@ test('the operator records an invoice with its PDF; the customer sees every one,
 
     const r = await upload(t, t.dana, {});
     assert.equal(r.status, 303, r.body.slice(0, 300));
-    assert.match((await t.admin.get('/admin')).body, /חשבונית 1042 נוספה ל-החנות של דנה\./);
+    assert.match((await t.admin.get('/admin/accounts')).body, /חשבונית 1042 נוספה ל-החנות של דנה\./);
     await upload(t, t.dana, { product: 'toran', number: '1077', issued_on: '2026-11-22', period_from: '2026-11-22', period_to: '2026-12-21', amount: '449', vat: '80.82' });
     await upload(t, t.dana, { number: '0990', issued_on: '2026-10-01', period_from: '', period_to: '', amount: '1490', vat: '0' });
 
@@ -82,7 +82,7 @@ test('the operator records an invoice with its PDF; the customer sees every one,
     assert.doesNotMatch(theirs.body, /%PDF/);
 
     // The console lists them too, each with its PDF and a way to take it back.
-    const page = (await t.admin.get('/admin')).body;
+    const page = (await t.admin.get('/admin/accounts')).body;
     assert.match(page, /חשבונית 1042, 22\.10\.2026, 932\.20 ₪/);
     assert.equal((await t.admin.get(rows[1][5].replace('/invoices', '/admin/invoices'))).body, PDF('1042').toString());
   } finally {
@@ -159,7 +159,7 @@ test('an invoice recorded by mistake is taken back on the console, and the log h
     await upload(t, t.dana, {});
     const id = t.db.get('SELECT id FROM invoices').id;
     await t.admin.post(`/admin/invoices/${id}/remove`);
-    assert.match((await t.admin.get('/admin')).body, /חשבונית 1042 הוסרה מהחשבון\. בשירות החשבוניות היא נשארת כמו שהיא\./);
+    assert.match((await t.admin.get('/admin/accounts')).body, /חשבונית 1042 הוסרה מהחשבון\. בשירות החשבוניות היא נשארת כמו שהיא\./);
     assert.deepEqual(invoicesOf(t.db, t.dana.id), []);
     assert.deepEqual(t.db.all("SELECT action FROM audit WHERE action LIKE 'invoice%' ORDER BY id").map((a) => a.action), ['invoice_added', 'invoice_removed']);
     const dana = await signIn(t, 'dana@example.com');
@@ -173,7 +173,7 @@ test('the console prefills an invoice with the last month paid for', async () =>
   const t = await setup();
   try {
     await t.admin.post(`/admin/workspaces/${t.dana.id}/subscription/pay`, { product: 'teder' });
-    const page = (await t.admin.get('/admin')).body;
+    const page = (await t.admin.get('/admin/accounts')).body;
     assert.match(page, /action="\/admin\/workspaces\/\d+\/invoices" enctype="multipart\/form-data"[^]*?name="issued_on" type="date" required value="2026-10-22"[^]*?name="period_from" type="date" value="2026-10-22"[^]*?name="period_to" type="date" value="2026-11-21"/);
   } finally {
     await t.done();

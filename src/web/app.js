@@ -13,11 +13,15 @@ import { acceptInvite, consumeMagicLink, createInvite, InviteError, normEmail, p
 import { verifySuperadmin } from '../accounts/superadmin.js';
 import { createWorkspace, getWorkspace, listWorkspaces, recentAudit, setDisabled, setProduct, startViewAs, stopViewAs, WorkspaceError } from '../accounts/workspaces.js';
 import { inviteMail, magicLinkMail } from '../mail/messages.js';
-import { PRODUCT_NAMES, T, dayHe, phoneHe } from './copy.js';
+import { OPS, PRODUCT_NAMES, T, dayHe, phoneHe } from './copy.js';
 import { createLinkCode, openLinkCode, phoneIn, phonesFor, PHONE, removePhone, setConsent } from '../accounts/phones.js';
 import { describe, payMonth, setSubscription, subscriptionsOf } from '../accounts/subscriptions.js';
 import { addInvoice, invoiceIn, invoicesOf, PDF_MAX, removeInvoice } from '../accounts/invoices.js';
 import { cancelTeamInvite, inviteToTeam, removeMember, TEAM_LIMIT, TeamError, teamOf } from '../accounts/team.js';
+import { opsCustomers } from '../accounts/ops.js';
+import { now } from '../core/clock.js';
+import { dashboardPage } from './dashboard.js';
+import { ACTIONS, ID, LOST_REASONS, toranClient } from './toran.js';
 import * as P from './html.js';
 
 // The public site, accounts.openfrequency.co.il, behind Caddy.
@@ -29,7 +33,8 @@ import * as P from './html.js';
 //   - every POST has an Origin that is ours (when the browser sends one) and a
 //     CSRF token derived from a random per-browser cookie, checked in constant time
 //   - /admin needs a superadmin session
-// Server-rendered HTML, no script. Referrer-Policy is same-origin: a token in a
+// Server-rendered HTML, no script, except static/admin.js on the operator's
+// dashboard (/admin), which only that page's CSP allows. Referrer-Policy is same-origin: a token in a
 // URL (magic links, invites) is never sent to another site as a Referer, Teder
 // and Toran included. Not no-referrer: with that, browsers send "Origin: null"
 // on our own forms and the Origin check above would refuse every one of them.
@@ -39,6 +44,7 @@ const BRAND = path.join(ROOT, 'assets', 'brand');
 // The stylesheet and the company's icon (Teder's brand files, unchanged), read once.
 const FILES = {
   '/static/site.css': [readFileSync(path.join(STATIC, 'site.css')), 'text/css; charset=utf-8'],
+  '/static/admin.js': [readFileSync(path.join(STATIC, 'admin.js')), 'text/javascript; charset=utf-8'],
   '/static/icon.svg': [readFileSync(path.join(BRAND, 'svg', 'openfrequency-small.svg')), 'image/svg+xml'],
   '/static/icon-180.png': [readFileSync(path.join(BRAND, 'png', 'openfrequency-180.png')), 'image/png'],
 };
@@ -126,7 +132,12 @@ const UPLOAD = /^\/admin\/workspaces\/\d+\/invoices$/;
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-export function publicHandler({ db, env = process.env, mailer, limiters = defaultLimiters(), failDelayMs = 400, log = console.error }) {
+// The operator's dashboard's buttons: /admin/ops/<toran|teder>/<id>/<action>, forwarded to Toran (src/web/toran.js).
+const OPS_ACTION = /^\/admin\/ops\/(toran|teder)\/([^/]{1,300})\/([a-z]{1,20})$/;
+// Where each button comes back to on the dashboard, without script.
+const OPS_BACK = ['contact', 'talking'];
+
+export function publicHandler({ db, env = process.env, mailer, limiters = defaultLimiters(), failDelayMs = 400, log = console.error, toran = toranClient({ env, log }) }) {
   const secret = sessionSecret(env);
   const publicHost = String(env.PUBLIC_HOST || '').trim().toLowerCase() || null;
   const dev = !publicHost;
@@ -135,6 +146,8 @@ export function publicHandler({ db, env = process.env, mailer, limiters = defaul
   const waNumber = assistantWa(env);
   const formAction = `'self' https://*.openfrequency.co.il${dev ? ' http://localhost:* http://127.0.0.1:*' : ''}`;
   const CSP = `default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action ${formAction}`;
+  // The dashboard: our one script file, and nothing inline.
+  const CSP_SCRIPT = CSP.replace("script-src 'none'", "script-src 'self'");
 
   return async (req, res) => {
     const out = { cookies: [] };
@@ -150,6 +163,10 @@ export function publicHandler({ db, env = process.env, mailer, limiters = defaul
     const send = (status, html, extra) => {
       res.writeHead(status, headers({ 'content-type': 'text/html; charset=utf-8', ...extra }));
       res.end(html);
+    };
+    const json = (status, body) => {
+      res.writeHead(status, headers({ 'content-type': 'application/json; charset=utf-8' }));
+      res.end(JSON.stringify(body));
     };
     const text = (status, body) => {
       res.writeHead(status, headers({ 'content-type': 'text/plain; charset=utf-8' }));
@@ -201,12 +218,15 @@ export function publicHandler({ db, env = process.env, mailer, limiters = defaul
       // A one-request message after a redirect. __Host- behind HTTPS, so a sibling
       // *.openfrequency.co.il site cannot set one and put its words on our page.
       const flashName = secure ? '__Host-of_flash' : 'of_flash';
+      // A line that starts with "!" is an error (the dashboard's, when Toran refuses an action).
       let flash = '';
+      let flashBad = false;
       if (jar[flashName] && req.method === 'GET') {
         flash = jar[flashName].slice(0, 300);
+        if (flash.startsWith('!')) [flash, flashBad] = [flash.slice(1), true];
         out.cookies.push(`${flashName}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax${sec}`);
       }
-      const setFlash = (msg) => out.cookies.push(`${flashName}=${encodeURIComponent(msg)}; Path=/; Max-Age=30; HttpOnly; SameSite=Lax${sec}`);
+      const setFlash = (msg, bad = false) => out.cookies.push(`${flashName}=${encodeURIComponent(`${bad ? '!' : ''}${msg}`)}; Path=/; Max-Age=30; HttpOnly; SameSite=Lax${sec}`);
 
       const sid = sessionFromJar(jar, secure);
       const found = sid ? findSession(db, sid) : null;
@@ -485,13 +505,22 @@ export function publicHandler({ db, env = process.env, mailer, limiters = defaul
         const banner = session.view_as_workspace_id ? P.viewAsBanner(db.get('SELECT name FROM workspaces WHERE id = ?', session.view_as_workspace_id)?.name || '', csrf) : '';
         const console_ = (status, extra = {}) =>
           page(status, T.adminTitle, P.adminPage({ csrf, workspaces: listWorkspaces(db), audit: recentAudit(db), flash, ...extra }), { wide: true, banner });
+        // The console's actions come back to the console, the dashboard's to the dashboard.
+        const toConsole = () => redirect('/admin/accounts');
         const by = { by: me, ip };
         const problem = (e, form_) => {
           if (e instanceof WorkspaceError || e instanceof InviteError) return console_(400, { error: T.errors[e.code] || e.code, form: form_ });
           throw e;
         };
 
-        if (p === '/admin' && req.method === 'GET') return console_(200);
+        // The operator's home: the dashboard, read from Toran and from our own subscriptions at each load.
+        if (p === '/admin' && req.method === 'GET') {
+          const viewAs = Boolean(session.view_as_workspace_id);
+          const t = viewAs ? null : { ...(await toran.ops()), base: toran.base };
+          const body = dashboardPage({ csrf, flash, flashBad, toran: t, customers: viewAs ? null : opsCustomers(db), at: now(), viewAs });
+          return send(200, P.layout({ title: OPS.title, body, v: V, wide: true, banner, script: true }), { 'content-security-policy': CSP_SCRIPT });
+        }
+        if (p === '/admin/accounts' && req.method === 'GET') return console_(200);
         let m = /^\/admin\/invoices\/(\d+)$/.exec(p);
         if (m && req.method === 'GET') {
           const inv = db.get('SELECT * FROM invoices WHERE id = ?', Number(m[1]));
@@ -499,13 +528,49 @@ export function publicHandler({ db, env = process.env, mailer, limiters = defaul
         }
         if (req.method !== 'POST') return page(404, T.notFound, P.messagePage({ title: T.notFound, lead: '', links: [['/admin', T.adminTitle]] }), { banner });
 
+        // A button on the dashboard: checked here, then handed to Toran, which keeps the outreach and its rules. It
+        // answers JSON to the page's script (X-OF-Ajax), and otherwise comes back to the dashboard with Toran's line.
+        m = OPS_ACTION.exec(p);
+        if (m) {
+          const ajax = req.headers['x-of-ajax'] === '1';
+          const back = OPS_BACK.includes(f('back')) ? f('back') : 'contact';
+          const answer = (ok, msg) => {
+            if (ajax) return json(ok ? 200 : 400, { ok, message: msg });
+            setFlash(msg, !ok);
+            return redirect(`/admin#${back}`);
+          };
+          const [, kind, rawId, action] = m;
+          let id = '';
+          try {
+            id = decodeURIComponent(rawId);
+          } catch {
+            /* refused below */
+          }
+          if (!ID.test(id) || !Object.hasOwn(ACTIONS, action)) return answer(false, OPS.badAction);
+          if (session.view_as_workspace_id) return answer(false, OPS.viewAsClosed);
+          if (ACTIONS[action] && ACTIONS[action] !== kind) return answer(false, action === 'direct' ? OPS.directToranOnly : action === 'won' ? OPS.wonTederOnly : OPS.pilotToranOnly);
+          const body = { by: me.name || me.email };
+          if (action === 'next') {
+            const days = Number(f('days'));
+            Object.assign(body, { text: f('text').trim().slice(0, 300), days: Number.isInteger(days) && days >= 1 && days <= 30 ? days : 1 });
+          } else if (action === 'later') body.days = f('days') === '7' ? 7 : 1;
+          else if (action === 'lost') {
+            if (!LOST_REASONS.includes(f('reason'))) return answer(false, OPS.badReason);
+            body.reason = f('reason');
+          }
+          const r = await toran.act(kind, id, action, body);
+          audit(db, { actor: me, action: 'ops_action', ip, detail: { product: kind, id, action, ok: r.ok } });
+          if (r.ok) return answer(true, r.message);
+          return answer(false, r.error || (r.status ? OPS.toranFailed(r.status) : OPS.toranNoAnswer));
+        }
+
         if (p === '/admin/workspaces') {
           const form_ = { name: f('name'), slug: f('slug'), owner: f('owner'), products: form.getAll('products') };
           try {
             const { workspace, invite } = createWorkspace(db, { name: form_.name, slug: form_.slug, ownerEmail: form_.owner, products: form_.products }, by);
             mailer.send(inviteMail(invite.email, workspace.name, `${base}/invite?t=${invite.token}`, invite.expiresAt));
             setFlash(T.flashCreated(workspace.name, invite.email));
-            return redirect('/admin');
+            return toConsole();
           } catch (e) {
             return problem(e, form_);
           }
@@ -518,7 +583,7 @@ export function publicHandler({ db, env = process.env, mailer, limiters = defaul
             const fields = Object.fromEntries(['product', 'number', 'issued_on', 'period_from', 'period_to', 'amount', 'vat'].map((k) => [k, f(k)]));
             addInvoice(db, w.id, fields, files.pdf?.data, by);
             setFlash(T.flashInvoiceAdded(fields.number.trim(), w.name));
-            return redirect('/admin');
+            return toConsole();
           } catch (e) {
             return problem(e, {});
           }
@@ -528,7 +593,7 @@ export function publicHandler({ db, env = process.env, mailer, limiters = defaul
         if (m) {
           const row = removeInvoice(db, m[1], by);
           if (row) setFlash(T.flashInvoiceRemoved(row.number));
-          return redirect('/admin');
+          return toConsole();
         }
 
         m = /^\/admin\/workspaces\/(\d+)\/subscription(\/pay)?$/.exec(p);
@@ -543,7 +608,7 @@ export function publicHandler({ db, env = process.env, mailer, limiters = defaul
               setSubscription(db, w.id, product, { monthly: f('monthly'), setup: f('setup'), vat: f('vat'), started_on: f('started_on'), paid_until: f('paid_until'), ends_on: f('ends_on') }, by);
               setFlash(T.flashSubSaved(PRODUCT_NAMES[product], w.name));
             }
-            return redirect('/admin');
+            return toConsole();
           } catch (e) {
             return problem(e, {});
           }
@@ -568,9 +633,9 @@ export function publicHandler({ db, env = process.env, mailer, limiters = defaul
             } else {
               startViewAs(db, session, w.id, by);
               const product = f('product');
-              return redirect(PRODUCTS.includes(product) ? urls[product] : '/admin');
+              return redirect(PRODUCTS.includes(product) ? urls[product] : '/admin/accounts');
             }
-            return redirect('/admin');
+            return toConsole();
           } catch (e) {
             return problem(e, {});
           }
@@ -578,14 +643,14 @@ export function publicHandler({ db, env = process.env, mailer, limiters = defaul
 
         if (p === '/admin/view-as/stop') {
           if (stopViewAs(db, session, by)) setFlash(T.flashViewStopped);
-          return redirect('/admin');
+          return toConsole();
         }
 
         m = /^\/admin\/invites\/(\d+)\/revoke$/.exec(p);
         if (m) {
           const row = db.get("SELECT email FROM tokens WHERE id = ? AND kind = 'invite'", Number(m[1]));
           if (row && revokeInvite(db, Number(m[1]), by)) setFlash(T.flashInviteRevoked(row.email));
-          return redirect('/admin');
+          return toConsole();
         }
       }
 

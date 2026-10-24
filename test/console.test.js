@@ -24,7 +24,7 @@ async function setup() {
   await admin.get('/admin/login');
   const r = await admin.post('/admin/login', { email: EMAIL, password: PASSWORD, code: totpCode(secret, stepAt(now())) });
   assert.equal(r.headers.location, '/admin');
-  await admin.get('/admin');
+  await admin.get('/admin/accounts');
   return { ...h, ...site, admin, done: async () => (await site.close(), h.cleanup()) };
 }
 
@@ -48,7 +48,7 @@ test('opening a workspace sends its owner a 72-hour invite; accepting it signs t
   try {
     const r = await openShop(t);
     assert.equal(r.status, 303);
-    const flash = await t.admin.get('/admin');
+    const flash = await t.admin.get('/admin/accounts');
     assert.match(flash.body, /פתחנו את חנות של דנה ושלחנו הזמנה ל-dana@example\.com\./);
     assert.match(flash.body, /הזמנה ל-dana@example\.com מחכה/);
 
@@ -73,7 +73,7 @@ test('opening a workspace sends its owner a 72-hour invite; accepting it signs t
 
     // The invite is spent, and the console shows the member.
     assert.equal((await t.browser().get(pathOf(mail.link))).status, 410);
-    const after = await t.admin.get('/admin');
+    const after = await t.admin.get('/admin/accounts');
     assert.match(after.body, /dana@example\.com<\/span><span class="muted">בעלים<\/span>/);
     assert.doesNotMatch(after.body, /הזמנה ל-dana@example\.com מחכה/);
   } finally {
@@ -159,7 +159,7 @@ test('turning a product on or off is seen by the next request from that product'
     await t.admin.post(`/admin/workspaces/${id}/products`, { product: 'teder', enabled: '0' });
     assert.equal((await t.internal(sid, 'teder')).json.error, 'product_disabled');
     assert.deepEqual((await t.internal(sid)).json.products, ['toran']);
-    assert.match((await t.admin.get('/admin')).body, /תדר כבוי עכשיו ב-חנות של דנה/);
+    assert.match((await t.admin.get('/admin/accounts')).body, /תדר כבוי עכשיו ב-חנות של דנה/);
     const home = await b.get('/');
     assert.match(home.body, /כניסה לתורן/);
     assert.doesNotMatch(home.body, /כניסה לתדר/);
@@ -204,13 +204,13 @@ test('view-as: read-only, names the superadmin, lands in the product, shows a ba
     assert.equal(who.json.viewAs.by.email, EMAIL);
     assert.equal(who.json.role, 'superadmin');
 
-    const page = await t.admin.get('/admin');
+    const page = await t.admin.get('/admin/accounts');
     assert.match(page.body, /אתם צופים ב-חנות של דנה כמו שהלקוח רואה אותו\. זו צפייה בלבד, ושום שינוי לא נשמר\./);
     await t.admin.post('/admin/view-as/stop');
     const back = await t.internal(t.admin.cookie('__Secure-of_session'));
     assert.equal(back.json.readOnly, false);
     assert.equal(back.json.workspace, null);
-    assert.doesNotMatch((await t.admin.get('/admin')).body, /אתם צופים/);
+    assert.doesNotMatch((await t.admin.get('/admin/accounts')).body, /אתם צופים/);
 
     const log = t.db.all("SELECT action, actor, workspace_id, detail_json FROM audit WHERE action LIKE 'view_as%' ORDER BY id");
     assert.deepEqual(log.map((a) => [a.action, a.actor, a.workspace_id]), [
@@ -229,7 +229,7 @@ test('an unused invite can be cancelled', async () => {
     await openShop(t);
     const tokenId = t.db.get("SELECT id FROM tokens WHERE kind = 'invite'").id;
     await t.admin.post(`/admin/invites/${tokenId}/revoke`);
-    assert.match((await t.admin.get('/admin')).body, /ביטלנו את ההזמנה ל-dana@example\.com/);
+    assert.match((await t.admin.get('/admin/accounts')).body, /ביטלנו את ההזמנה ל-dana@example\.com/);
     assert.equal((await t.browser().get(pathOf(t.mails[0].link))).status, 410);
   } finally {
     await t.done();
@@ -246,7 +246,7 @@ test('every console action is in the audit log, with who did it, and shown on th
     await t.admin.post(`/admin/workspaces/${id}/enable`);
     const actions = t.db.all('SELECT action, actor FROM audit WHERE actor = ? ORDER BY id', EMAIL).map((a) => a.action);
     assert.deepEqual(actions, ['superadmin_created', 'sign_in', 'workspace_created', 'invite_sent', 'product_enabled', 'workspace_disabled', 'workspace_enabled']);
-    const page = await t.admin.get('/admin');
+    const page = await t.admin.get('/admin/accounts');
     // Shown in Hebrew, with the product named where there is one.
     for (const a of ['חשבון נפתח', 'הזמנה נשלחה', 'מוצר הופעל: תורן', 'חשבון הושבת', 'חשבון הופעל מחדש']) assert.ok(page.body.includes(a), a);
   } finally {
@@ -258,7 +258,7 @@ test('names typed into the console are escaped everywhere they are shown', async
   const t = await setup();
   try {
     await openShop(t, { name: '<img src=x onerror=alert(1)>' });
-    const page = await t.admin.get('/admin');
+    const page = await t.admin.get('/admin/accounts');
     assert.ok(!page.body.includes('<img src=x'));
     assert.ok(page.body.includes('&lt;img src=x onerror=alert(1)&gt;'));
     const inviteHtml = t.mails[0].html;
@@ -287,7 +287,7 @@ test("the customer's dashboard: each product's subscription, recorded on the con
     const w = ws(t.db, 'dana-shop');
     const paid = await t.admin.post(`/admin/workspaces/${w.id}/subscription/pay`, { product: 'teder' });
     assert.equal(paid.status, 303);
-    assert.match((await t.admin.get('/admin')).body, /חנות של דנה: תדר שולם עד 21\.11\.2026\./);
+    assert.match((await t.admin.get('/admin/accounts')).body, /חנות של דנה: תדר שולם עד 21\.11\.2026\./);
     home = (await b.get('/')).body;
     assert.match(home, /<span class="tag">פעיל<\/span>/);
     assert.match(home, /נשארו 31 ימים בחודש ששולם/);

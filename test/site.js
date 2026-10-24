@@ -14,7 +14,9 @@ export const PUBLIC = 'accounts.openfrequency.co.il';
 export async function startSite(db, { env = {}, limiters } = {}) {
   const mails = [];
   const mailer = { sending: 'test', send: (m) => mails.push(m), flush: async () => {} };
-  const fullEnv = { OF_INTERNAL_TOKEN: TOKEN, PUBLIC_HOST: PUBLIC, SESSION_SECRET: 's'.repeat(40), ...env };
+  // Toran's internal routes: nothing listens on port 9, so /admin shows its Toran sections as unavailable unless a
+  // test starts a fake Toran (test/toran-fake.js) and passes its address.
+  const fullEnv = { OF_INTERNAL_TOKEN: TOKEN, PUBLIC_HOST: PUBLIC, SESSION_SECRET: 's'.repeat(40), OF_TORAN_INTERNAL: 'http://127.0.0.1:9', ...env };
   const lim = limiters || { magicEmail: createLimiter(LIMITS.magicPerEmail), magicIp: createLimiter(LIMITS.magicPerIp), adminLogin: createLimiter(LIMITS.adminLogin) };
   const s = await listen(db, { env: fullEnv, port: 0, internalPort: 0, mailer, failDelayMs: 0, limiters: lim, log: () => {} });
   const browser = (opts) => makeBrowser(s.port, { host: fullEnv.PUBLIC_HOST ? PUBLIC : `127.0.0.1:${s.port}`, secure: Boolean(fullEnv.PUBLIC_HOST), ...opts });

@@ -298,6 +298,7 @@ export const AUDIT_NAMES = {
   phone_removed: 'וואטסאפ הוסר',
   phone_opt_in: 'עדכונים בוואטסאפ הופעלו',
   phone_opt_out: 'עדכונים בוואטסאפ כובו',
+  ops_action: 'פעולה מהלוח של היום',
 };
 
 // ---- emails
@@ -344,3 +345,134 @@ export const phoneHe = (digits) => {
 
 /** Shekels, as the site writes them: "1,490 ₪", or "1,762.82 ₪" when there are agorot. */
 export const ils = (n) => `${Number(n).toLocaleString('he-IL', Number.isInteger(Number(n)) ? {} : { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ₪`;
+
+// ---- the operator's dashboard, /admin (Toran's docs/operator.md, section 4)
+//
+// Most of these lines are Toran's own, from the dashboard it used to show (its src/web/pages/ops.ts), in the
+// console's voice: we, and the operator addressed as אתם. Every message to a store, the reason a card is there and
+// what Toran says after an action come from Toran as they are.
+
+export const OPS = {
+  title: 'היום',
+  tabs: 'הלוח',
+  tabToday: 'היום',
+  tabAccounts: 'חשבונות',
+  pageTitle: 'מה עושים היום',
+
+  kpiContact: 'לפנות היום',
+  kpiContactSub: (n) => (n ? 'ההודעה מוכנה בכל כרטיס. מעתיקים, שולחים ומסמנים' : 'אין למי לכתוב עכשיו'),
+  kpiTalking: 'בשיחה',
+  kpiMrr: 'הכנסה חודשית',
+  kpiLate: 'באיחור',
+  kpiReplied: 'ענו ב-30 יום',
+  unknown: '?',
+
+  toranDown: 'תורן לא ענה עכשיו',
+  toranDownLead: (base) => `החלק הזה מגיע מתורן, מ-GET /internal/ops ב-${base}. שאר הדף עובד בלעדיו.`,
+  toranNotConfigured: 'OF_INTERNAL_TOKEN לא מוגדר כאן, או שהוא קצר מ-32 תווים, אז לא פנינו לתורן. שאר הדף עובד בלעדיו.',
+  tederStale: 'את המצגות של תדר תורן לא הצליח לקרוא עכשיו (GET /internal/demos). מה שמופיע מהן כאן הוא מהקריאה הקודמת.',
+
+  contactTitle: 'לפנות היום',
+  contactOrder: 'קודם מי שניסו את הדמו, אחריהם מי שביקשו באתר, התזכורות, ובסוף דפים חדשים לפי הציון',
+  contactMore: (n) => `ועוד ${n}. הם יופיעו כאן כשהרשימה תתקצר.`,
+  contactEmpty: 'אין כרגע למי לכתוב',
+  contactEmptyLead: 'כאן יופיעו דפים מוכנים, תזכורות שהגיע זמנן, ומי שביקשו דמו באתר.',
+  message: 'ההודעה',
+  openChat: 'לפתוח שיחה',
+  copyOpen: 'להעתיק ולפתוח',
+  copy: 'להעתיק',
+  copied: 'ההודעה הועתקה',
+  copyFailed: 'לא הצלחנו להעתיק. אפשר לסמן את ההודעה ולהעתיק ידנית.',
+  direct: 'לשלוח עכשיו מהמספר של הדמו',
+  sent: 'שלחתי',
+  replied: 'ענו לי',
+  tomorrow: 'מחר',
+  inAWeek: 'בעוד שבוע',
+  lost: 'לא מעוניינים',
+  lostWhy: 'למה',
+  lostSave: 'סימון',
+  lostReasons: {
+    not_interested: 'לא מעוניינים',
+    price: 'יקר להם',
+    has_solution: 'יש להם פתרון אחר',
+    no_answer: 'לא עונים',
+    not_fit: 'לא מתאים לחנות',
+    other: 'אחר',
+  },
+  nextLabel: 'הצעד הבא',
+  nextPlaceholder: 'הצעד הבא, למשל: לשלוח הצעת מחיר',
+  nextWhen: 'מתי',
+  nextDays: { 1: 'מחר', 3: 'בעוד 3 ימים', 7: 'בעוד שבוע', 14: 'בעוד שבועיים' },
+  nextSave: 'שמירה',
+
+  noContact: (n) => (n === 1 ? 'דף אחד מוכן, ואין לנו איך לפנות לחנות' : `${n} דפים מוכנים, ואין לנו איך לפנות לחנויות`),
+  noContactHint: 'אין באתר שלהן וואטסאפ או מייל. אפשר לחפש איש קשר באינסטגרם או בפייסבוק, ולהוסיף אותו בעמוד של הליד בתורן.',
+  score: (n) => `ציון ${n}`,
+
+  stuckTitle: 'ביקשו דמו באתר, ועוד אין מה לשלוח',
+  stuckAsked: (ago) => `ביקשו ${ago}`,
+  stuckHint: 'הם כתבו לנו מהמספר שלהם ומחכים לדמו. כשאין דף לשלוח, כדאי לענות להם בעצמכם.',
+
+  talkingTitle: 'בשיחה',
+  talkingEmpty: 'אף אחד עוד לא בשיחה',
+  talkingEmptyLead: 'מי שעונים לכם עוברים לכאן כשמסמנים "ענו לי".',
+  repliedAgo: (ago) => `ענו ${ago}`,
+  nextAt: (at, what) => (what ? `הצעד הבא: ${what}, ${at}` : `הצעד הבא ${at}`),
+  inPilot: 'בפיילוט',
+  pilot: 'התחילו פיילוט',
+  paid: 'משלמים',
+  won: 'לקוח',
+
+  funnelTitle: 'המשפך',
+  funnelStage: 'שלב',
+  funnelAll: 'מתחילת הדרך',
+  funnelMonth: 'ב-30 הימים האחרונים',
+  funnelNote: 'האחוז ליד כל שלב הוא מתוך השלב שלפניו. הלקוחות נספרים מהמנויים כאן: מנוי ששולם, או שמסתיים.',
+
+  moneyTitle: 'לקוחות וכסף',
+  mrr: 'הכנסה חודשית, לפני מע״מ',
+  mrrSub: 'ממנויים ששולמו לחודש הזה',
+  paying: 'לקוחות משלמים',
+  payingSub: (toran, teder) => `תורן ${toran} · תדר ${teder}`,
+  late: 'באיחור',
+  lateSub: 'התקופה ששולמה נגמרה',
+  lateTitle: 'באיחור בתשלום',
+  lateNone: 'אין אף אחד באיחור.',
+  lateLine: (name, product, amount, since) => `${name} · ${product} · ${amount} לחודש${since ? ` · מ-${since}` : ''}`,
+  waitingTitle: 'מחכים לתשלום הראשון',
+  waitingNone: 'אין מנויים שמחכים לתשלום ראשון.',
+  waitingLine: (name, product, amount, setup) => `${name} · ${product} · ${amount} לחודש${setup ? `, ודמי הקמה ${setup}` : ''}`,
+  renewTitle: 'מתחדשים ב-7 הימים הקרובים',
+  renewNone: 'אין חידושים בשבוע הקרוב.',
+  renewLine: (on, name, product, amount) => `${on} · ${name} · ${product} · ${amount}`,
+  moneyNote: 'ההכנסה החודשית בלי מע״מ. ליד כל לקוח מופיע הסכום כמו שנרשם במנוי שלו.',
+  moneyManage: 'לניהול הלקוחות והחשבוניות',
+
+  // After an action, when the line is ours and not Toran's
+  toranNoAnswer: 'תורן לא ענה, אז שום דבר לא נרשם. כדאי לנסות שוב בעוד רגע.',
+  toranFailed: (status) => `תורן החזיר שגיאה (${status}), אז שום דבר לא נרשם.`,
+  directToranOnly: 'אפשר לשלוח מהמספר של הדמו רק את תורן',
+  pilotToranOnly: 'פיילוט ותשלום נרשמים כאן רק לתורן',
+  wonTederOnly: 'לקוח נרשם כאן רק לתדר',
+  badAction: 'אין פעולה כזו',
+  badReason: 'צריך לבחור למה',
+  viewAsClosed: 'בזמן צפייה כלקוח הלוח סגור. מסיימים את הצפייה וחוזרים אליו.',
+  // The page's script
+  offline: 'אין חיבור. כדאי לנסות שוב.',
+  unexpected: 'תשובה לא צפויה מהשרת',
+};
+
+const SHORT = new Intl.DateTimeFormat('he-IL', { timeZone: 'Asia/Jerusalem', day: 'numeric', month: 'short' });
+/** A moment as "12 בנוב׳ ב-14:00", Israel time, for the next step. */
+export const stampHe = (iso) => (iso && !Number.isNaN(Date.parse(iso)) ? `${SHORT.format(new Date(iso))} ב-${HOUR_HE.format(new Date(iso))}` : '');
+
+/** "לפני 3 שעות", for the dashboard's lists (Toran's ago()). */
+export function agoHe(iso, at) {
+  if (!iso || Number.isNaN(Date.parse(iso))) return '';
+  const s = Math.max(0, (at - Date.parse(iso)) / 1000);
+  if (s < 90) return 'עכשיו';
+  if (s < 3600) return `לפני ${Math.round(s / 60)} דק׳`;
+  if (s < 86400) return Math.round(s / 3600) === 1 ? 'לפני שעה' : `לפני ${Math.round(s / 3600)} שעות`;
+  const days = Math.round(s / 86400);
+  return days === 1 ? 'אתמול' : days < 14 ? `לפני ${days} ימים` : SHORT.format(new Date(iso));
+}

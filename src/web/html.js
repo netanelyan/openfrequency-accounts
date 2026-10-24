@@ -3,16 +3,18 @@ import path from 'node:path';
 import { ROOT } from '../core/paths.js';
 import { addDays, addMonths, describe, israelToday } from '../accounts/subscriptions.js';
 import { total } from '../accounts/invoices.js';
-import { AUDIT_NAMES, PRODUCT_NAMES, ROLE_NAMES, T, dayHe, hourHe, ils, phoneHe, when } from './copy.js';
+import { AUDIT_NAMES, OPS, PRODUCT_NAMES, ROLE_NAMES, T, dayHe, hourHe, ils, phoneHe, when } from './copy.js';
 
-// Server-rendered pages: Hebrew, right to left, one stylesheet, no script.
-// Everything shown is escaped here; nothing reaches the page raw. The look is
-// Teder's (see the head of static/site.css).
+// Server-rendered pages: Hebrew, right to left, one stylesheet. No script, except
+// the operator's dashboard on /admin (dashboard.js), which loads static/admin.js
+// to copy a message and to post its buttons in the background; every one of them
+// works without it. Everything shown is escaped here; nothing reaches the page
+// raw. The look is Teder's (see the head of static/site.css).
 
 export const esc = (s) =>
   String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 
-const csrfField = (csrf) => `<input type="hidden" name="_csrf" value="${esc(csrf)}">`;
+export const csrfField = (csrf) => `<input type="hidden" name="_csrf" value="${esc(csrf)}">`;
 
 /** A one-button form. */
 export const button = (action, label, csrf, { fields = {}, kind = 'primary', label: aria = '' } = {}) =>
@@ -26,10 +28,10 @@ const glyph = (name) => readFileSync(path.join(ROOT, 'assets', 'brand', 'svg', `
 const GLYPHS = { of: glyph('openfrequency-glyph'), ofSmall: glyph('openfrequency-glyph-small'), teder: glyph('teder-glyph'), toran: glyph('toran-glyph') };
 const tile = (cls, inner) => `<span class="mark ${cls}" aria-hidden="true"><svg viewBox="0 0 100 100">${inner}</svg></span>`;
 /** The company's halftone. The full one from 48px up; the simpler one below, where small dots vanish. */
-const ofMark = (large = false) => tile('of', large ? GLYPHS.of : GLYPHS.ofSmall);
-const productMark = (p) => tile(p, GLYPHS[p]);
+export const ofMark = (large = false) => tile('of', large ? GLYPHS.of : GLYPHS.ofSmall);
+export const productMark = (p) => tile(p, GLYPHS[p]);
 
-export function layout({ title, body, banner = '', flash = '', wide = false, v = '' }) {
+export function layout({ title, body, banner = '', flash = '', wide = false, v = '', script = false }) {
   const hero = wide ? '' : `<div class="hero">${ofMark(true)}<b class="ltr">${esc(T.brand)}</b></div>`;
   return `<!doctype html>
 <html lang="he" dir="rtl">
@@ -44,7 +46,8 @@ export function layout({ title, body, banner = '', flash = '', wide = false, v =
 <link rel="stylesheet" href="/static/site.css?v=${esc(v)}">
 <link rel="icon" href="/static/icon.svg?v=${esc(v)}" type="image/svg+xml">
 <link rel="apple-touch-icon" href="/static/icon-180.png?v=${esc(v)}">
-</head>
+${script ? `<script src="/static/admin.js?v=${esc(v)}" defer></script>
+` : ''}</head>
 <body>
 ${banner}
 <main class="${wide ? 'wide' : 'narrow'}">
@@ -332,6 +335,12 @@ ${error ? `<p class="error" role="alert">${esc(error)}</p>` : ''}
 </form>
 </section>`;
 
+/** The top of both /admin pages: the mark, the page's name, the two tabs (today, the accounts) and sign-out. */
+export const adminTop = ({ csrf, tab }) => {
+  const a = (href, label, on) => `<a href="${href}"${on ? ' aria-current="page"' : ''}>${esc(label)}</a>`;
+  return `<header class="top admin-top"><div class="brand">${ofMark()}<h1>${esc(tab === 'today' ? OPS.pageTitle : T.adminTitle)}</h1></div><nav class="tabs" aria-label="${esc(OPS.tabs)}">${a('/admin', OPS.tabToday, tab === 'today')}${a('/admin/accounts', OPS.tabAccounts, tab === 'accounts')}</nav>${button('/logout', T.adminSignOut, csrf, { kind: 'quiet' })}</header>`;
+};
+
 const roleSelect = (name) =>
   `<select name="${name}" aria-label="${esc(T.inviteRole)}">${['client_member', 'client_owner'].map((r) => `<option value="${r}">${esc(ROLE_NAMES[r])}</option>`).join('')}</select>`;
 
@@ -394,7 +403,7 @@ ${invoiceForm(base, p, s, csrf)}</li>`;
       : ''
   }<button class="quiet">${esc(T.viewAs)}</button></form>`;
   return `
-<article class="ws${w.disabled_at ? ' disabled' : ''}">
+<article class="ws${w.disabled_at ? ' disabled' : ''}" id="ws-${esc(w.id)}">
 <header><h3>${esc(w.name)}<span class="slug ltr">${esc(w.slug)}</span></h3><span class="tag">${esc(w.disabled_at ? T.statusDisabled : T.statusActive)}</span></header>
 <p class="section-l">${esc(T.colProducts)}</p>
 <ul class="toggles">${products}</ul>
@@ -426,7 +435,7 @@ function auditLabel(a) {
 export function adminPage({ csrf, workspaces, audit, form = {}, error = '', flash = '' }) {
   const checked = (p) => ((form.products ? form.products.includes(p) : p === 'teder') ? ' checked' : '');
   return `
-<header class="top"><div class="brand">${ofMark()}<h1>${esc(T.adminTitle)}</h1></div>${button('/logout', T.adminSignOut, csrf, { kind: 'quiet' })}</header>
+${adminTop({ csrf, tab: 'accounts' })}
 ${flash ? `<p class="flash" role="status">${esc(flash)}</p>` : ''}
 <section class="card">
 <h2>${esc(T.newWorkspace)}</h2>

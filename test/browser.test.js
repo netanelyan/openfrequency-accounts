@@ -61,7 +61,7 @@ run('a customer signs in with the form, the emailed link and the button, then si
   }
 });
 
-run('the superadmin signs in and opens a workspace from the console', async () => {
+run('the superadmin signs in to the dashboard, and opens a workspace from the accounts tab', async () => {
   const t = await setup();
   try {
     const page = await t.browser.newPage();
@@ -71,12 +71,14 @@ run('the superadmin signs in and opens a workspace from the console', async () =
     await page.fill('#code', t.codes[0]);
     await page.click('button.primary');
     await page.waitForURL(`${t.base}/admin`);
+    await page.click('nav.tabs a[href="/admin/accounts"]');
+    await page.waitForURL(`${t.base}/admin/accounts`);
     await page.fill('input[name="name"]', 'סטודיו נועה');
     await page.fill('input[name="slug"]', 'noa-studio');
     await page.fill('input[name="owner"]', 'noa@example.com');
     await page.check('input[name="products"][value="toran"]');
     await page.click('form[action="/admin/workspaces"] button.primary');
-    await page.waitForURL(`${t.base}/admin`);
+    await page.waitForURL(`${t.base}/admin/accounts`);
     assert.match(await page.textContent('.flash'), /פתחנו את סטודיו נועה ושלחנו הזמנה ל-noa@example\.com\./);
     const products = t.db.all("SELECT product FROM workspace_products wp JOIN workspaces w ON w.id = wp.workspace_id WHERE w.slug = 'noa-studio' AND enabled = 1").map((r) => r.product);
     assert.deepEqual(products.sort(), ['teder', 'toran']);
@@ -158,5 +160,88 @@ run('on a phone, a customer ticks the box, gets the code and the WhatsApp button
     assert.equal(wide, 0);
   } finally {
     await t.done();
+  }
+});
+
+run("the operator's dashboard on a phone and on a desktop: nothing runs off the screen, copy copies the edited message and opens the chat, and the buttons take the card away", async () => {
+  const { startToran, sampleOps, SAID } = await import('./toran-fake.js');
+  const { makeUser } = await import('./helpers.js');
+  const h = tempHome();
+  const fake = await startToran({ data: sampleOps(Date.now()) });
+  const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jerusalem' }).format(new Date());
+  const shop = (slug, name, product, row) => {
+    const w = makeWorkspace(h.db, slug, { name, products: [product] });
+    h.db.insert('subscriptions', { workspace_id: w.id, product, monthly: 449, vat: 'excluded', setup: 990, started_on: today, updated_at: new Date().toISOString(), ...row });
+  };
+  shop('dana-shop', 'החנות של דנה', 'toran', { paid_until: today });
+  shop('noa-studio', 'סטודיו נועה', 'teder', { monthly: 790, setup: 1490, paid_until: '2099-01-01' });
+  shop('yossi-store', 'החנות של יוסי', 'toran', { paid_until: '2026-01-01', started_on: '2025-12-01' });
+  shop('gal-shop', 'החנות של גל', 'teder', { monthly: 790, setup: 1490 });
+  const site = await startSite(h.db, { env: { PUBLIC_HOST: '', OF_TORAN_INTERNAL: fake.url } });
+  const browser = await chromium.launch();
+  const base = `http://127.0.0.1:${site.s.port}`;
+  const admin = makeUser(h.db, 'admin@example.com', { superadmin: true, name: 'נתנאל' });
+  const sid = createSession(h.db, admin).id;
+  const open = async (width, height) => {
+    const context = await browser.newContext({ viewport: { width, height }, colorScheme: 'light' });
+    await context.route(/^(https:\/\/wa\.me|https:\/\/toran\.openfrequency\.co\.il|https:\/\/teder\.openfrequency\.co\.il)\//, (r) => r.fulfill({ status: 200, contentType: 'text/plain', body: 'ok' }));
+    await context.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: base });
+    await context.addCookies([{ name: 'of_session', value: sid, url: base }]);
+    const page = await context.newPage();
+    await page.goto(`${base}/admin`);
+    return { context, page };
+  };
+  try {
+    for (const [width, height, name] of [[1440, 900, 'admin-1440'], [390, 844, 'admin-390']]) {
+      const { context, page } = await open(width, height);
+      assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), `${width}: no sideways scroll`);
+      assert.equal(await page.locator('article.op').count(), 6);
+      if (process.env.OF_SCREENSHOTS) await page.screenshot({ path: `${process.env.OF_SCREENSHOTS}/${name}.png`, fullPage: true });
+      await context.close();
+    }
+
+    const { context, page } = await open(390, 844);
+    // Copy and open: the message as edited, then the chat in a new tab.
+    const box = page.locator('#msg-toran-12');
+    await box.fill('היי, ראינו שניסיתם את הדמו. נשמח לשמוע איך היה.');
+    const [chat] = await Promise.all([context.waitForEvent('page'), page.click('a[data-copy="#msg-toran-12"]')]);
+    assert.equal(chat.url(), 'https://wa.me/972500000201');
+    assert.equal(await page.evaluate(() => navigator.clipboard.readText()), 'היי, ראינו שניסיתם את הדמו. נשמח לשמוע איך היה.');
+    await page.waitForSelector('#toast.show');
+    assert.equal(await page.textContent('#toast'), 'ההודעה הועתקה');
+    await chat.close();
+
+    // "Sent": posted in the background, Toran's line at the bottom, and the card goes.
+    const card = page.locator('article.op', { has: page.locator('#msg-toran-12') });
+    await card.locator('form[action$="/toran/12/reminded"] button').click();
+    await card.waitFor({ state: 'detached' });
+    assert.equal(await page.textContent('#toast'), SAID.reminded);
+    assert.equal(page.url(), `${base}/admin`, 'no page load');
+    assert.deepEqual(fake.posts().at(-1), { method: 'POST', path: '/internal/ops/toran/12/reminded', auth: fake.posts().at(-1).auth, body: { by: 'נתנאל' } });
+
+    // "Not interested" asks why under its own button.
+    const other = page.locator('article.op', { has: page.locator('#msg-toran-21') });
+    await other.locator('details.lost summary').click();
+    await other.locator('details.lost select').selectOption('price');
+    await other.locator('details.lost button').click();
+    await other.waitFor({ state: 'detached' });
+    assert.deepEqual(fake.posts().at(-1).body, { by: 'נתנאל', reason: 'price' });
+    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), 'still no sideways scroll');
+    await context.close();
+
+    // Without script, the same button posts and comes back with the line at the top.
+    const plain = await browser.newContext({ javaScriptEnabled: false });
+    await plain.addCookies([{ name: 'of_session', value: sid, url: base }]);
+    const p2 = await plain.newPage();
+    await p2.goto(`${base}/admin`);
+    await p2.locator('form[action$="/toran/15/direct"] button').click();
+    await p2.waitForURL(`${base}/admin#contact`);
+    assert.equal(await p2.textContent('.flash'), SAID.direct);
+    await plain.close();
+  } finally {
+    await browser.close();
+    await site.close();
+    await fake.close();
+    h.cleanup();
   }
 });
