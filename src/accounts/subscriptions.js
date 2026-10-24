@@ -8,7 +8,7 @@ import { WorkspaceError, getWorkspace } from './workspaces.js';
 // describe() below. Dates are Israel calendar days, YYYY-MM-DD.
 
 /** The list prices, before VAT, a new subscription starts from (openfrequency.co.il, site.config.json). */
-export const LIST_PRICES = { toran: { monthly: 449, setup: 990, vat: 'excluded' }, teder: { monthly: 790, setup: 1490, vat: 'excluded' } };
+export const LIST_PRICES = { toran: { monthly: 590, setup: 990, vat: 'excluded' }, teder: { monthly: 790, setup: 1490, vat: 'excluded' } };
 
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
 
