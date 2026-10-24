@@ -6,7 +6,7 @@ or later. It has no runtime dependencies (`npm ci --omit=dev` installs nothing).
 | Port | What | Reached by |
 |---|---|---|
 | 127.0.0.1:4740 | the public site | Caddy, as `accounts.openfrequency.co.il` |
-| 127.0.0.1:4741 | `/internal/session` | Teder and Toran only, never Caddy |
+| 127.0.0.1:4741 | `/internal/session`, `/internal/owner-phone*` | Teder and Toran only, never Caddy |
 
 Teder has 4700, Toran 4710, the website's lead endpoint 4720.
 
@@ -45,6 +45,7 @@ SESSION_SECRET=               # openssl rand -base64 48
 RESEND_API_KEY=
 MAIL_FROM=OpenFrequency <accounts@openfrequency.co.il>
 MAIL_REPLY_TO=                # where "reply to this email" lands; your own inbox
+OF_ASSISTANT_WA=              # the owner line's WhatsApp number, digits only; the same as TORAN_ASSISTANT_WA in Toran's .env
 ```
 
 Then the superadmin, with an authenticator app at hand:
@@ -90,6 +91,8 @@ curl -s https://accounts.openfrequency.co.il/healthz                    # ok
 curl -s -o /dev/null -w '%{http_code}\n' https://accounts.openfrequency.co.il/internal/session   # 404: not exposed
 curl -s -H "Authorization: Bearer $OF_INTERNAL_TOKEN" -H 'X-OF-Session: x' http://127.0.0.1:4741/internal/session
 # {"error":"no_session"}
+curl -s -H "Authorization: Bearer $OF_INTERNAL_TOKEN" 'http://127.0.0.1:4741/internal/owner-phone?phone=972500000199'
+# {"error":"not_linked"}
 ```
 
 Then sign in at `https://accounts.openfrequency.co.il/admin/login`, open a workspace for yourself
