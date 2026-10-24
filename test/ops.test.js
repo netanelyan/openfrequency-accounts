@@ -7,7 +7,7 @@ import { advance, setNow, HOUR } from '../src/core/clock.js';
 import { createSession } from '../src/auth/sessions.js';
 import { acceptInvite, createInvite } from '../src/accounts/links.js';
 import { setDisabled } from '../src/accounts/workspaces.js';
-import { opsCustomers, opsSubscription } from '../src/accounts/ops.js';
+import { opsCustomers, opsMoney, opsSubscription } from '../src/accounts/ops.js';
 
 // GET /internal/ops/customers over real HTTP, as Toran's operator dashboard calls it (docs/internal-ops.md).
 
@@ -208,4 +208,28 @@ test('refused without the right token, from a wrong Host, by another method, and
       await t2.done();
     }
   }
+});
+
+test('the money: paid and ending count before VAT, late, waiting and the next 7 days, and nothing from a disabled workspace', () => {
+  const w = (id, subs, disabled = false) => ({ id, name: `w${id}`, disabled, subscriptions: subs });
+  const s = (product, state, monthly, extra = {}) => ({ product, state, monthly, vat: 'excluded', setup: 0, startedOn: '2026-10-01', nextChargeOn: null, ...extra });
+  const m = opsMoney(
+    [
+      w(1, [s('toran', 'paid', 449, { nextChargeOn: '2026-10-31' }), s('teder', 'paid', 932.2, { vat: 'included', nextChargeOn: '2026-11-01' })]),
+      w(2, [s('toran', 'ending', 449)]),
+      w(3, [s('teder', 'late', 790, { nextChargeOn: '2026-10-20' })]),
+      w(4, [s('toran', 'waiting', 449, { setup: 990 }), s('teder', 'ended', 790)]),
+      w(5, [s('toran', 'paid', 449, { nextChargeOn: '2026-10-25' })], true),
+      w(6, [s('teder', 'paid', 100, { vat: 'included', nextChargeOn: '2026-10-26' })]),
+    ],
+    '2026-10-24'
+  );
+  // 449 + 932.2 / 1.18 (790) + 449 + 100 / 1.18 (84.75)
+  assert.equal(m.mrr, 1772.75);
+  assert.deepEqual(m.paying, { toran: 2, teder: 2 });
+  assert.deepEqual(m.late.map((x) => [x.w.id, x.product, x.since, x.monthly]), [[3, 'teder', '2026-10-20', 790]]);
+  assert.deepEqual(m.waiting.map((x) => [x.w.id, x.product, x.monthly, x.setup]), [[4, 'toran', 449, 990]]);
+  // The 7 days end on the 31st; the 1 November charge is past them. Soonest first.
+  assert.deepEqual(m.renewals.map((x) => [x.w.id, x.on]), [[6, '2026-10-26'], [1, '2026-10-31']]);
+  assert.deepEqual(opsMoney([], '2026-10-24'), { mrr: 0, paying: { toran: 0, teder: 0 }, late: [], waiting: [], renewals: [] });
 });

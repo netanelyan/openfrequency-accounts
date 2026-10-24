@@ -1,9 +1,10 @@
 import { nowIso } from '../core/clock.js';
 import { PRODUCTS } from '../db/schema.js';
-import { describe, israelToday, subscriptionsOf } from './subscriptions.js';
+import { addDays, describe, israelToday, subscriptionsOf } from './subscriptions.js';
 
-// The customers and the money, for the operator's dashboard on Toran (GET /internal/ops/customers,
-// docs/internal-ops.md). Read-only: every workspace, newest first, with what the console holds of it.
+// The customers and the money, for the operator's dashboard on /admin (opsMoney and opsCustomersStage, below) and
+// for Toran (GET /internal/ops/customers, docs/internal-ops.md). Read-only: every workspace, newest first, with what
+// the console holds of it.
 
 /** describe()'s status, in the dashboard's words. `ending` is describe()'s: stopped, its last day ahead, paid or not. */
 export const STATE = { active: 'paid', open: 'waiting', due: 'late', ending: 'ending', ended: 'ended' };
@@ -47,4 +48,46 @@ export function opsCustomers(db, today = israelToday()) {
     };
   });
   return { today, workspaces };
+}
+
+// ---- the operator's dashboard on /admin: the money and the funnels' last stage, from the same rows
+
+/** VAT in Israel, for a price recorded with it included. */
+export const VAT = 0.18;
+
+/**
+ * The money, from opsCustomers()' workspaces on `today`: the monthly revenue before VAT (paid and ending, a price
+ * recorded with VAT included counted without it), how many pay for each product, who is late, who has not paid yet,
+ * and who renews in the next 7 days. A disabled workspace counts nowhere. Ported from Toran's src/ops/funnel.ts.
+ */
+export function opsMoney(workspaces, today) {
+  const out = { mrr: 0, paying: { toran: 0, teder: 0 }, late: [], waiting: [], renewals: [] };
+  const week = addDays(today, 7);
+  for (const w of workspaces) {
+    if (w.disabled) continue;
+    for (const s of w.subscriptions) {
+      const monthly = Number(s.monthly) || 0;
+      const net = s.vat === 'included' ? Math.round((monthly / (1 + VAT)) * 100) / 100 : monthly;
+      if (s.state === 'paid' || s.state === 'ending') {
+        out.mrr += net;
+        if (Object.hasOwn(out.paying, s.product)) out.paying[s.product]++;
+        if (s.state === 'paid' && s.nextChargeOn && s.nextChargeOn <= week) out.renewals.push({ w, product: s.product, on: s.nextChargeOn, monthly });
+      } else if (s.state === 'late') out.late.push({ w, product: s.product, since: s.nextChargeOn, monthly });
+      else if (s.state === 'waiting') out.waiting.push({ w, product: s.product, monthly, setup: Number(s.setup) || 0 });
+    }
+  }
+  out.mrr = Math.round(out.mrr * 100) / 100;
+  out.renewals.sort((a, b) => a.on.localeCompare(b.on));
+  return out;
+}
+
+/**
+ * The funnel's last stage for one product, which Toran leaves to us: the workspaces with a subscription to it that
+ * is paid or ending, over all time and those that started in the last 30 days. A disabled workspace is no customer,
+ * as in opsMoney().
+ */
+export function opsCustomersStage(workspaces, product, today) {
+  const since = addDays(today, -30);
+  const has = (w, recent) => !w.disabled && w.subscriptions.some((s) => s.product === product && (s.state === 'paid' || s.state === 'ending') && (!recent || (s.startedOn && s.startedOn > since)));
+  return { all: workspaces.filter((w) => has(w, false)).length, month: workspaces.filter((w) => has(w, true)).length };
 }
