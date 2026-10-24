@@ -12,7 +12,7 @@ test('a fresh database runs every migration and records how many', () => {
   try {
     assert.equal(h.db.get('PRAGMA user_version').user_version, MIGRATIONS.length);
     const tables = h.db.all("SELECT name FROM sqlite_master WHERE type = 'table'").map((r) => r.name);
-    for (const t of ['users', 'recovery_codes', 'workspaces', 'memberships', 'workspace_products', 'sessions', 'tokens', 'audit']) assert.ok(tables.includes(t), t);
+    for (const t of ['users', 'recovery_codes', 'workspaces', 'memberships', 'workspace_products', 'subscriptions', 'sessions', 'tokens', 'audit', 'phone_links', 'user_phones']) assert.ok(tables.includes(t), t);
   } finally {
     h.cleanup();
   }
@@ -50,6 +50,20 @@ test('roles, products and slugs are limited to the known values', () => {
     h.db.insert('memberships', { user_id: u, workspace_id: w, role: 'client_owner', created_at: t0 });
     assert.throws(() => h.db.insert('workspace_products', { workspace_id: w, product: 'other', enabled: 1, updated_at: t0 }), /CHECK/);
     h.db.insert('workspace_products', { workspace_id: w, product: 'teder', enabled: 1, updated_at: t0 });
+  } finally {
+    h.cleanup();
+  }
+});
+
+test('a linked number is international digits, nothing else', () => {
+  const h = tempHome();
+  try {
+    const u = h.db.insert('users', { email: 'dana@example.com', created_at: t0 });
+    const w = h.db.insert('workspaces', { slug: 'dana-shop', name: 'Dana Shop', created_at: t0 });
+    const row = (phone) => ({ phone, user_id: u, workspace_id: w, verified_at: t0, created_at: t0 });
+    for (const phone of ['+972500000123', '0500000123', '972-50000012', '1234567', '1234567890123456', '97250000012a']) assert.throws(() => h.db.insert('user_phones', row(phone)), /CHECK/, phone);
+    h.db.insert('user_phones', row('972500000123'));
+    assert.throws(() => h.db.insert('user_phones', row('972500000123')), /UNIQUE|PRIMARY/);
   } finally {
     h.cleanup();
   }

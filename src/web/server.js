@@ -7,9 +7,10 @@ import { createMailer } from '../mail/send.js';
 //
 //   PORT (4740)           the public site (app.js). Caddy holds the certificate
 //                         for accounts.openfrequency.co.il and passes requests here.
-//   INTERNAL_PORT (4741)  /internal/session (internal.js), for Teder and Toran on
-//                         this machine. Caddy never proxies it, so no request from
-//                         outside can reach it even if a proxy rule is too broad.
+//   INTERNAL_PORT (4741)  /internal/session and /internal/owner-phone* (internal.js),
+//                         for Teder and Toran on this machine. Caddy never proxies
+//                         it, so no request from outside can reach it even if a
+//                         proxy rule is too broad.
 
 export const HOST = '127.0.0.1';
 
@@ -25,7 +26,7 @@ export async function listen(db, { env = process.env, port = Number(env.PORT || 
   const pub = await listenOn(publicHandler({ db, env, mailer, ...opts }), port);
   let internal;
   try {
-    internal = await listenOn(internalHandler(db, { env }), internalPort);
+    internal = await listenOn(internalHandler(db, { env, log: opts.log }), internalPort);
   } catch (e) {
     pub.close();
     throw e;

@@ -1,6 +1,7 @@
 import { request } from 'node:http';
 import { listen } from '../src/web/server.js';
 import { createLimiter, LIMITS } from '../src/auth/limiter.js';
+import { createSession } from '../src/auth/sessions.js';
 
 // The site over real HTTP, with a pretend browser: it keeps cookies, remembers
 // the last CSRF token it was shown, and can pretend to arrive through Caddy over
@@ -18,7 +19,13 @@ export async function startSite(db, { env = {}, limiters } = {}) {
   const s = await listen(db, { env: fullEnv, port: 0, internalPort: 0, mailer, failDelayMs: 0, limiters: lim, log: () => {} });
   const browser = (opts) => makeBrowser(s.port, { host: fullEnv.PUBLIC_HOST ? PUBLIC : `127.0.0.1:${s.port}`, secure: Boolean(fullEnv.PUBLIC_HOST), ...opts });
   const internal = (sid, product) => call(s.internalPort, 'GET', `/internal/session${product ? `?product=${product}` : ''}`, { authorization: `Bearer ${TOKEN}`, 'x-of-session': sid || '' }).then((r) => ({ ...r, json: JSON.parse(r.body) }));
-  return { s, mails, browser, internal, close: () => s.close() };
+  // The owner-line routes, as Toran calls them: JSON in and out. A body that is a string is sent as it is.
+  const owners = (method, path, body = null, headers = {}) =>
+    call(s.internalPort, method, path, { authorization: `Bearer ${TOKEN}`, ...(body != null ? { 'content-type': 'application/json' } : {}), ...headers }, body == null ? null : typeof body === 'string' ? body : JSON.stringify(body)).then((r) => ({
+      ...r,
+      json: r.body ? JSON.parse(r.body) : null,
+    }));
+  return { s, mails, browser, internal, owners, close: () => s.close() };
 }
 
 function call(port, method, path, headers = {}, body = null) {
@@ -80,6 +87,14 @@ export function makeBrowser(port, { host, secure = true, ip = '203.0.113.10', or
     get: (path, extra) => b.go('GET', path, null, extra),
     post: (path, fields = {}, extra) => b.go('POST', path, fields, extra),
   };
+  return b;
+}
+
+/** A pretend browser already signed in as a user, through a session made directly. */
+export function signedIn(site, db, user, opts = {}) {
+  const b = site.browser(opts);
+  const secure = opts.secure ?? true;
+  b.jar.set(secure ? '__Secure-of_session' : 'of_session', { value: createSession(db, user).id, attrs: [] });
   return b;
 }
 
