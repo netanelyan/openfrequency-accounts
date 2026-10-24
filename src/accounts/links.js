@@ -108,17 +108,17 @@ export function peekInvite(db, token) {
  * Accept: create the user if new, add the membership (an existing one keeps its
  * role), use the invite up. Returns { user, workspace } once; null otherwise.
  */
-export function acceptInvite(db, token, { name = '', ip = null } = {}) {
+export function acceptInvite(db, token, { name = '', ip = null, method = 'link' } = {}) {
   if (!looksLikeToken(token)) return null;
   try {
-    return acceptInTx(db, token, { name, ip });
+    return acceptInTx(db, token, { name, ip, method });
   } catch (e) {
     if (isRollback(e)) return null;
     throw e;
   }
 }
 
-function acceptInTx(db, token, { name, ip }) {
+function acceptInTx(db, token, { name, ip, method }) {
   return db.tx(() => {
     const t = nowIso();
     const r = db.run(`UPDATE tokens SET used_at = ? WHERE token_hash = ? AND ${live('invite')}`, t, hashToken(token), t);
@@ -136,7 +136,7 @@ function acceptInTx(db, token, { name, ip }) {
       user.name = String(name).trim().slice(0, 80);
     }
     db.run('INSERT INTO memberships (user_id, workspace_id, role, created_at) VALUES (?, ?, ?, ?) ON CONFLICT DO NOTHING', user.id, workspace.id, row.role, t);
-    audit(db, { actor: user, action: 'invite_accepted', workspaceId: workspace.id, ip, detail: { role: row.role } });
+    audit(db, { actor: user, action: 'invite_accepted', workspaceId: workspace.id, ip, detail: { role: row.role, method } });
     return { user, workspace };
   });
 }

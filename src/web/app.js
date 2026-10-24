@@ -8,6 +8,8 @@ import { PRODUCTS } from '../db/schema.js';
 import { clientIp, cookies, csrfFor, csrfOk, isHttps, sessionSecret } from '../auth/http.js';
 import { createLimiter, LIMITS } from '../auth/limiter.js';
 import { safeNext } from '../auth/next.js';
+import { finishGoogle, GoogleError, googleConfig, openFlow, sameState, sealFlow, startGoogle, FLOW_TTL } from '../auth/google.js';
+import { bindGoogle, userForGoogle } from '../accounts/google.js';
 import { chooseWorkspace, createSession, describeSession, findSession, LIFETIME, memberships, revokeAllSessions, revokeSession, sessionCookie, sessionFromJar } from '../auth/sessions.js';
 import { acceptInvite, consumeMagicLink, createInvite, InviteError, normEmail, peekInvite, peekMagicLink, requestMagicLink, revokeInvite, validEmail } from '../accounts/links.js';
 import { verifySuperadmin } from '../accounts/superadmin.js';
@@ -137,7 +139,7 @@ const OPS_ACTION = /^\/admin\/ops\/(toran|teder)\/([^/]{1,300})\/([a-z]{1,20})$/
 // Where each button comes back to on the dashboard, without script.
 const OPS_BACK = ['contact', 'talking'];
 
-export function publicHandler({ db, env = process.env, mailer, limiters = defaultLimiters(), failDelayMs = 400, log = console.error, toran = toranClient({ env, log }) }) {
+export function publicHandler({ db, env = process.env, mailer, limiters = defaultLimiters(), failDelayMs = 400, log = console.error, toran = toranClient({ env, log }), google = googleConfig(env), googleFetch = globalThis.fetch }) {
   const secret = sessionSecret(env);
   const publicHost = String(env.PUBLIC_HOST || '').trim().toLowerCase() || null;
   const dev = !publicHost;
@@ -227,6 +229,11 @@ export function publicHandler({ db, env = process.env, mailer, limiters = defaul
         out.cookies.push(`${flashName}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax${sec}`);
       }
       const setFlash = (msg, bad = false) => out.cookies.push(`${flashName}=${encodeURIComponent(`${bad ? '!' : ''}${msg}`)}; Path=/; Max-Age=30; HttpOnly; SameSite=Lax${sec}`);
+
+      // Sign in with Google: the round trip's state, signed (src/auth/google.js). Lax, so it comes back with the
+      // browser when Google sends it to the callback; __Host- behind HTTPS, so no sibling site can plant one.
+      const googleName = secure ? '__Host-of_google' : 'of_google';
+      const googleCallback = `${base}/auth/google/callback`;
 
       const sid = sessionFromJar(jar, secure);
       const found = sid ? findSession(db, sid) : null;
@@ -387,16 +394,16 @@ export function publicHandler({ db, env = process.env, mailer, limiters = defaul
         if (found) return redirect(landing(found.user, found.session, to));
         const out_ = url.searchParams.get('out');
         const notice = out_ === 'all' ? T.signedOutAll(Number(url.searchParams.get('n')) || 0) : out_ ? T.signedOut : '';
-        return page(200, T.loginTitle, P.loginPage({ csrf, next: to || '', notice }));
+        return page(200, T.loginTitle, P.loginPage({ csrf, next: to || '', notice, google: Boolean(google) }));
       }
 
       if (p === '/login') {
         const email = normEmail(f('email'));
         const to = next(f('next'));
-        if (!validEmail(email)) return page(400, T.loginTitle, P.loginPage({ csrf, next: to || '', email: f('email').slice(0, 254), error: T.badEmail }));
+        if (!validEmail(email)) return page(400, T.loginTitle, P.loginPage({ csrf, next: to || '', email: f('email').slice(0, 254), error: T.badEmail, google: Boolean(google) }));
         const wait = Math.max(limiters.magicIp.check(ip) || 0, limiters.magicEmail.check(email) || 0);
         if (wait) {
-          return send(429, P.layout({ title: T.loginTitle, body: P.loginPage({ csrf, next: to || '', email, error: T.tooMany(wait) }), v: V }), { 'retry-after': String(wait) });
+          return send(429, P.layout({ title: T.loginTitle, body: P.loginPage({ csrf, next: to || '', email, error: T.tooMany(wait), google: Boolean(google) }), v: V }), { 'retry-after': String(wait) });
         }
         limiters.magicIp.hit(ip);
         limiters.magicEmail.hit(email);
@@ -422,12 +429,70 @@ export function publicHandler({ db, env = process.env, mailer, limiters = defaul
         return redirect(landing(used.user, row, next(used.next)));
       }
 
+      // Sign in with Google: off to Google with a fresh state (and the invite, when it is one being accepted), then
+      // back to the callback, which signs in the customer that Google account is, or accepts the invite for them.
+      if (p === '/auth/google' || p === '/auth/google/callback') {
+        const missing = () => page(404, T.notFound, P.messagePage({ title: T.notFound, lead: '', links: [['/login', T.notFoundBack]] }));
+        const inviteDead = () => page(410, T.inviteDeadTitle, P.deadPage({ title: T.inviteDeadTitle, lead: T.inviteDeadLead }));
+        if (!google || req.method === 'POST') return missing();
+
+        if (p === '/auth/google') {
+          const invite = url.searchParams.get('invite') || '';
+          const live = invite ? peekInvite(db, invite) : null;
+          if (invite && !live) return inviteDead();
+          const { url: to, flow } = startGoogle({ clientId: google.clientId, redirectUri: googleCallback, next: invite ? null : next(url.searchParams.get('next')), invite: invite || null, loginHint: live?.row.email });
+          out.cookies.push(`${googleName}=${sealFlow(flow, secret)}; Path=/; Max-Age=${FLOW_TTL / 1000}; HttpOnly; SameSite=Lax${sec}`);
+          return redirect(to);
+        }
+
+        // The callback. The flow cookie is used once, whatever happens next.
+        const flow = openFlow(jar[googleName], secret);
+        out.cookies.push(`${googleName}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax${sec}`);
+        const back = flow?.invite ? `/invite?t=${encodeURIComponent(flow.invite)}` : `/login${flow?.next ? `?next=${encodeURIComponent(flow.next)}` : ''}`;
+        const fail = (status, title, lead) => page(status, T.googleTitle, P.messagePage({ title, lead, links: [[back, T.googleAgain]] }));
+        if (!flow || !sameState(url.searchParams.get('state'), flow)) return fail(400, T.googleStale, T.googleStaleLead);
+        const code = url.searchParams.get('code');
+        if (url.searchParams.get('error') || !code) {
+          setFlash(T.googleCancelled);
+          return redirect(back);
+        }
+        let who;
+        try {
+          who = await finishGoogle({ code, flow, ...google, redirectUri: googleCallback, fetch: googleFetch });
+        } catch (e) {
+          if (!(e instanceof GoogleError)) throw e;
+          if (e.code !== 'unverified') log(`google sign-in: ${e.code}`);
+          audit(db, { action: 'google_failed', ip, detail: { reason: e.code } });
+          const [title, lead] = T.googleErrors[e.code];
+          return fail(e.code === 'unverified' ? 403 : 502, title, lead);
+        }
+
+        if (flow.invite) {
+          const live = peekInvite(db, flow.invite);
+          if (!live) return inviteDead();
+          // Only the address the invite went to may accept it, as with the link in its email.
+          if (normEmail(live.row.email) !== who.email) return fail(403, T.googleWrongInvite(live.row.email), T.googleWrongInviteLead(live.row.email, who.email));
+          const done = acceptInvite(db, flow.invite, { name: who.name, ip, method: 'google' });
+          if (!done) return inviteDead();
+          bindGoogle(db, done.user, who);
+          if (found) revokeSession(db, sid, { reason: 'replaced', ip });
+          setSession(done.user, { workspaceId: done.workspace.id });
+          return redirect('/');
+        }
+
+        const user = userForGoogle(db, who, { ip });
+        if (!user) return fail(403, T.googleNoAccount(who.email), T.googleNoAccountLead);
+        if (found) revokeSession(db, sid, { reason: 'replaced', ip });
+        const row = setSession(user);
+        return redirect(landing(user, row, next(flow.next)));
+      }
+
       if (p === '/invite') {
         const dead = () => page(410, T.inviteDeadTitle, P.deadPage({ title: T.inviteDeadTitle, lead: T.inviteDeadLead }));
         if (req.method !== 'POST') {
           const t = url.searchParams.get('t') || '';
           const live = peekInvite(db, t);
-          return live ? page(200, T.inviteTitle(live.workspace.name), P.invitePage({ csrf, token: t, email: live.row.email, workspace: live.workspace })) : dead();
+          return live ? page(200, T.inviteTitle(live.workspace.name), P.invitePage({ csrf, token: t, email: live.row.email, workspace: live.workspace, google: Boolean(google) })) : dead();
         }
         const done = acceptInvite(db, f('t'), { name: f('name'), ip });
         if (!done) return dead();

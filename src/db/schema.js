@@ -189,4 +189,11 @@ export const MIGRATIONS = [
   );
   CREATE INDEX invoices_workspace ON invoices(workspace_id, issued_on);
   `,
+  `
+  -- Sign in with Google (src/accounts/google.js): the Google account a customer signed in with, by its "sub", Google's
+  -- id for it that never changes. Set the first time they sign in with Google, on the address we know them by; after
+  -- that it is how we know them, even if the address on their Google account changes. One Google account, one user.
+  ALTER TABLE users ADD COLUMN google_sub TEXT;
+  CREATE UNIQUE INDEX users_google_sub ON users(google_sub) WHERE google_sub IS NOT NULL;
+  `,
 ];

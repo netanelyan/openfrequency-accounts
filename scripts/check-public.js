@@ -63,6 +63,7 @@ const KEY_SHAPES = [
   [/sk-ant-[A-Za-z0-9_-]{20,}/, 'an Anthropic key'],
   [/\bsk-[A-Za-z0-9]{32,}\b/, 'an API key'],
   [/\bghp_[A-Za-z0-9]{30,}\b/, 'a GitHub token'],
+  [/\bGOCSPX-[A-Za-z0-9_-]{20,}/, 'a Google client secret'],
   [/\bAKIA[0-9A-Z]{16}\b/, 'an AWS key'],
   [/-----BEGIN (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----/, 'a private key'],
   [/otpauth:\/\/totp\/[^\s'"`]*secret=[A-Z2-7]{16,}/i, 'a TOTP secret'],

@@ -48,12 +48,35 @@ MAIL_REPLY_TO=                # where "reply to this email" lands; your own inbo
 OF_SUPPORT_WA=                # our WhatsApp for "write to us", digits only (972...); unset, the page says to reply to an email
 OF_ASSISTANT_WA=              # the owner line's WhatsApp number, digits only; the same as TORAN_ASSISTANT_WA in Toran's .env
 OF_TORAN_INTERNAL=            # Toran's internal routes, for the dashboard on /admin; empty means http://127.0.0.1:4710
+GOOGLE_CLIENT_ID=             # sign in with Google (below); unset, only the emailed link is offered
+GOOGLE_CLIENT_SECRET=
 ```
 
 `/admin` is the operator's dashboard. It reads `GET /internal/ops` from Toran on this machine at
 each load, and forwards each of its buttons to `POST /internal/ops/<kind>/<id>/<action>`, with
 `OF_INTERNAL_TOKEN` (Toran's `docs/operator.md`, section 4). Toran must have the same token. Set
 `OF_TORAN_INTERNAL` only if Toran listens somewhere other than `127.0.0.1:4710`.
+
+**Sign in with Google.** In [Google Cloud](https://console.cloud.google.com/), in a project of
+OpenFrequency's own, open *Google Auth Platform*:
+
+1. *Get started*: the app name OpenFrequency, the support email, the audience *External*, the
+   contact email.
+2. *Branding*: the home page `https://openfrequency.co.il`, the privacy policy
+   `https://openfrequency.co.il/privacy`, the terms `https://openfrequency.co.il/terms`, and
+   `openfrequency.co.il` as an authorised domain. A logo sends the app to Google's review first,
+   which can take days; it works without one. The scopes are the three that need no review:
+   `openid`, `email`, `profile`.
+3. *Audience*: *Publish app*, so it says *In production*; while it is in testing, only the test
+   users listed there can sign in.
+4. *Clients > Create client*, type *Web application*, with the authorised redirect URI
+   `https://accounts.openfrequency.co.il/auth/google/callback`. Google shows the secret once.
+5. Its client ID and secret go in `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`, then
+   `pm2 reload of-accounts`.
+
+Google signs nobody up: a Google account opens the account of the customer with the same
+verified address, or accepts an invite sent to that address. The first sign-in ties the
+Google account to the customer, and from then on that Google account is how we know them.
 
 Then the superadmin, with an authenticator app at hand:
 
@@ -126,5 +149,6 @@ Migrations run on start. Sessions live in the database, so nobody is signed out 
 | Teder or Toran sends everyone to the login | Their `OF_INTERNAL_TOKEN` must equal this one. `/internal/session` answers `bad_token` when it does not. |
 | `/admin` says "תורן לא ענה עכשיו" | Toran is down, or not at `OF_TORAN_INTERNAL`, or its `OF_INTERNAL_TOKEN` differs from this one. `pm2 logs of-accounts` has a `toran GET /internal/ops` line with the status or the error. The money and the console work in the meantime. |
 | "האתר הזה עובד רק ב-HTTPS" | The request reached 4740 without Caddy's `X-Forwarded-Proto: https`. Check that Caddy proxies it. |
+| "Google לא אישר את הכניסה" | `pm2 logs of-accounts`: `google sign-in: refused` is usually a wrong secret, or a redirect URI in Google Cloud that is not exactly `https://accounts.openfrequency.co.il/auth/google/callback`. |
 | The superadmin lost the phone | Sign in with a recovery code, then run `npm run admin:create` again for a new key and new codes. |
 | All recovery codes are gone too | On the server: `npm run admin:create -- --email <your email>`. It replaces everything. |

@@ -6,8 +6,9 @@ their own: they read the shared session cookie and ask this service who it belon
 
 It owns:
 
-- **users**: customers sign in with an emailed link (single use, 15 minutes). The
-  superadmin signs in with a password and a TOTP code. There is no public signup.
+- **users**: customers sign in with Google or with an emailed link (single use, 15
+  minutes). The superadmin signs in with a password and a TOTP code. There is no public
+  signup: Google, like the link, opens only an account we made or an invite we sent.
 - **workspaces**: one per customer business, opened by the superadmin, who invites
   its owner (the invite is good for 72 hours).
 - **memberships**: a user's role in a workspace, `client_owner` or `client_member`. A
@@ -89,7 +90,7 @@ The full steps (DNS, Resend, Caddy, backups, checks) are in [docs/deploy.md](doc
 |---|---|
 | `src/db` | the SQLite database (`node:sqlite`) and its migrations |
 | `src/core` | paths, the `.env` loader, the clock, the audit log |
-| `src/auth` | passwords, TOTP, tokens, rate limits, the `?next=` allowlist, sessions |
+| `src/auth` | passwords, TOTP, tokens, rate limits, the `?next=` allowlist, sessions, Google's half of signing in |
 | `src/accounts` | magic links and invites, workspaces, the superadmin, subscriptions, invoices, WhatsApp numbers, the operator's list of customers |
 | `src/mail` | Resend (or the outbox folder without a key), and the two emails |
 | `src/web` | `app.js` the public site, `internal.js` `/internal/session`, `/internal/owner-phone*` and `/internal/ops/customers`, `toran.js` the client for Toran's `/internal/ops`, `dashboard.js` the operator's dashboard, `copy.js` every Hebrew word, `html.js` the pages |
@@ -102,6 +103,8 @@ The full steps (DNS, Resend, Caddy, backups, checks) are in [docs/deploy.md](doc
 - Session ids, link tokens and recovery codes are stored only as SHA-256; the password as scrypt.
 - Magic links: 15 minutes, one use, a button before they are used (mail scanners open links),
   3 per address and 10 per IP in 15 minutes, the same answer whether or not the address exists.
+- Google: the authorization code flow with PKCE, a state and a nonce in a signed 10-minute
+  cookie, a verified address only; the Google account is tied to the user on first use.
 - `?next=` only to `https://<one label>.openfrequency.co.il` or a path here.
 - The superadmin: password and TOTP (one use per code), 5 tries per address in 15 minutes, 12-hour
   sessions, every action in the audit log, view-as read-only.

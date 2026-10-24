@@ -38,6 +38,28 @@ export const T = {
   linkDeadTitle: 'הקישור הזה כבר לא עובד',
   linkDeadLead: 'קישור כניסה עובד פעם אחת, במשך 15 דקות. אפשר לבקש קישור חדש.',
 
+  // ---- sign in with Google
+  googleButton: 'כניסה עם Google',
+  googleJoinButton: 'הצטרפות עם Google',
+  googleOrEmail: 'או בקישור למייל',
+  googleOrInvite: 'או בלי Google',
+  googleInviteHint: (email) => `צריך לבחור ב-Google את החשבון של ${email}, הכתובת שאליה נשלחה ההזמנה.`,
+  googleTitle: 'כניסה עם Google',
+  googleAgain: 'לנסות שוב',
+  googleCancelled: 'הכניסה עם Google בוטלה. אפשר לנסות שוב, או לקבל קישור כניסה למייל.',
+  googleStale: 'הכניסה עם Google לא הושלמה',
+  googleStaleLead: 'עברו יותר מ-10 דקות מאז שהתחלתם, או שהיא התחילה בדפדפן אחר. נסו שוב מכאן.',
+  googleNoAccount: (email) => `לא מצאנו אצלנו חשבון פתוח עם ${email}`,
+  googleNoAccountLead: 'אנחנו פותחים כל חשבון בעצמנו ושולחים הזמנה במייל. קיבלתם הזמנה? הצטרפו מהקישור שבה. יש לכם אצלנו חשבון עם כתובת אחרת? בחרו אותה ב-Google, או בקשו קישור כניסה למייל.',
+  googleWrongInvite: (invited) => `ההזמנה נשלחה אל ${invited}`,
+  googleWrongInviteLead: (invited, got) => `נכנסתם ל-Google בתור ${got}. כדי להצטרף, בחרו ב-Google את החשבון של ${invited}, או הצטרפו בלי Google מהדף של ההזמנה.`,
+  googleErrors: {
+    unreachable: ['Google לא ענה לנו', 'נסו שוב בעוד דקה, או בקשו קישור כניסה למייל.'],
+    refused: ['Google לא אישר את הכניסה', 'נסו שוב, או בקשו קישור כניסה למייל.'],
+    bad_token: ['Google לא אישר את הכניסה', 'נסו שוב, או בקשו קישור כניסה למייל.'],
+    unverified: ['Google עוד לא אימת את כתובת המייל בחשבון הזה', 'אפשר לבקש קישור כניסה למייל במקום.'],
+  },
+
   // ---- invites
   inviteTitle: (ws) => `הוזמנתם ל-${ws}`,
   inviteLead: (email) => `ההזמנה נשלחה אל ${email}. לחצו כדי להצטרף ולהיכנס.`,
@@ -275,6 +297,8 @@ export const AUDIT_NAMES = {
   sign_out: 'יציאה',
   sign_out_all: 'יציאה מכל המכשירים',
   magic_link_requested: 'בקשה לקישור כניסה',
+  google_refused: 'כניסה עם Google בלי חשבון פתוח',
+  google_failed: 'כניסה עם Google נכשלה',
   admin_login_failed: 'כניסת מנהל שנכשלה',
   invite_sent: 'הזמנה נשלחה',
   invite_accepted: 'הזמנה התקבלה',
