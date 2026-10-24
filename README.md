@@ -13,13 +13,13 @@ It owns:
 - **memberships**: a user's role in a workspace, `client_owner` or `client_member`. A
   workspace's owner invites people from its home page, cancels an invite and removes
   someone; a workspace holds 3 people, its owners and the invites still waiting included,
-  and past that the page sends them to support (`OF_SUPPORT_URL`). The superadmin's
+  and past that the page sends them to support (our WhatsApp, `OF_SUPPORT_WA`). The superadmin's
   console is not limited.
 - **products**: which of `teder` and `toran` each workspace may open.
 - **invoices**: a copy of each invoice, with its PDF, for the customer's home page. The
   accountant's invoicing service issues them (their numbers and what the law asks of
   them); this service never makes one. The superadmin records each on `/admin`, and a
-  customer sees only their own workspace's.
+  workspace's owners see its invoices, and nobody else's: a member sees none.
 - **sessions**: a random id in the `__Secure-of_session` cookie for
   `.openfrequency.co.il`. Signing out ends it for every product at once, and "sign out
   on all devices" ends every session the user has.

@@ -17,7 +17,7 @@ import { PRODUCT_NAMES, T, dayHe, phoneHe } from './copy.js';
 import { createLinkCode, openLinkCode, phoneIn, phonesFor, PHONE, removePhone, setConsent } from '../accounts/phones.js';
 import { describe, payMonth, setSubscription, subscriptionsOf } from '../accounts/subscriptions.js';
 import { addInvoice, invoiceIn, invoicesOf, PDF_MAX, removeInvoice } from '../accounts/invoices.js';
-import { cancelTeamInvite, inviteToTeam, removeMember, TeamError, teamOf } from '../accounts/team.js';
+import { cancelTeamInvite, inviteToTeam, removeMember, TEAM_LIMIT, TeamError, teamOf } from '../accounts/team.js';
 import * as P from './html.js';
 
 // The public site, accounts.openfrequency.co.il, behind Caddy.
@@ -53,15 +53,14 @@ export function productUrls(env = process.env) {
 }
 
 /**
- * Where a customer reaches us (OF_SUPPORT_URL: an https:// page or WhatsApp link, a mailto: or a tel:), else a
- * mailto: to MAIL_REPLY_TO, the inbox our emails' replies land in; null when neither is set, and the page then says
- * to answer one of our emails.
+ * Where a customer reaches us: our WhatsApp (OF_SUPPORT_WA, international digits), as a wa.me link that opens with
+ * `text` already written when there is one. null while it is unset, and the page then says to answer one of our
+ * emails.
  */
-export function supportUrl(env = process.env) {
-  const url = String(env.OF_SUPPORT_URL || '').trim();
-  if (/^(https:\/\/[^\s"'<>]+|mailto:[^\s"'<>]+|tel:\+?[0-9-]+)$/i.test(url)) return url;
-  const mail = String(env.MAIL_REPLY_TO || '').trim();
-  return validEmail(mail) ? `mailto:${mail}` : null;
+export function supportUrl(env = process.env, text = '') {
+  const digits = String(env.OF_SUPPORT_WA || '').replace(/[\s+-]/g, '');
+  if (!PHONE.test(digits)) return null;
+  return `https://wa.me/${digits}${text ? `?text=${encodeURIComponent(text)}` : ''}`;
 }
 
 /** The owner line's WhatsApp number in international digits (OF_ASSISTANT_WA), or null while it is unset. */
@@ -253,12 +252,14 @@ export function publicHandler({ db, env = process.env, mailer, limiters = defaul
           canSwitch: mine.length > 1,
           subscriptions,
           others,
-          invoices: invoicesOf(db, wsId),
+          // Invoices are the owners' only: a member sees the team and the products, not what the business pays.
+          invoices: d.body.role === 'client_owner' ? invoicesOf(db, wsId) : null,
           team: teamOf(db, wsId),
           whatsapp: { phones: phonesFor(db, { userId: found.user.id, workspaceId: wsId, role: d.body.role }), code: openLinkCode(db, found.user.id, wsId), waNumber },
           role: d.body.role,
           readOnly: d.body.readOnly,
           support,
+          supportTeam: supportUrl(env, T.supportTeamText(d.body.workspace.name, TEAM_LIMIT)),
           flash,
           ...extra,
         });
@@ -330,7 +331,7 @@ export function publicHandler({ db, env = process.env, mailer, limiters = defaul
         if (!found) return redirect('/login');
         if (found.user.is_superadmin) return redirect('/admin');
         const d = describeSession(db, sid);
-        const inv = d.status === 200 ? invoiceIn(db, invoiceMatch[1], d.body.workspace.id) : null;
+        const inv = d.status === 200 && d.body.role === 'client_owner' ? invoiceIn(db, invoiceMatch[1], d.body.workspace.id) : null;
         if (!inv) return page(404, T.notFound, P.messagePage({ title: T.notFound, lead: '', links: [['/', T.logoutBack]] }));
         return pdf(inv);
       }

@@ -14,9 +14,9 @@ import { newTotpSecret, stepAt, totpCode } from '../src/auth/totp.js';
 
 const EMAIL = 'admin@example.com';
 const PASSWORD = 'a long enough password';
-const SUPPORT = 'https://wa.me/972500000000';
+const SUPPORT_WA = '972500000000';
 
-async function setup({ members = {}, env = { OF_SUPPORT_URL: SUPPORT } } = {}) {
+async function setup({ members = {}, env = { OF_SUPPORT_WA: SUPPORT_WA } } = {}) {
   const h = tempHome();
   setNow('2026-10-22T10:00:15.000Z');
   const secret = newTotpSecret();
@@ -118,7 +118,8 @@ test('three people at most, the owner and the invites still waiting included; th
     const card = teamCard((await dana.get('/')).body);
     assert.match(card, /3 מתוך 3/);
     assert.doesNotMatch(card, /action="\/team\/invite"/, 'the form is gone');
-    assert.match(card, /<div class="team-full" role="note"><p>בחשבון יש כבר 3 אנשים, כולל הזמנות שעוד לא התקבלו\. כדי להוסיף עוד, דברו איתנו\.<\/p><p><a class="button primary" href="https:\/\/wa\.me\/972500000000">כתבו לנו<\/a><\/p><\/div>/);
+    assert.match(card, /<div class="team-full" role="note"><p>בחשבון יש כבר 3 אנשים, כולל הזמנות שעוד לא התקבלו\. כדי להוסיף עוד, דברו איתנו\.<\/p><p><a class="button primary" href="https:\/\/wa\.me\/972500000000\?text=([^"]+)">כתבו לנו בוואטסאפ<\/a><\/p><\/div>/);
+    assert.equal(decodeURIComponent(/wa\.me\/972500000000\?text=([^"]+)/.exec(card)[1]), 'היי, כותבים מ״החנות של דנה״. רוצים להוסיף לחשבון יותר מ-3 אנשים.', 'the message to us is already written');
 
     // The form skipped: refused, nothing sent, nothing stored.
     const mails = t.mails.length;
@@ -270,12 +271,13 @@ test('what the invite form refuses, in Hebrew, keeping what was typed', async ()
   }
 });
 
-test('the support contact: OF_SUPPORT_URL, else a mail to MAIL_REPLY_TO, else the page says to answer one of our emails', async () => {
-  assert.equal(supportUrl({ OF_SUPPORT_URL: SUPPORT, MAIL_REPLY_TO: 'help@example.com' }), SUPPORT);
-  assert.equal(supportUrl({ OF_SUPPORT_URL: 'mailto:help@example.com' }), 'mailto:help@example.com');
-  assert.equal(supportUrl({ MAIL_REPLY_TO: 'help@example.com' }), 'mailto:help@example.com');
-  assert.equal(supportUrl({ OF_SUPPORT_URL: 'javascript:alert(1)' }), null, 'only a link that goes somewhere');
-  assert.equal(supportUrl({ OF_SUPPORT_URL: 'http://example.com' }), null);
+test('the support contact is our WhatsApp (OF_SUPPORT_WA); unset, the page says to answer one of our emails', async () => {
+  assert.equal(supportUrl({ OF_SUPPORT_WA: SUPPORT_WA }), 'https://wa.me/972500000000');
+  assert.equal(supportUrl({ OF_SUPPORT_WA: '+972 50-000-0000' }), 'https://wa.me/972500000000', 'written the usual ways');
+  assert.equal(supportUrl({ OF_SUPPORT_WA: SUPPORT_WA }, 'שלום & עוד'), `https://wa.me/972500000000?text=${encodeURIComponent('שלום & עוד')}`);
+  assert.equal(supportUrl({ OF_SUPPORT_WA: '0500000000' }), null, 'international digits only');
+  assert.equal(supportUrl({ OF_SUPPORT_WA: 'javascript:alert(1)' }), null);
+  assert.equal(supportUrl({ MAIL_REPLY_TO: 'help@example.com' }), null, 'an inbox is not the support line');
   assert.equal(supportUrl({}), null);
 
   const t = await setup({ members: { 'noa@example.com': 'client_member', 'roni@example.com': 'client_member' }, env: {} });

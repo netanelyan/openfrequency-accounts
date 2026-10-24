@@ -66,15 +66,20 @@ test('the operator records an invoice with its PDF; the customer sees every one,
       ['1.10.2026', 'תדר, חשבונית 0990', undefined, '1,490 ₪', 'בלי מע״מ'],
     ]);
 
-    // The PDF, as it was uploaded, to the customer of its own workspace: a member too.
+    // The PDF, as it was uploaded, to an owner of its own workspace.
     const doc = await dana.get(rows[1][5]);
     assert.equal(doc.status, 200);
     assert.equal(doc.headers['content-type'], 'application/pdf');
     assert.equal(doc.headers['content-disposition'], 'inline; filename="invoice-1042.pdf"');
     assert.equal(doc.headers['cache-control'], 'no-store');
     assert.equal(doc.body, PDF('1042').toString());
+    // A member of the same workspace sees the team, not the invoices: no list, and the PDF is not found.
     const noa = await signIn(t, 'noa@example.com');
-    assert.equal((await noa.get(rows[1][5])).status, 200);
+    const memberHome = (await noa.get('/')).body;
+    assert.doesNotMatch(memberHome, /id="invoices"|1042/);
+    const theirs = await noa.get(rows[1][5]);
+    assert.equal(theirs.status, 404);
+    assert.doesNotMatch(theirs.body, /%PDF/);
 
     // The console lists them too, each with its PDF and a way to take it back.
     const page = (await t.admin.get('/admin')).body;

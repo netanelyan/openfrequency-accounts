@@ -258,7 +258,7 @@ ${form}
  * The customer's home: each product they have with its subscription (the price, the days left in the month paid
  * for, the next charge), the other products, the invoices, their WhatsApp, who is in the account, and their own details.
  */
-export function homePage({ csrf, user, workspace, products, productUrls, canSwitch, subscriptions = {}, others = [], invoices = [], team, role, readOnly = false, support = null, flash = '', teamError = '', teamForm = {}, whatsapp = {} }) {
+export function homePage({ csrf, user, workspace, products, productUrls, canSwitch, subscriptions = {}, others = [], invoices = null, team, role, readOnly = false, support = null, supportTeam = null, flash = '', teamError = '', teamForm = {}, whatsapp = {} }) {
   const subs = products.length
     ? `<div class="subs">${products.map((p) => subCard(p, subscriptions[p], productUrls[p])).join('')}</div>`
     : `<section class="card"><p class="muted">${esc(T.homeNoProducts)}</p></section>`;
@@ -275,10 +275,10 @@ ${flash ? `<p class="flash" role="status">${esc(flash)}</p>` : ''}
 <div class="list-h"><h2>${esc(T.dashProducts)}</h2></div>
 ${subs}
 ${more}
-${invoicesCard(invoices)}
+${invoices ? invoicesCard(invoices) : ''}
 ${whatsappCard({ csrf, readOnly, ...whatsapp })}
 <div class="pair">
-${teamCard({ csrf, user, team: team || { members: [], invites: [], taken: 0, limit: 0, full: true }, role, readOnly, support, error: teamError, form: teamForm })}
+${teamCard({ csrf, user, team: team || { members: [], invites: [], taken: 0, limit: 0, full: true }, role, readOnly, support: supportTeam || support, error: teamError, form: teamForm })}
 <section class="card"><h2>${esc(T.dashAccount)}</h2>
 <dl class="facts"><div><dt>${esc(T.dashEmail)}</dt><dd class="ltr">${esc(user.email)}</dd></div><div><dt>${esc(T.dashBusiness)}</dt><dd>${esc(workspace.name)}</dd></div></dl>
 <p class="row">${canSwitch ? `<a class="button" href="/workspace">${esc(T.homeSwitch)}</a>` : ''}<a class="button" href="/logout">${esc(T.dashSignOutAll)}</a></p>
