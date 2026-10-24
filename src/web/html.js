@@ -15,10 +15,10 @@ export const esc = (s) =>
 const csrfField = (csrf) => `<input type="hidden" name="_csrf" value="${esc(csrf)}">`;
 
 /** A one-button form. */
-export const button = (action, label, csrf, { fields = {}, kind = 'primary' } = {}) =>
+export const button = (action, label, csrf, { fields = {}, kind = 'primary', label: aria = '' } = {}) =>
   `<form method="post" action="${esc(action)}" class="inline">${csrfField(csrf)}${Object.entries(fields)
     .map(([k, v]) => `<input type="hidden" name="${esc(k)}" value="${esc(v)}">`)
-    .join('')}<button class="${kind}">${esc(label)}</button></form>`;
+    .join('')}<button class="${kind}"${aria ? ` aria-label="${esc(aria)}"` : ''}>${esc(label)}</button></form>`;
 
 // ---- the marks: the brand files' glyphs on their own colour, never redrawn (assets/brand)
 
@@ -174,10 +174,51 @@ function invoicesCard(invoices) {
 }
 
 /**
+ * Who is in the account: its people and the invites still waiting, with how many of the workspace's places they take.
+ * Its owner invites someone by email, cancels an invite and removes anyone but themselves; once every place is taken
+ * the form gives way to a line about talking to us. A member sees the same list and nothing to press; so does a
+ * read-only view.
+ */
+function teamCard({ csrf, user, team, role, readOnly = false, support = null, error = '', form = {} }) {
+  const owner = role === 'client_owner' && !readOnly;
+  const people = team.members.map((m) => {
+    const who = m.name || m.email;
+    const remove = owner && m.id !== user.id ? button(`/team/members/${m.id}/remove`, T.teamRemove, csrf, { kind: 'danger', label: T.teamRemoveLabel(who) }) : '';
+    return `<li><span class="who"><bdi>${esc(who)}</bdi>${m.id === user.id ? ` <span class="muted">${esc(T.dashYou)}</span>` : ''}${m.name ? `<small class="ltr">${esc(m.email)}</small>` : ''}</span><span class="muted end">${esc(ROLE_NAMES[m.role])}</span>${remove}</li>`;
+  });
+  const waiting = team.invites.map(
+    (i) =>
+      `<li class="waiting"><span class="who"><bdi class="ltr">${esc(i.email)}</bdi><small>${esc(T.teamWaiting(when(i.expires_at)))}</small></span><span class="muted end">${esc(ROLE_NAMES[i.role])}</span>${
+        owner ? button(`/team/invites/${i.id}/cancel`, T.teamCancel, csrf, { kind: 'quiet', label: T.teamCancelLabel(i.email) }) : ''
+      }</li>`
+  );
+  const sel = (r) => ((form.role || 'client_member') === r ? ' selected' : '');
+  let add = '';
+  if (!owner) add = `<p class="muted">${esc(T.teamOwnersOnly)}</p>`;
+  else if (team.full)
+    add = support
+      ? `<div class="team-full" role="note"><p>${esc(T.teamFull(team.limit))}</p><p><a class="button primary" href="${esc(support)}">${esc(T.supportWrite)}</a></p></div>`
+      : `<div class="team-full" role="note"><p>${esc(T.teamFullReply(team.limit))}</p></div>`;
+  else
+    add = `<form method="post" action="/team/invite" class="team-add">${csrfField(csrf)}
+<label for="team-email">${esc(T.teamEmail)}</label>
+<div class="fields"><input id="team-email" name="email" type="email" inputmode="email" autocomplete="off" dir="ltr" required maxlength="254" placeholder="name@example.com" value="${esc(form.email || '')}" aria-describedby="team-room${error ? ' team-err' : ''}"${error ? ' aria-invalid="true"' : ''}>
+<select name="role" aria-label="${esc(T.teamRole)}"><option value="client_member"${sel('client_member')}>${esc(ROLE_NAMES.client_member)}</option><option value="client_owner"${sel('client_owner')}>${esc(ROLE_NAMES.client_owner)}</option></select>
+<button class="primary">${esc(T.teamInvite)}</button></div>
+<small id="team-room">${esc(T.teamRoom(team.limit - team.taken, team.limit))}</small>
+</form>`;
+  return `<section class="card team" id="team"><div class="card-h"><h2>${esc(T.dashTeam)}</h2><span class="muted">${esc(T.teamCount(team.taken, team.limit))}</span></div>
+<ul class="people">${[...people, ...waiting].join('')}</ul>
+${error ? `<p class="error" id="team-err" role="alert">${esc(error)}</p>` : ''}
+${add}
+</section>`;
+}
+
+/**
  * The customer's home: each product they have with its subscription (the price, the days left in the month paid
  * for, the next charge), the other products, the invoices, who is in the account, and their own details.
  */
-export function homePage({ user, workspace, products, productUrls, canSwitch, subscriptions = {}, members = [], others = [], invoices = [] }) {
+export function homePage({ csrf, user, workspace, products, productUrls, canSwitch, subscriptions = {}, others = [], invoices = [], team, role, readOnly = false, support = null, flash = '', teamError = '', teamForm = {} }) {
   const subs = products.length
     ? `<div class="subs">${products.map((p) => subCard(p, subscriptions[p], productUrls[p])).join('')}</div>`
     : `<section class="card"><p class="muted">${esc(T.homeNoProducts)}</p></section>`;
@@ -187,24 +228,22 @@ export function homePage({ user, workspace, products, productUrls, canSwitch, su
         .map((p) => `<li><a href="https://openfrequency.co.il/${esc(p)}">${productMark(p)}<span><b>${esc(PRODUCT_NAMES[p])}</b><small>${esc(T.dashMoreWhat[p])}</small></span><span class="go">${esc(T.dashMoreLink)}</span></a></li>`)
         .join('')}</ul>`
     : '';
-  const team = members
-    .map((m) => `<li><span class="who"><bdi>${esc(m.name || m.email)}</bdi>${m.id === user.id ? ` <span class="muted">${esc(T.dashYou)}</span>` : ''}${m.name ? `<small class="ltr">${esc(m.email)}</small>` : ''}</span><span class="muted end">${esc(ROLE_NAMES[m.role])}</span></li>`)
-    .join('');
   return `
 <header class="top"><div class="brand">${ofMark()}<h1>${esc(T.homeHello(user.name || user.email))}</h1></div><a class="button quiet" href="/logout">${esc(T.homeSignOut)}</a></header>
+${flash ? `<p class="flash" role="status">${esc(flash)}</p>` : ''}
 <p class="lead dash-who">${esc(T.homeWho(user.email, workspace.name))}</p>
 <div class="list-h"><h2>${esc(T.dashProducts)}</h2></div>
 ${subs}
 ${more}
 ${invoicesCard(invoices)}
 <div class="pair">
-<section class="card"><h2>${esc(T.dashTeam)}</h2><ul class="people">${team}</ul><p class="muted">${esc(T.dashTeamAdd)}</p></section>
+${teamCard({ csrf, user, team: team || { members: [], invites: [], taken: 0, limit: 0, full: true }, role, readOnly, support, error: teamError, form: teamForm })}
 <section class="card"><h2>${esc(T.dashAccount)}</h2>
 <dl class="facts"><div><dt>${esc(T.dashEmail)}</dt><dd class="ltr">${esc(user.email)}</dd></div><div><dt>${esc(T.dashBusiness)}</dt><dd>${esc(workspace.name)}</dd></div></dl>
 <p class="row">${canSwitch ? `<a class="button" href="/workspace">${esc(T.homeSwitch)}</a>` : ''}<a class="button" href="/logout">${esc(T.dashSignOutAll)}</a></p>
 </section>
 </div>
-<p class="muted center">${esc(T.dashHelp)}</p>`;
+<p class="muted center">${support ? `${esc(T.dashHelpAsk)} <a href="${esc(support)}">${esc(T.supportWrite)}</a>` : esc(T.dashHelp)}</p>`;
 }
 
 export const messagePage = ({ title, lead, links: pairs = [] }) => `

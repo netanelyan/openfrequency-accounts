@@ -1,3 +1,5 @@
+import { TEAM_LIMIT } from '../accounts/team.js';
+
 // Every Hebrew word the site and its emails say, in one place.
 //
 // OpenFrequency speaks as "we" (אנחנו); the reader is addressed in the plural
@@ -86,12 +88,29 @@ export const T = {
   dashMoreWhat: { teder: 'מצגות בעברית לטיקטוק ולאינסטגרם', toran: 'עונה ללקוחות שלכם בוואטסאפ' },
   dashMoreLink: 'לפרטים',
   dashTeam: 'מי בחשבון',
-  dashTeamAdd: 'כדי להוסיף מישהו לחשבון, ענו לאחד המיילים שקיבלתם מאיתנו ונשלח לו הזמנה.',
   dashYou: '(אתם)',
+  teamCount: (n, max) => (n > max ? `${n} אנשים` : `${n} מתוך ${max}`),
+  teamWaiting: (until) => `הזמנה נשלחה, מחכה עד ${until}`,
+  teamEmail: 'המייל של מי שמצטרף',
+  teamRole: 'תפקיד',
+  teamInvite: 'שליחת הזמנה',
+  teamRoom: (left, max) => `${left === 1 ? 'נשאר מקום לעוד אדם אחד' : `נשאר מקום לעוד ${left} אנשים`}. בחשבון יש מקום ל-${max} אנשים, כולל אתכם וכולל הזמנות שעוד לא התקבלו. ההזמנה עובדת 72 שעות.`,
+  teamFull: (max) => `בחשבון יש כבר ${max} אנשים, כולל הזמנות שעוד לא התקבלו. כדי להוסיף עוד, דברו איתנו.`,
+  teamFullReply: (max) => `בחשבון יש כבר ${max} אנשים, כולל הזמנות שעוד לא התקבלו. כדי להוסיף עוד, ענו לאחד המיילים שקיבלתם מאיתנו.`,
+  teamOwnersOnly: 'רק בעלי החשבון מוסיפים ומסירים אנשים.',
+  teamRemove: 'הסרה',
+  teamCancel: 'ביטול',
+  teamRemoveLabel: (who) => `הסרה של ${who} מהחשבון`,
+  teamCancelLabel: (email) => `ביטול ההזמנה ל-${email}`,
+  teamReadOnly: 'את האנשים בחשבון של לקוח משנים מהקונסולה. מכאן אי אפשר לשנות כלום.',
+  supportWrite: 'כתבו לנו',
+  flashTeamInvited: (email) => `שלחנו הזמנה ל-${email}. היא עובדת 72 שעות.`,
+  flashTeamRemoved: (who) => `${who} כבר לא בחשבון.`,
   dashAccount: 'הפרטים שלכם',
   dashEmail: 'מייל',
   dashBusiness: 'עסק',
   dashHelp: 'שאלה על המנוי או על החיוב? ענו לאחד המיילים שקיבלתם מאיתנו.',
+  dashHelpAsk: 'שאלה על המנוי או על החיוב?',
   dashSignOutAll: 'יציאה מכל המכשירים',
 
   logoutTitle: 'יציאה',
@@ -194,6 +213,16 @@ export const T = {
   flashInvoiceAdded: (number, name) => `חשבונית ${number} נוספה ל-${name}.`,
   flashInvoiceRemoved: (number) => `חשבונית ${number} הוסרה מהחשבון. בשירות החשבוניות היא נשארת כמו שהיא.`,
 
+  // What the home page's team form refuses. The rest are in errors, below.
+  teamErrors: {
+    team_full: `בחשבון יש כבר ${TEAM_LIMIT} אנשים, כולל הזמנות שעוד לא התקבלו. כדי להוסיף עוד, דברו איתנו.`,
+    already_member: 'הכתובת הזאת כבר בחשבון.',
+    not_owner: 'רק בעלי החשבון מוסיפים ומסירים אנשים.',
+    not_self: 'אי אפשר להסיר את עצמכם מהחשבון.',
+    last_owner: 'בחשבון צריך להישאר לפחות בעלים אחד.',
+    superadmin_email: 'אי אפשר להזמין את הכתובת הזאת.',
+  },
+
   errors: {
     bad_name: 'צריך שם לעסק, עד 80 תווים.',
     bad_slug: 'המזהה יכול להכיל רק אותיות קטנות באנגלית, ספרות ומקפים, עד 40 תווים.',
@@ -236,6 +265,7 @@ export const AUDIT_NAMES = {
   superadmin_reset: 'המנהל הוגדר מחדש',
   subscription_saved: 'מנוי עודכן',
   subscription_paid: 'תשלום נרשם',
+  member_removed: 'הוסר מהחשבון',
   invoice_added: 'חשבונית נוספה',
   invoice_removed: 'חשבונית הוסרה',
 };

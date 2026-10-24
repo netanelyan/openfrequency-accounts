@@ -84,3 +84,56 @@ run('the superadmin signs in and opens a workspace from the console', async () =
     await t.done();
   }
 });
+
+run('the home page on a phone, in dark mode: the bar fills from the right, the invoices and the team fit, and the invite form works', async () => {
+  const t = await setup();
+  try {
+    const { payMonth } = await import('../src/accounts/subscriptions.js');
+    const { addInvoice } = await import('../src/accounts/invoices.js');
+    const ws = t.db.get("SELECT id FROM workspaces WHERE slug = 'dana-shop'").id;
+    const admin = t.db.get("SELECT * FROM users WHERE email = 'admin@example.com'");
+    const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jerusalem' }).format(new Date());
+    t.db.run("UPDATE subscriptions SET paid_until = NULL WHERE workspace_id = ?", ws);
+    t.db.run("INSERT INTO subscriptions (workspace_id, product, monthly, vat, setup, started_on, updated_at) VALUES (?, 'teder', 790, 'excluded', 1490, ?, ?) ON CONFLICT DO NOTHING", ws, today, new Date().toISOString());
+    payMonth(t.db, ws, 'teder', { by: admin });
+    addInvoice(t.db, ws, { product: 'teder', number: 'INV-2026-001042', issued_on: today, period_from: today, period_to: today, amount: '790', vat: '142.2' }, Buffer.from('%PDF-1.7\n%%EOF\n'), { by: admin });
+
+    const context = await t.browser.newContext({ viewport: { width: 375, height: 812 }, colorScheme: 'dark' });
+    const page = await context.newPage();
+    await page.goto(`${t.base}/login`);
+    await page.fill('#email', 'dana@example.com');
+    await page.click('button.primary');
+    await page.goto(t.mails.at(-1).link);
+    await page.click('button.primary');
+    await page.waitForURL(`${t.base}/`);
+
+    // Nothing wider than the phone.
+    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), 'no sideways scroll');
+    // The bar: a progressbar to a screen reader, with its words; its filled part starts at the right edge.
+    const bar = page.locator('progress');
+    assert.equal(await bar.getAttribute('aria-valuetext'), 'יום 1 מתוך 31. נשארו 31 ימים בחודש ששולם');
+    assert.equal(await bar.evaluate((el) => getComputedStyle(el).direction), 'rtl');
+    assert.equal(await page.getByRole('progressbar').count(), 1);
+    // Dark: the tiles are dark glass, the words light.
+    const ink = await page.evaluate(() => getComputedStyle(document.body).color);
+    assert.equal(ink, 'rgb(245, 245, 247)');
+
+    const row = page.locator('ul.invoices li').first();
+    assert.match(await row.textContent(), /תדר, חשבונית INV-2026-001042[^]*932\.20 ₪[^]*790 ₪ ועוד מע״מ 142\.20 ₪/);
+    const box = await row.boundingBox();
+    assert.ok(box.x >= 0 && box.x + box.width <= 375, 'the invoice row fits');
+    const doc = await page.request.get(`${t.base}${await row.locator('a').getAttribute('href')}`);
+    assert.equal(doc.headers()['content-type'], 'application/pdf');
+
+    await page.fill('#team-email', 'noa@example.com');
+    await page.click('form.team-add button');
+    await page.waitForURL(`${t.base}/#team`);
+    assert.match(await page.textContent('.flash'), /שלחנו הזמנה ל-noa@example\.com/);
+    assert.match(await page.textContent('#team'), /2 מתוך 3[^]*noa@example\.com/);
+    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), 'still no sideways scroll');
+    if (process.env.OF_SCREENSHOTS) await page.screenshot({ path: `${process.env.OF_SCREENSHOTS}/home-phone-dark.png`, fullPage: true });
+    await context.close();
+  } finally {
+    await t.done();
+  }
+});

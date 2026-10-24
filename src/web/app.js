@@ -16,6 +16,7 @@ import { inviteMail, magicLinkMail } from '../mail/messages.js';
 import { PRODUCT_NAMES, T, dayHe } from './copy.js';
 import { describe, payMonth, setSubscription, subscriptionsOf } from '../accounts/subscriptions.js';
 import { addInvoice, invoiceIn, invoicesOf, PDF_MAX, removeInvoice } from '../accounts/invoices.js';
+import { cancelTeamInvite, inviteToTeam, removeMember, TeamError, teamOf } from '../accounts/team.js';
 import * as P from './html.js';
 
 // The public site, accounts.openfrequency.co.il, behind Caddy.
@@ -48,6 +49,18 @@ export function defaultLimiters() {
 
 export function productUrls(env = process.env) {
   return Object.fromEntries(PRODUCTS.map((p) => [p, String(env[`${p.toUpperCase()}_URL`] || '').trim() || `https://${p}.openfrequency.co.il/`]));
+}
+
+/**
+ * Where a customer reaches us (OF_SUPPORT_URL: an https:// page or WhatsApp link, a mailto: or a tel:), else a
+ * mailto: to MAIL_REPLY_TO, the inbox our emails' replies land in; null when neither is set, and the page then says
+ * to answer one of our emails.
+ */
+export function supportUrl(env = process.env) {
+  const url = String(env.OF_SUPPORT_URL || '').trim();
+  if (/^(https:\/\/[^\s"'<>]+|mailto:[^\s"'<>]+|tel:\+?[0-9-]+)$/i.test(url)) return url;
+  const mail = String(env.MAIL_REPLY_TO || '').trim();
+  return validEmail(mail) ? `mailto:${mail}` : null;
 }
 
 class Refused extends Error {
@@ -112,6 +125,7 @@ export function publicHandler({ db, env = process.env, mailer, limiters = defaul
   const publicHost = String(env.PUBLIC_HOST || '').trim().toLowerCase() || null;
   const dev = !publicHost;
   const urls = productUrls(env);
+  const support = supportUrl(env);
   const formAction = `'self' https://*.openfrequency.co.il${dev ? ' http://localhost:* http://127.0.0.1:*' : ''}`;
   const CSP = `default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action ${formAction}`;
 
@@ -216,6 +230,31 @@ export function publicHandler({ db, env = process.env, mailer, limiters = defaul
         out.cookies.push(sessionCookie(s.id, { secure, maxAgeMs: user.is_superadmin ? LIFETIME.superadmin.maxMs : LIFETIME.client.maxMs }));
         return s.row;
       };
+      // The customer's home: each product's subscription, the other products, the invoices, who is in the account.
+      const dashboard = (d, status = 200, extra = {}) => {
+        const wsId = d.body.workspace.id;
+        const mine = memberships(db, found.user.id).filter((m) => !m.disabled_at);
+        const subscriptions = Object.fromEntries(Object.entries(subscriptionsOf(db, wsId)).map(([prod, row]) => [prod, describe(row)]));
+        const others = PRODUCTS.filter((prod) => !d.body.products.includes(prod));
+        const body = P.homePage({
+          csrf,
+          user: found.user,
+          workspace: d.body.workspace,
+          products: d.body.products,
+          productUrls: urls,
+          canSwitch: mine.length > 1,
+          subscriptions,
+          others,
+          invoices: invoicesOf(db, wsId),
+          team: teamOf(db, wsId),
+          role: d.body.role,
+          readOnly: d.body.readOnly,
+          support,
+          flash,
+          ...extra,
+        });
+        return page(status, T.homeHello(found.user.name || found.user.email), body, { wide: true });
+      };
       const clearSession = () => out.cookies.push(sessionCookie('', { secure, clear: true }));
       const landing = (user, session, to) => {
         if (user.is_superadmin) return to || '/admin';
@@ -240,13 +279,39 @@ export function publicHandler({ db, env = process.env, mailer, limiters = defaul
           const links = [...(mine.length ? [['/workspace', T.homeSwitch]] : []), ['/logout', T.homeSignOut]];
           return page(403, T.loginTitle, P.messagePage({ title: T.homeClosed(ws?.name || ''), lead: '', links }));
         }
-        // The dashboard: each product's subscription, the other products, who is in the account.
+        return dashboard(d);
+      }
+
+      // The team on the home page: an owner invites someone, cancels an invite, removes someone. Only a customer in
+      // their own workspace, and only its owner; the superadmin (whose view-as is read-only) changes nothing here.
+      if (p.startsWith('/team/') && req.method === 'POST') {
+        if (!found) return redirect('/login');
+        if (found.user.is_superadmin) return page(403, T.loginTitle, P.messagePage({ title: T.teamReadOnly, lead: '', links: [['/admin', T.adminTitle]] }));
+        const d = describeSession(db, sid);
+        if (d.status !== 200 || d.body.readOnly) return redirect('/');
         const wsId = d.body.workspace.id;
-        const subscriptions = Object.fromEntries(Object.entries(subscriptionsOf(db, wsId)).map(([prod, row]) => [prod, describe(row)]));
-        const members = db.all('SELECT u.id, u.email, u.name, m.role FROM memberships m JOIN users u ON u.id = m.user_id WHERE m.workspace_id = ? AND u.disabled_at IS NULL ORDER BY m.created_at', wsId);
-        const others = PRODUCTS.filter((prod) => !d.body.products.includes(prod));
-        const invoices = invoicesOf(db, wsId);
-        return page(200, T.homeHello(found.user.name || found.user.email), P.homePage({ csrf, user: found.user, workspace: d.body.workspace, products: d.body.products, productUrls: urls, canSwitch: mine.length > 1, subscriptions, members, others, invoices }), { wide: true });
+        const by = { by: found.user, ip };
+        let m;
+        try {
+          if (d.body.role !== 'client_owner') throw new TeamError('not_owner');
+          if (p === '/team/invite') {
+            const inv = inviteToTeam(db, { workspaceId: wsId, email: f('email'), role: f('role'), ...by });
+            mailer.send(inviteMail(inv.email, inv.workspace.name, `${base}/invite?t=${inv.token}`, inv.expiresAt));
+            setFlash(T.flashTeamInvited(inv.email));
+          } else if ((m = /^\/team\/invites\/(\d+)\/cancel$/.exec(p))) {
+            const email = cancelTeamInvite(db, { workspaceId: wsId, tokenId: m[1], ...by });
+            if (email) setFlash(T.flashInviteRevoked(email));
+          } else if ((m = /^\/team\/members\/(\d+)\/remove$/.exec(p))) {
+            const gone = removeMember(db, { workspaceId: wsId, userId: m[1], ...by });
+            if (gone) setFlash(T.flashTeamRemoved(gone.name || gone.email));
+          } else {
+            return page(404, T.notFound, P.messagePage({ title: T.notFound, lead: '', links: [['/', T.logoutBack]] }));
+          }
+          return redirect('/#team');
+        } catch (e) {
+          if (!(e instanceof TeamError || e instanceof InviteError)) throw e;
+          return dashboard(d, e.code === 'not_owner' ? 403 : 400, { teamError: T.teamErrors[e.code] || T.errors[e.code] || e.code, teamForm: { email: f('email'), role: f('role') } });
+        }
       }
 
       // An invoice's PDF, for a customer in its own workspace only. Another workspace's invoice is not found, the

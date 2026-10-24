@@ -45,6 +45,7 @@ SESSION_SECRET=               # openssl rand -base64 48
 RESEND_API_KEY=
 MAIL_FROM=OpenFrequency <accounts@openfrequency.co.il>
 MAIL_REPLY_TO=                # where "reply to this email" lands; your own inbox
+OF_SUPPORT_URL=               # the customer's "write to us": https://wa.me/972..., or mailto:; unset, MAIL_REPLY_TO
 ```
 
 Then the superadmin, with an authenticator app at hand:

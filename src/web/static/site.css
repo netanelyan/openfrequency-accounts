@@ -354,6 +354,10 @@ main.narrow .row form.inline, main.narrow .row button { display: flex; width: 10
 /* ------------------------------------------------------------ the customer's dashboard (html.js homePage) */
 
 main.wide header.top h1 { font-size: 26px; }
+/* A long greeting (an email for a name) wraps instead of pushing the sign-out button off a phone. */
+header.top .brand { min-width: 0; }
+header.top h1 { overflow-wrap: anywhere; }
+header.top > .button, header.top > form { flex: none; }
 .dash-who { margin: -4px 4px 0; }
 .subs { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
 main.wide .card.sub { margin: 0; display: flex; flex-direction: column; gap: 6px; }
@@ -396,6 +400,23 @@ ul.more .go { margin-inline-start: auto; color: var(--accent); font-size: 14px; 
 main.wide .pair .card { margin: 0; }
 .pair .card > .muted { margin: 14px 0 0; }
 ul.people small { margin: 2px 0 0; }
+/* The team: the people, then the form, or the line about talking to us once every place is taken. */
+.card-h { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 16px; }
+.card-h h2 { margin: 0; }
+.card-h .muted { margin: 0; font-variant-numeric: tabular-nums; }
+ul.people li.waiting .who bdi { color: var(--ink-2); font-weight: 400; }
+.card.team ul.people .who { min-width: 0; overflow-wrap: anywhere; }
+.card.team .error { margin-top: 14px; }
+form.team-add label { margin-top: 18px; }
+form.team-add .fields { display: flex; flex-wrap: wrap; gap: 8px; }
+form.team-add input { flex: 1 1 200px; min-width: 0; }
+form.team-add select { flex: 0 0 auto; width: auto; }
+form.team-add button { flex: 0 0 auto; min-height: 50px; }
+@media (max-width: 560px) { form.team-add select, form.team-add button { flex: 1 1 auto; } }
+.team-full { margin-top: 16px; padding: 12px 14px; border-radius: var(--r-m); background: var(--warn-bg); color: var(--warn); }
+.team-full p { margin: 0; }
+.team-full p + p { margin-top: 12px; }
+.team-full .button { min-height: 44px; }
 dl.facts { margin: 0; display: grid; gap: 10px; }
 dl.facts div { display: flex; justify-content: space-between; gap: 12px; padding: 10px 14px; border-radius: var(--r-m); background: var(--inset); box-shadow: inset 0 0 0 1px var(--line); }
 dl.facts dt { color: var(--ink-3); font-size: 14px; }
