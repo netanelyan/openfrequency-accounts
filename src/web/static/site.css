@@ -354,6 +354,10 @@ main.narrow .row form.inline, main.narrow .row button { display: flex; width: 10
 /* ------------------------------------------------------------ the customer's dashboard (html.js homePage) */
 
 main.wide header.top h1 { font-size: 26px; }
+/* A long greeting (an email for a name) wraps instead of pushing the sign-out button off a phone. */
+header.top .brand { min-width: 0; }
+header.top h1 { overflow-wrap: anywhere; }
+header.top > .button, header.top > form { flex: none; }
 .dash-who { margin: -4px 4px 0; }
 .subs { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
 main.wide .card.sub { margin: 0; display: flex; flex-direction: column; gap: 6px; }
@@ -392,6 +396,29 @@ dl.facts div { display: flex; justify-content: space-between; gap: 12px; padding
 dl.facts dt { color: var(--ink-3); font-size: 14px; }
 dl.facts dd { margin: 0; font-weight: 500; overflow-wrap: anywhere; }
 main.wide > .muted.center { margin: 28px 0 0; }
+
+/* WhatsApp: the numbers linked, the open code, the form for a new one */
+main.wide .card.wa { margin: 32px 0 0; }
+.card.wa .lead { margin-bottom: 16px; }
+ul.phones li { gap: 6px 12px; }
+ul.phones .who { font-size: 16px; }
+ul.phones .end { display: flex; flex-wrap: wrap; gap: 8px; }
+.tag.off { background: var(--fill); color: var(--ink-3); }
+.wa-code { margin-top: 16px; padding: 16px 18px; border-radius: var(--r-m); background: var(--inset); box-shadow: inset 0 0 0 1px var(--line); }
+.wa-code .section-l { margin-top: 0; }
+.wa-code p { margin: 0 0 8px; }
+.wa-code p:last-child { margin-bottom: 0; }
+.wa-code .code { font: 700 30px/1.2 ui-monospace, 'SF Mono', Menlo, Consolas, monospace; letter-spacing: 0.06em; text-align: start; user-select: all; overflow-wrap: anywhere; }
+.wa-code .button { width: 100%; min-height: 50px; margin-top: 8px; }
+.wa-code .warn { color: var(--warn); background: var(--warn-bg); border-radius: var(--r-m); padding: 10px 12px; }
+form.wa-form { margin-top: 16px; }
+form.wa-form label.check { margin: 0; align-items: flex-start; padding-top: 10px; line-height: 1.4; }
+form.wa-form label.check input { flex: none; margin: 0; }
+form.wa-form small { margin: 2px 0 0; padding-inline-start: 28px; }
+form.wa-form button { margin-top: 14px; }
+@media (min-width: 720px) {
+  .wa-code .button, form.wa-form > button.primary { width: auto; min-width: 220px; }
+}
 
 /* the operator's subscription forms, one per product, in a workspace's tile */
 ul.subs-admin { list-style: none; padding: 0; margin: 0; display: grid; gap: 10px; }

@@ -84,6 +84,30 @@ export const T = {
   dashHelp: 'שאלה על המנוי או על החיוב? ענו לאחד המיילים שקיבלתם מאיתנו.',
   dashSignOutAll: 'יציאה מכל המכשירים',
 
+  // ---- WhatsApp: the owner line (docs/internal-owner-phone.md)
+  waTitle: 'וואטסאפ',
+  waLead: 'כשהמספר שלכם מחובר, אפשר לכתוב לתורן ולתדר בוואטסאפ ולשאול על החשבון, בלי להיכנס לאתר.',
+  waNone: 'עוד לא חיברתם מספר.',
+  waOf: (name) => `של ${name}`,
+  waOn: 'עם עדכונים',
+  waOff: 'בלי עדכונים',
+  waTurnOn: 'הפעלת עדכונים',
+  waTurnOff: 'כיבוי עדכונים',
+  waRemove: 'הסרה',
+  waConnect: 'לחבר את הוואטסאפ',
+  waAgain: 'קוד חדש',
+  waOptIn: 'לשלוח לי עדכונים מתדר ומתורן בוואטסאפ',
+  waOptInHint: 'למשל כשיש פוסטים שמחכים לאישור, וסיכום פעם בשבוע. כדי להפסיק, כותבים שם "הפסק" או מכבים כאן.',
+  waCodeTitle: 'הקוד שלכם',
+  waCodeLead: (until) => `שולחים את הקוד בוואטסאפ למספר שלנו, מהטלפון שרוצים לחבר. הוא עובד פעם אחת, במשך 30 דקות (עד ${until}).`,
+  waCodeUpdates: (on) => (on ? 'ביקשתם לקבל עדכונים בוואטסאפ.' : 'בלי עדכונים בוואטסאפ. אפשר להפעיל אותם אחר כך כאן.'),
+  waSend: 'פתיחת וואטסאפ עם הקוד',
+  waNoNumber: 'עוד לא הגדרנו כאן את המספר שלנו בוואטסאפ, אז כרגע אין לאן לשלוח את הקוד.',
+  waReadOnly: 'בצפייה כלקוח אי אפשר לשנות כלום.',
+  flashWaRemoved: (phone) => `הסרנו את ${phone}. כדי לחבר אותו שוב צריך קוד חדש.`,
+  flashWaOn: (phone) => `העדכונים בוואטסאפ ל-${phone} פועלים.`,
+  flashWaOff: (phone) => `כיבינו את העדכונים בוואטסאפ ל-${phone}. המספר עדיין מחובר.`,
+
   logoutTitle: 'יציאה',
   logoutLead: (email) => `אפשר לצאת רק מהדפדפן הזה, או מכל מקום שבו נכנסתם עם ${email}. היציאה חלה על כל המוצרים של OpenFrequency.`,
   logoutHere: 'יציאה מהדפדפן הזה',
@@ -207,6 +231,11 @@ export const AUDIT_NAMES = {
   superadmin_reset: 'המנהל הוגדר מחדש',
   subscription_saved: 'מנוי עודכן',
   subscription_paid: 'תשלום נרשם',
+  phone_link_created: 'קוד לחיבור וואטסאפ',
+  phone_linked: 'וואטסאפ חובר',
+  phone_removed: 'וואטסאפ הוסר',
+  phone_opt_in: 'עדכונים בוואטסאפ הופעלו',
+  phone_opt_out: 'עדכונים בוואטסאפ כובו',
 };
 
 // ---- emails
@@ -241,5 +270,15 @@ export const when = (iso) => DATE.format(new Date(iso)).replace(/\s*,\s*/, ', ')
 
 /** A calendar day, YYYY-MM-DD, as Israel writes it: "25.10.2026". */
 export const dayHe = (d) => (d ? `${+d.slice(8, 10)}.${+d.slice(5, 7)}.${d.slice(0, 4)}` : '');
+const HOUR_HE = new Intl.DateTimeFormat('he-IL', { timeZone: 'Asia/Jerusalem', hour: '2-digit', minute: '2-digit' });
+/** An Israel-time hour, like "13:00". */
+export const hourHe = (iso) => HOUR_HE.format(new Date(iso));
+
+/** A number as its owner writes it: "050-000-0123" for an Israeli mobile, "+44..." for any other. */
+export const phoneHe = (digits) => {
+  const m = /^972(5\d)(\d{3})(\d{4})$/.exec(String(digits));
+  return m ? `0${m[1]}-${m[2]}-${m[3]}` : `+${digits}`;
+};
+
 /** Shekels, as the site writes them: "1,490 ₪". */
 export const ils = (n) => `${Number(n).toLocaleString('he-IL')} ₪`;

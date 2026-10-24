@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { ROOT } from '../core/paths.js';
 import { describe } from '../accounts/subscriptions.js';
-import { AUDIT_NAMES, PRODUCT_NAMES, ROLE_NAMES, T, dayHe, ils, when } from './copy.js';
+import { AUDIT_NAMES, PRODUCT_NAMES, ROLE_NAMES, T, dayHe, hourHe, ils, phoneHe, when } from './copy.js';
 
 // Server-rendered pages: Hebrew, right to left, one stylesheet, no script.
 // Everything shown is escaped here; nothing reaches the page raw. The look is
@@ -144,10 +144,50 @@ ${status !== 'ended' ? `<p class="go"><a class="button primary" href="${esc(href
 }
 
 /**
- * The customer's home: each product they have with its subscription (the price, the days left in the month paid
- * for, the next charge), the other products, who is in the account, and their own details.
+ * WhatsApp on the home page (docs/internal-owner-phone.md): the numbers linked (a member's own; the owner's, every
+ * one in the workspace), the open link code with its wa.me button, and the form for a new one. A number's own person
+ * turns its updates on or off; its own person or the owner removes it. Nothing to press when read-only.
  */
-export function homePage({ user, workspace, products, productUrls, canSwitch, subscriptions = {}, members = [], others = [] }) {
+function whatsappCard({ csrf, phones = [], code = null, waNumber = null, readOnly = false }) {
+  const items = phones
+    .map((n) => {
+      const shown = phoneHe(n.phone);
+      const actions = readOnly
+        ? ''
+        : `<span class="end">${n.mine ? button('/whatsapp/updates', n.updates ? T.waTurnOff : T.waTurnOn, csrf, { fields: { phone: n.phone, on: n.updates ? '0' : '1' }, kind: 'quiet' }) : ''}${button('/whatsapp/remove', T.waRemove, csrf, { fields: { phone: n.phone }, kind: 'danger' })}</span>`;
+      return `<li><span class="who ltr">${esc(shown)}</span>${n.mine ? '' : `<span class="muted"><bdi>${esc(T.waOf(n.name || n.email))}</bdi></span>`}<span class="tag${n.updates ? '' : ' off'}">${esc(n.updates ? T.waOn : T.waOff)}</span>${actions}</li>`;
+    })
+    .join('');
+  const open = code
+    ? `<div class="wa-code" role="status">
+<p class="section-l">${esc(T.waCodeTitle)}</p>
+<p class="code ltr">${esc(code.code)}</p>
+<p>${esc(T.waCodeLead(hourHe(code.expires_at)))}</p>
+<p class="muted">${esc(T.waCodeUpdates(Boolean(code.opt_in)))}</p>
+${waNumber ? `<p><a class="button primary" href="${esc(`https://wa.me/${waNumber}?text=${encodeURIComponent(code.code)}`)}">${esc(T.waSend)}</a></p>` : `<p class="warn">${esc(T.waNoNumber)}</p>`}
+</div>`
+    : '';
+  const form = readOnly
+    ? ''
+    : `<form method="post" action="/whatsapp/link" class="wa-form">${csrfField(csrf)}
+<label class="check"><input type="checkbox" name="updates" value="1" aria-describedby="wa-hint"> ${esc(T.waOptIn)}</label>
+<small id="wa-hint">${esc(T.waOptInHint)}</small>
+<button class="${code ? 'quiet' : 'primary'}">${esc(code ? T.waAgain : T.waConnect)}</button>
+</form>`;
+  return `<section class="card wa" id="whatsapp">
+<h2>${esc(T.waTitle)}</h2>
+<p class="lead">${esc(T.waLead)}</p>
+<ul class="people phones">${items || `<li class="muted">${esc(T.waNone)}</li>`}</ul>
+${open}
+${form}
+</section>`;
+}
+
+/**
+ * The customer's home: each product they have with its subscription (the price, the days left in the month paid
+ * for, the next charge), the other products, their WhatsApp, who is in the account, and their own details.
+ */
+export function homePage({ csrf, user, workspace, products, productUrls, canSwitch, subscriptions = {}, members = [], others = [], whatsapp = {}, flash = '', readOnly = false }) {
   const subs = products.length
     ? `<div class="subs">${products.map((p) => subCard(p, subscriptions[p], productUrls[p])).join('')}</div>`
     : `<section class="card"><p class="muted">${esc(T.homeNoProducts)}</p></section>`;
@@ -162,10 +202,12 @@ export function homePage({ user, workspace, products, productUrls, canSwitch, su
     .join('');
   return `
 <header class="top"><div class="brand">${ofMark()}<h1>${esc(T.homeHello(user.name || user.email))}</h1></div><a class="button quiet" href="/logout">${esc(T.homeSignOut)}</a></header>
+${flash ? `<p class="flash" role="status">${esc(flash)}</p>` : ''}
 <p class="lead dash-who">${esc(T.homeWho(user.email, workspace.name))}</p>
 <div class="list-h"><h2>${esc(T.dashProducts)}</h2></div>
 ${subs}
 ${more}
+${whatsappCard({ csrf, readOnly, ...whatsapp })}
 <div class="pair">
 <section class="card"><h2>${esc(T.dashTeam)}</h2><ul class="people">${team}</ul><p class="muted">${esc(T.dashTeamAdd)}</p></section>
 <section class="card"><h2>${esc(T.dashAccount)}</h2>
