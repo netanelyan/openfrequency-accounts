@@ -49,6 +49,8 @@ The full steps (DNS, Resend, Caddy, backups, checks) are in [docs/deploy.md](doc
   `/internal/session` and every answer they can get back.
 - [docs/internal-owner-phone.md](docs/internal-owner-phone.md): who a WhatsApp number is, for
   Toran's owner line: the link code, the claim, consent, and every answer.
+- [docs/internal-ops.md](docs/internal-ops.md): `/internal/ops/customers`, every workspace with
+  its people, subscriptions and invoices, for the operator's dashboard on Toran.
 - [docs/switch-over.md](docs/switch-over.md): what changes in each product, and in what order.
 
 ## Where things are
@@ -58,9 +60,9 @@ The full steps (DNS, Resend, Caddy, backups, checks) are in [docs/deploy.md](doc
 | `src/db` | the SQLite database (`node:sqlite`) and its migrations |
 | `src/core` | paths, the `.env` loader, the clock, the audit log |
 | `src/auth` | passwords, TOTP, tokens, rate limits, the `?next=` allowlist, sessions |
-| `src/accounts` | magic links and invites, workspaces, the superadmin, subscriptions, WhatsApp numbers |
+| `src/accounts` | magic links and invites, workspaces, the superadmin, subscriptions, invoices, WhatsApp numbers, the operator's list of customers |
 | `src/mail` | Resend (or the outbox folder without a key), and the two emails |
-| `src/web` | `app.js` the public site, `internal.js` `/internal/session` and `/internal/owner-phone*`, `copy.js` every Hebrew word, `html.js` the pages |
+| `src/web` | `app.js` the public site, `internal.js` `/internal/session`, `/internal/owner-phone*` and `/internal/ops/customers`, `copy.js` every Hebrew word, `html.js` the pages |
 | `scripts` | start, demo, `admin:create`, backup, `check:public`, `init-private` |
 | `deploy` | the Caddy block |
 | `ecosystem.config.cjs` | the pm2 job, `of-accounts` |
@@ -74,7 +76,7 @@ The full steps (DNS, Resend, Caddy, backups, checks) are in [docs/deploy.md](doc
 - The superadmin: password and TOTP (one use per code), 5 tries per address in 15 minutes, 12-hour
   sessions, every action in the audit log, view-as read-only.
 - Every form: a CSRF token and an Origin check. Every page: CSP with no script, no framing.
-- `/internal/session` and `/internal/owner-phone*`: their own port, never proxied, loopback only,
+- `/internal/session`, `/internal/owner-phone*` and `/internal/ops/customers`: their own port, never proxied, loopback only,
   a bearer token.
 
 ## This repository is public

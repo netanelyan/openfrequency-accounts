@@ -1,6 +1,7 @@
 import { timingSafeEqual } from 'node:crypto';
 import { describeSession } from '../auth/sessions.js';
 import { PRODUCTS } from '../db/schema.js';
+import { opsCustomers } from '../accounts/ops.js';
 import { claimPhone, ownerOf, ownersOf, PhoneError, setConsent, validPhone } from '../accounts/phones.js';
 
 // The internal listener, for Teder and Toran on this machine:
@@ -9,6 +10,7 @@ import { claimPhone, ownerOf, ownersOf, PhoneError, setConsent, validPhone } fro
 //   GET  /internal/owner-phones         a workspace's numbers
 //   POST /internal/owner-phone/claim    the number that sent a link code
 //   POST /internal/owner-phone/consent  "הפסק" and "התחל"
+//   GET  /internal/ops/customers        every workspace and its money, for the operator (docs/internal-ops.md)
 //
 // Four locks, any one of which is enough on its own:
 //   - it listens on 127.0.0.1 on a port Caddy never proxies
@@ -41,6 +43,7 @@ const ROUTES = {
   '/internal/owner-phones': 'GET',
   '/internal/owner-phone/claim': 'POST',
   '/internal/owner-phone/consent': 'POST',
+  '/internal/ops/customers': 'GET',
 };
 const BODY_LIMIT = 4096;
 const STATUS = { bad_phone: 400, not_linked: 404, unknown_code: 404, expired: 410, used: 409, phone_taken: 409 };
@@ -121,6 +124,8 @@ export function internalHandler(db, { env = process.env, log = console.error } =
           if (typeof body.optIn !== 'boolean' || typeof source !== 'string' || !SOURCE.test(source)) return json(res, 400, { error: 'bad' });
           return json(res, 200, setConsent(db, body.phone, { optIn: body.optIn, source }));
         }
+        case '/internal/ops/customers':
+          return json(res, 200, opsCustomers(db));
       }
     } catch (e) {
       if (e instanceof Refused) return json(res, e.status, { error: e.code });
