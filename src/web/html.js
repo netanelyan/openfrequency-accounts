@@ -1,7 +1,8 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { ROOT } from '../core/paths.js';
-import { AUDIT_NAMES, PRODUCT_NAMES, ROLE_NAMES, T, when } from './copy.js';
+import { describe } from '../accounts/subscriptions.js';
+import { AUDIT_NAMES, PRODUCT_NAMES, ROLE_NAMES, T, dayHe, ils, when } from './copy.js';
 
 // Server-rendered pages: Hebrew, right to left, one stylesheet, no script.
 // Everything shown is escaped here; nothing reaches the page raw. The look is
@@ -113,19 +114,66 @@ ${csrfField(csrf)}
 </form>
 </section>`;
 
-export function homePage({ user, workspace, products, productUrls, canSwitch }) {
-  const list = products.length
-    ? `<ul class="products">${products
-        .map((p) => `<li><a href="${esc(productUrls[p])}">${productMark(p)}<span>${esc(T.homeOpen(PRODUCT_NAMES[p]))}</span><span class="go" aria-hidden="true">‹</span></a></li>`)
+// One product's subscription, as its customer sees it (src/accounts/subscriptions.js describe()).
+function subCard(p, s, href) {
+  const name = PRODUCT_NAMES[p];
+  const status = s?.status || 'open';
+  const vat = s?.vat === 'included' ? T.vatIncluded : s?.vat === 'excluded' ? T.vatExcluded : '';
+  const lines = [];
+  if (status === 'active') {
+    lines.push(`<p class="left">${esc(T.subLeft(s.left))}</p>`);
+    lines.push(`<progress max="${s.period}" value="${s.period - s.left + 1}" aria-label="${esc(T.subLeft(s.left))}"></progress>`);
+    if (s.next) lines.push(`<p>${esc(T.subNext(dayHe(s.next.on), ils(s.next.monthly), s.next.vat === 'excluded'))}</p>`);
+    lines.push(`<p class="muted">${esc(T.subPaidUntil(dayHe(s.paid_until)))}</p>`);
+  } else if (status === 'due') {
+    lines.push(`<p class="warn">${esc(T.subDue(dayHe(s.next.on)))}</p>`);
+  } else if (status === 'ending') {
+    lines.push(`<p class="warn">${esc(T.subEnding(dayHe(s.ends_on), s.left))}</p>`);
+  } else if (status === 'ended') {
+    lines.push(`<p class="muted">${esc(T.subEnded(dayHe(s.ends_on)))}</p>`);
+  } else {
+    lines.push(`<p class="muted">${esc(T.subOpen)}</p>`);
+  }
+  if (s?.started_on) lines.push(`<p class="muted">${esc(T.subSince(dayHe(s.started_on)))}</p>`);
+  return `<article class="card sub s-${status}">
+<header>${productMark(p)}<h3>${esc(name)}</h3><span class="tag">${esc(T.subStatus[status])}</span></header>
+${s?.monthly != null ? `<p class="price">${esc(T.subPrice(ils(s.monthly), vat))}</p>` : ''}
+${lines.join('\n')}
+${status !== 'ended' ? `<p class="go"><a class="button primary" href="${esc(href)}">${esc(T.homeOpen(name))}</a></p>` : ''}
+</article>`;
+}
+
+/**
+ * The customer's home: each product they have with its subscription (the price, the days left in the month paid
+ * for, the next charge), the other products, who is in the account, and their own details.
+ */
+export function homePage({ user, workspace, products, productUrls, canSwitch, subscriptions = {}, members = [], others = [] }) {
+  const subs = products.length
+    ? `<div class="subs">${products.map((p) => subCard(p, subscriptions[p], productUrls[p])).join('')}</div>`
+    : `<section class="card"><p class="muted">${esc(T.homeNoProducts)}</p></section>`;
+  const more = others.length
+    ? `<div class="list-h"><h2>${esc(T.dashMore)}</h2></div>
+<ul class="more">${others
+        .map((p) => `<li><a href="https://openfrequency.co.il/${esc(p)}">${productMark(p)}<span><b>${esc(PRODUCT_NAMES[p])}</b><small>${esc(T.dashMoreWhat[p])}</small></span><span class="go">${esc(T.dashMoreLink)}</span></a></li>`)
         .join('')}</ul>`
-    : `<p class="muted">${esc(T.homeNoProducts)}</p>`;
+    : '';
+  const team = members
+    .map((m) => `<li><span class="who"><bdi>${esc(m.name || m.email)}</bdi>${m.id === user.id ? ` <span class="muted">${esc(T.dashYou)}</span>` : ''}${m.name ? `<small class="ltr">${esc(m.email)}</small>` : ''}</span><span class="muted end">${esc(ROLE_NAMES[m.role])}</span></li>`)
+    .join('');
   return `
-<section class="card">
-<h1>${esc(T.homeHello(user.name || user.email))}</h1>
-<p class="lead">${esc(T.homeWho(user.email, workspace.name))}</p>
-${list}
+<header class="top"><div class="brand">${ofMark()}<h1>${esc(T.homeHello(user.name || user.email))}</h1></div><a class="button quiet" href="/logout">${esc(T.homeSignOut)}</a></header>
+<p class="lead dash-who">${esc(T.homeWho(user.email, workspace.name))}</p>
+<div class="list-h"><h2>${esc(T.dashProducts)}</h2></div>
+${subs}
+${more}
+<div class="pair">
+<section class="card"><h2>${esc(T.dashTeam)}</h2><ul class="people">${team}</ul><p class="muted">${esc(T.dashTeamAdd)}</p></section>
+<section class="card"><h2>${esc(T.dashAccount)}</h2>
+<dl class="facts"><div><dt>${esc(T.dashEmail)}</dt><dd class="ltr">${esc(user.email)}</dd></div><div><dt>${esc(T.dashBusiness)}</dt><dd>${esc(workspace.name)}</dd></div></dl>
+<p class="row">${canSwitch ? `<a class="button" href="/workspace">${esc(T.homeSwitch)}</a>` : ''}<a class="button" href="/logout">${esc(T.dashSignOutAll)}</a></p>
 </section>
-${links([...(canSwitch ? [['/workspace', T.homeSwitch]] : []), ['/logout', T.homeSignOut]])}`;
+</div>
+<p class="muted center">${esc(T.dashHelp)}</p>`;
 }
 
 export const messagePage = ({ title, lead, links: pairs = [] }) => `
@@ -190,6 +238,24 @@ function workspaceTile(w, csrf) {
     ),
     ...w.invites.map((i) => `<li><span class="muted">${esc(T.pendingInvite(i.email, when(i.expires_at)))}</span><span class="end">${button(`/admin/invites/${i.id}/revoke`, T.revokeInvite, csrf, { kind: 'quiet' })}</span></li>`),
   ];
+  // Each product's subscription: what the customer's dashboard shows, recorded here (no payment provider yet).
+  const subs = Object.keys(w.products)
+    .filter((p) => w.products[p] || w.subscriptions?.[p])
+    .map((p) => {
+      const s = w.subscriptions?.[p] || {};
+      const d = describe(s.updated_at ? s : null);
+      const sel = (v) => (s.vat === v ? ' selected' : '');
+      return `<li><form method="post" action="${base}/subscription" class="sub-form">${csrfField(csrf)}<input type="hidden" name="product" value="${p}">
+<span class="sub-name">${productMark(p)}<b>${esc(PRODUCT_NAMES[p])}</b>${d ? `<span class="muted">${esc(T.subStatus[d.status])}${d.status === 'active' ? `, ${esc(T.subLeft(d.left))}` : ''}</span>` : `<span class="muted">${esc(T.subNone)}</span>`}</span>
+<label>${esc(T.subMonthly)}<input name="monthly" inputmode="decimal" dir="ltr" value="${esc(s.monthly ?? '')}"></label>
+<label>${esc(T.subSetupLabel)}<input name="setup" inputmode="decimal" dir="ltr" value="${esc(s.setup ?? '')}"></label>
+<label>${esc(T.subVat)}<select name="vat"><option value=""></option><option value="excluded"${sel('excluded')}>${esc(T.vatExcluded)}</option><option value="included"${sel('included')}>${esc(T.vatIncluded)}</option></select></label>
+<label>${esc(T.subStarted)}<input name="started_on" type="date" value="${esc(s.started_on ?? '')}"></label>
+<label>${esc(T.subPaid)}<input name="paid_until" type="date" value="${esc(s.paid_until ?? '')}"></label>
+<label>${esc(T.subEnds)}<input name="ends_on" type="date" value="${esc(s.ends_on ?? '')}"></label>
+<button class="quiet">${esc(T.subSave)}</button></form>${button(`${base}/subscription/pay`, T.subPayMonth, csrf, { fields: { product: p }, kind: 'quiet' })}</li>`;
+    })
+    .join('');
   const enabledProducts = Object.entries(w.products).filter(([, on]) => on).map(([p]) => p);
   const viewAs = `<form method="post" action="${base}/view-as" class="inline">${csrfField(csrf)}${
     enabledProducts.length
@@ -201,6 +267,7 @@ function workspaceTile(w, csrf) {
 <header><h3>${esc(w.name)}<span class="slug ltr">${esc(w.slug)}</span></h3><span class="tag">${esc(w.disabled_at ? T.statusDisabled : T.statusActive)}</span></header>
 <p class="section-l">${esc(T.colProducts)}</p>
 <ul class="toggles">${products}</ul>
+${subs ? `<p class="section-l">${esc(T.subTitle)}</p><ul class="subs-admin">${subs}</ul>` : ''}
 <p class="section-l">${esc(T.colMembers)}</p>
 <ul class="people">${people.length ? people.join('') : `<li class="muted">${esc(T.noMembers)}</li>`}</ul>
 <div class="actions">

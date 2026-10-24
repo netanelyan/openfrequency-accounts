@@ -57,6 +57,33 @@ export const T = {
   pickTitle: 'לאיזה חשבון נכנסים?',
   pickLead: 'אתם רשומים בכמה חשבונות. אפשר להחליף אחר כך מהדף הראשי.',
 
+  // ---- the customer's dashboard
+  dashProducts: 'המוצרים שלכם',
+  subStatus: { active: 'פעיל', open: 'פעיל', due: 'מחכה לתשלום', ending: 'מסתיים', ended: 'הסתיים' },
+  subPrice: (amount, vat) => `${amount} לחודש, ${vat}`,
+  vatIncluded: 'כולל מע״מ',
+  vatExcluded: 'לא כולל מע״מ',
+  subSince: (d) => `מנוי מאז ${d}`,
+  subPaidUntil: (d) => `שולם עד ${d}`,
+  subLeft: (n) => (n === 1 ? 'זה היום האחרון בחודש ששולם' : `נשארו ${n} ימים בחודש ששולם`),
+  subNext: (d, amount, plusVat) => `החיוב הבא: ${amount}${plusVat ? ' ועוד מע״מ' : ''}, ב-${d}`,
+  subDue: (d) => `התשלום לחודש שהתחיל ב-${d} עוד לא הגיע אלינו. כשיגיע, נעדכן כאן.`,
+  subEnding: (d, n) => `המנוי מסתיים ב-${d}. ${n === 1 ? 'זה היום האחרון שלו.' : `נשארו ${n} ימים.`}`,
+  subEnded: (d) => `המנוי הסתיים ב-${d}.`,
+  subOpen: 'התשלום הראשון יופיע כאן כשנרשום אותו.',
+  subSetup: (amount) => `דמי הקמה: ${amount}, פעם אחת`,
+  dashMore: 'עוד מאיתנו',
+  dashMoreWhat: { teder: 'מצגות בעברית לטיקטוק ולאינסטגרם', toran: 'עונה ללקוחות שלכם בוואטסאפ' },
+  dashMoreLink: 'לפרטים',
+  dashTeam: 'מי בחשבון',
+  dashTeamAdd: 'כדי להוסיף מישהו לחשבון, ענו לאחד המיילים שקיבלתם מאיתנו ונשלח לו הזמנה.',
+  dashYou: '(אתם)',
+  dashAccount: 'הפרטים שלכם',
+  dashEmail: 'מייל',
+  dashBusiness: 'עסק',
+  dashHelp: 'שאלה על המנוי או על החיוב? ענו לאחד המיילים שקיבלתם מאיתנו.',
+  dashSignOutAll: 'יציאה מכל המכשירים',
+
   logoutTitle: 'יציאה',
   logoutLead: (email) => `אפשר לצאת רק מהדפדפן הזה, או מכל מקום שבו נכנסתם עם ${email}. היציאה חלה על כל המוצרים של OpenFrequency.`,
   logoutHere: 'יציאה מהדפדפן הזה',
@@ -130,6 +157,18 @@ export const T = {
   flashDisabled: (name) => `${name} מושבת. מי שבתוכו יוצא בבקשה הבאה.`,
   flashEnabled: (name) => `${name} פעיל שוב.`,
   flashViewStopped: 'סיימתם לצפות.',
+  subTitle: 'מנוי',
+  subMonthly: 'לחודש, ב-₪',
+  subSetupLabel: 'הקמה, ב-₪',
+  subVat: 'מע״מ',
+  subStarted: 'התחלה',
+  subPaid: 'שולם עד',
+  subEnds: 'יום אחרון',
+  subSave: 'שמירה',
+  subPayMonth: 'התקבל תשלום לחודש',
+  subNone: 'אין מנוי',
+  flashSubSaved: (p, name) => `המנוי של ${name} ל${p} נשמר.`,
+  flashSubPaid: (p, name, d) => `${name}: ${p} שולם עד ${d}.`,
 
   errors: {
     bad_name: 'צריך שם לעסק, עד 80 תווים.',
@@ -141,6 +180,9 @@ export const T = {
     workspace_disabled: 'החשבון הזה מושבת. הפעילו אותו מחדש לפני שמזמינים אליו.',
     no_workspace: 'החשבון הזה לא קיים.',
     bad_product: 'המוצר הזה לא קיים.',
+    bad_price: 'המחיר צריך להיות מספר.',
+    bad_date: 'אחד התאריכים לא תקין.',
+    bad_dates: 'היום האחרון לפני יום ההתחלה.',
   },
 };
 
@@ -163,6 +205,8 @@ export const AUDIT_NAMES = {
   view_as_stop: 'סיום צפייה כלקוח',
   superadmin_created: 'המנהל נוצר',
   superadmin_reset: 'המנהל הוגדר מחדש',
+  subscription_saved: 'מנוי עודכן',
+  subscription_paid: 'תשלום נרשם',
 };
 
 // ---- emails
@@ -194,3 +238,8 @@ export const MAIL = {
 const DATE = new Intl.DateTimeFormat('he-IL', { timeZone: 'Asia/Jerusalem', day: 'numeric', month: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 /** An Israel-time date and hour, like "25.10.2026, 13:00". */
 export const when = (iso) => DATE.format(new Date(iso)).replace(/\s*,\s*/, ', ');
+
+/** A calendar day, YYYY-MM-DD, as Israel writes it: "25.10.2026". */
+export const dayHe = (d) => (d ? `${+d.slice(8, 10)}.${+d.slice(5, 7)}.${d.slice(0, 4)}` : '');
+/** Shekels, as the site writes them: "1,490 ₪". */
+export const ils = (n) => `${Number(n).toLocaleString('he-IL')} ₪`;

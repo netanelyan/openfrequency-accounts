@@ -13,7 +13,8 @@ import { acceptInvite, consumeMagicLink, createInvite, InviteError, normEmail, p
 import { verifySuperadmin } from '../accounts/superadmin.js';
 import { createWorkspace, getWorkspace, listWorkspaces, recentAudit, setDisabled, setProduct, startViewAs, stopViewAs, WorkspaceError } from '../accounts/workspaces.js';
 import { inviteMail, magicLinkMail } from '../mail/messages.js';
-import { PRODUCT_NAMES, T } from './copy.js';
+import { PRODUCT_NAMES, T, dayHe } from './copy.js';
+import { describe, payMonth, setSubscription, subscriptionsOf } from '../accounts/subscriptions.js';
 import * as P from './html.js';
 
 // The public site, accounts.openfrequency.co.il, behind Caddy.
@@ -186,7 +187,12 @@ export function publicHandler({ db, env = process.env, mailer, limiters = defaul
           const links = [...(mine.length ? [['/workspace', T.homeSwitch]] : []), ['/logout', T.homeSignOut]];
           return page(403, T.loginTitle, P.messagePage({ title: T.homeClosed(ws?.name || ''), lead: '', links }));
         }
-        return page(200, T.homeHello(found.user.name || found.user.email), P.homePage({ csrf, user: found.user, workspace: d.body.workspace, products: d.body.products, productUrls: urls, canSwitch: mine.length > 1 }));
+        // The dashboard: each product's subscription, the other products, who is in the account.
+        const wsId = d.body.workspace.id;
+        const subscriptions = Object.fromEntries(Object.entries(subscriptionsOf(db, wsId)).map(([prod, row]) => [prod, describe(row)]));
+        const members = db.all('SELECT u.id, u.email, u.name, m.role FROM memberships m JOIN users u ON u.id = m.user_id WHERE m.workspace_id = ? AND u.disabled_at IS NULL ORDER BY m.created_at', wsId);
+        const others = PRODUCTS.filter((prod) => !d.body.products.includes(prod));
+        return page(200, T.homeHello(found.user.name || found.user.email), P.homePage({ csrf, user: found.user, workspace: d.body.workspace, products: d.body.products, productUrls: urls, canSwitch: mine.length > 1, subscriptions, members, others }), { wide: true });
       }
 
       if (p === '/login' && req.method !== 'POST') {
@@ -333,7 +339,25 @@ export function publicHandler({ db, env = process.env, mailer, limiters = defaul
           }
         }
 
-        let m = /^\/admin\/workspaces\/(\d+)\/(invite|products|disable|enable|view-as)$/.exec(p);
+        let m = /^\/admin\/workspaces\/(\d+)\/subscription(\/pay)?$/.exec(p);
+        if (m) {
+          try {
+            const w = getWorkspace(db, m[1]);
+            const product = f('product');
+            if (m[2]) {
+              const until = payMonth(db, w.id, product, by);
+              setFlash(T.flashSubPaid(PRODUCT_NAMES[product], w.name, dayHe(until)));
+            } else {
+              setSubscription(db, w.id, product, { monthly: f('monthly'), setup: f('setup'), vat: f('vat'), started_on: f('started_on'), paid_until: f('paid_until'), ends_on: f('ends_on') }, by);
+              setFlash(T.flashSubSaved(PRODUCT_NAMES[product], w.name));
+            }
+            return redirect('/admin');
+          } catch (e) {
+            return problem(e, {});
+          }
+        }
+
+        m = /^\/admin\/workspaces\/(\d+)\/(invite|products|disable|enable|view-as)$/.exec(p);
         if (m) {
           const [, id, action] = m;
           try {

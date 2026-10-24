@@ -270,3 +270,43 @@ test('names typed into the console are escaped everywhere they are shown', async
     await t.done();
   }
 });
+
+test("the customer's dashboard: each product's subscription, recorded on the console, with the days left and the next charge", async () => {
+  const t = await setup();
+  try {
+    await openShop(t);
+    const { b } = await accept(t, t.mails[0]);
+    let home = (await b.get('/')).body;
+    assert.match(home, /790 ₪ לחודש, לא כולל מע״מ/, 'the list price, from the day it was turned on');
+    assert.match(home, /התשלום הראשון יופיע כאן כשנרשום אותו\./);
+    assert.match(home, /מנוי מאז 22\.10\.2026/);
+    assert.match(home, /עוד מאיתנו[^]*openfrequency\.co\.il\/toran/, 'Toran, which they do not have, is offered');
+    assert.match(home, /מי בחשבון[^]*דנה[^]*בעלים/);
+
+    // A month's payment comes in: paid for a month from today.
+    const w = ws(t.db, 'dana-shop');
+    const paid = await t.admin.post(`/admin/workspaces/${w.id}/subscription/pay`, { product: 'teder' });
+    assert.equal(paid.status, 303);
+    assert.match((await t.admin.get('/admin')).body, /חנות של דנה: תדר שולם עד 21\.11\.2026\./);
+    home = (await b.get('/')).body;
+    assert.match(home, /<span class="tag">פעיל<\/span>/);
+    assert.match(home, /נשארו 31 ימים בחודש ששולם/);
+    assert.match(home, /<progress max="31" value="1"/);
+    assert.match(home, /החיוב הבא: 790 ₪ ועוד מע״מ, ב-22\.11\.2026/);
+
+    // Stopped: its last day is the end of the month paid for.
+    await t.admin.post(`/admin/workspaces/${w.id}/subscription`, { product: 'teder', monthly: '790', setup: '1490', vat: 'excluded', started_on: '2026-10-22', paid_until: '2026-11-21', ends_on: '2026-11-21' });
+    home = (await b.get('/')).body;
+    assert.match(home, /המנוי מסתיים ב-21\.11\.2026\. נשארו 31 ימים\./);
+    assert.doesNotMatch(home, /החיוב הבא/);
+
+    // What the console refuses, and what a customer cannot do at all.
+    const bad = await t.admin.post(`/admin/workspaces/${w.id}/subscription`, { product: 'teder', monthly: 'abc' });
+    assert.equal(bad.status, 400);
+    assert.match(bad.body, /המחיר צריך להיות מספר\./);
+    const sneak = await b.post(`/admin/workspaces/${w.id}/subscription/pay`, { product: 'teder' });
+    assert.equal(sneak.status, 403);
+  } finally {
+    await t.done();
+  }
+});

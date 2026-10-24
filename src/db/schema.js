@@ -110,4 +110,27 @@ export const MIGRATIONS = [
   CREATE INDEX audit_at ON audit(at);
   CREATE INDEX audit_workspace ON audit(workspace_id, at);
   `,
+  `
+  -- A workspace's subscription to a product, as OpenFrequency records it (no payment provider yet): the price agreed,
+  -- when it began, the last day already paid for, and the last day of all once it is stopped. Dates are Israel
+  -- calendar days (YYYY-MM-DD). What the customer's dashboard says (active, waiting for payment, ending, ended, the
+  -- days left, the next charge) is worked out from these (src/accounts/subscriptions.js).
+  CREATE TABLE subscriptions (
+    workspace_id    INTEGER NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+    product         TEXT NOT NULL CHECK (product IN ('teder', 'toran')),
+    monthly         REAL,                          -- ₪ a month
+    vat             TEXT CHECK (vat IS NULL OR vat IN ('included', 'excluded')),
+    setup           REAL,                          -- ₪ once, in the first month
+    started_on      TEXT,
+    paid_until      TEXT,                          -- the last day already paid for
+    ends_on         TEXT,                          -- set when it is stopped: its last day
+    updated_at      TEXT NOT NULL,
+    PRIMARY KEY (workspace_id, product)
+  );
+  -- The products already on: a subscription at the list price (before VAT), from the day each was turned on.
+  INSERT INTO subscriptions (workspace_id, product, monthly, vat, setup, started_on, updated_at)
+    SELECT workspace_id, product, CASE product WHEN 'toran' THEN 449 ELSE 790 END, 'excluded',
+           CASE product WHEN 'toran' THEN 990 ELSE 1490 END, substr(updated_at, 1, 10), updated_at
+    FROM workspace_products WHERE enabled = 1;
+  `,
 ];

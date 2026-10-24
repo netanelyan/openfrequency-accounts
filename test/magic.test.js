@@ -56,8 +56,10 @@ test('a customer asks for a link, opens it, presses the button, and is signed in
     const home = await b.get('/');
     assert.equal(home.status, 200);
     assert.match(home.body, /אתם מחוברים בתור dana@example\.com, בחשבון של Dana Shop\./);
-    assert.match(home.body, /<a href="https:\/\/teder\.openfrequency\.co\.il\/"><span class="mark teder"[^]*?<span>כניסה לתדר<\/span>/);
+    assert.match(home.body, /<a class="button primary" href="https:\/\/teder\.openfrequency\.co\.il\/">כניסה לתדר<\/a>/);
     assert.doesNotMatch(home.body, /כניסה לתורן/);
+    // Toran is not theirs: it is offered under "עוד מאיתנו", with a link to its page, not to the product.
+    assert.match(home.body, /<a href="https:\/\/openfrequency\.co\.il\/toran">/);
   } finally {
     await t.done();
   }
