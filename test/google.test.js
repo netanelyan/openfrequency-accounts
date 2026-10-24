@@ -307,3 +307,50 @@ test('an invite is accepted with Google by the address it went to, and by no oth
     await t.done();
   }
 });
+
+test('a Gmail mailbox under another spelling: Google as natik@gmail.com opens natik+shop@gmail.com, never the superadmin, and only when one account has it', async () => {
+  const { mailbox } = await import('../src/accounts/google.js');
+  assert.equal(mailbox('Na.Tik+shop@GoogleMail.com'), 'natik@gmail.com');
+  assert.equal(mailbox('dana+shop@example.com'), 'dana+shop@example.com', 'another domain is as written');
+  const t = await setup();
+  try {
+    makeUser(t.db, 'natik@gmail.com', { superadmin: true });
+    const shop = makeUser(t.db, 'natik+shop@gmail.com');
+    const b = t.browser();
+    const r = await back(t, b, await toGoogle(b), { sub: '7007', email: 'natik@gmail.com', name: 'Natik' });
+    assert.equal(r.status, 303, 'the customer account of that mailbox, not the superadmin');
+    assert.ok(b.cookie('__Secure-of_session'), 'signed in');
+    assert.equal(t.db.get('SELECT user_id FROM sessions ORDER BY rowid DESC LIMIT 1').user_id, shop.id, 'as the shop account');
+    assert.equal(t.db.get('SELECT google_sub FROM users WHERE id = ?', shop.id).google_sub, '7007');
+    assert.equal(t.db.get("SELECT google_sub FROM users WHERE email = 'natik@gmail.com'").google_sub, null, 'the superadmin is never tied');
+    const a = JSON.parse(t.db.get("SELECT detail_json FROM audit WHERE action = 'sign_in' ORDER BY id DESC LIMIT 1").detail_json);
+    assert.deepEqual([a.email, a.account], ['natik@gmail.com', 'natik+shop@gmail.com']);
+
+    // Two customer accounts on one mailbox: Google cannot say which, so neither.
+    makeUser(t.db, 'roni+a@gmail.com');
+    makeUser(t.db, 'r.oni+b@gmail.com');
+    const b2 = t.browser();
+    assert.equal((await back(t, b2, await toGoogle(b2), { sub: '8008', email: 'roni@gmail.com' })).status, 403);
+    // Another domain's +tag is another address.
+    makeUser(t.db, 'dana+shop@example.org');
+    const b3 = t.browser();
+    assert.equal((await back(t, b3, await toGoogle(b3), { sub: '9009', email: 'dana@example.org' })).status, 403);
+  } finally {
+    await t.done();
+  }
+});
+
+test('an invite sent to name+tag@gmail.com is accepted with the Google account of that mailbox', async () => {
+  const t = await setup();
+  try {
+    const inv = createInvite(t.db, { workspaceId: t.ws.id, email: 'yael+shop@gmail.com', role: 'client_member' });
+    const b = t.browser();
+    const r = await back(t, b, await toGoogle(b, `/auth/google?invite=${inv.token}`), { sub: '4004', email: 'yael@gmail.com', name: 'Yael' });
+    assert.equal(r.status, 303);
+    const u = t.db.get("SELECT * FROM users WHERE email = 'yael+shop@gmail.com'");
+    assert.equal(u.google_sub, '4004', 'the account is the address the invite went to, tied to that Google account');
+    assert.equal((await t.internal(b.cookie('__Secure-of_session'), 'teder')).json.workspace.slug, 'dana-shop');
+  } finally {
+    await t.done();
+  }
+});

@@ -9,7 +9,7 @@ import { clientIp, cookies, csrfFor, csrfOk, isHttps, sessionSecret } from '../a
 import { createLimiter, LIMITS } from '../auth/limiter.js';
 import { safeNext } from '../auth/next.js';
 import { finishGoogle, GoogleError, googleConfig, openFlow, sameState, sealFlow, startGoogle, FLOW_TTL } from '../auth/google.js';
-import { bindGoogle, userForGoogle } from '../accounts/google.js';
+import { bindGoogle, mailbox, userForGoogle } from '../accounts/google.js';
 import { chooseWorkspace, createSession, describeSession, findSession, LIFETIME, memberships, revokeAllSessions, revokeSession, sessionCookie, sessionFromJar } from '../auth/sessions.js';
 import { acceptInvite, consumeMagicLink, createInvite, InviteError, normEmail, peekInvite, peekMagicLink, requestMagicLink, revokeInvite, validEmail } from '../accounts/links.js';
 import { verifySuperadmin } from '../accounts/superadmin.js';
@@ -498,7 +498,7 @@ export function publicHandler({ db, env = process.env, mailer, limiters = defaul
           const live = peekInvite(db, flow.invite);
           if (!live) return inviteDead();
           // Only the address the invite went to may accept it, as with the link in its email.
-          if (normEmail(live.row.email) !== who.email) return fail(403, T.googleWrongInvite(live.row.email), T.googleWrongInviteLead(live.row.email, who.email));
+          if (mailbox(live.row.email) !== mailbox(who.email)) return fail(403, T.googleWrongInvite(live.row.email), T.googleWrongInviteLead(live.row.email, who.email));
           const done = acceptInvite(db, flow.invite, { name: who.name, ip, method: 'google' });
           if (!done) return inviteDead();
           bindGoogle(db, done.user, who);
