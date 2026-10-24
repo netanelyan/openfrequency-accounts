@@ -24,6 +24,35 @@ It owns:
   `.openfrequency.co.il`. Signing out ends it for every product at once, and "sign out
   on all devices" ends every session the user has.
 
+## The operator's dashboard, /admin
+
+The superadmin's `/admin` has two tabs. **היום** (`/admin`) is the operator's dashboard,
+which used to be on Toran's home page (toran.openfrequency.co.il now shows Toran only).
+**חשבונות** (`/admin/accounts`) is the console: workspaces, products, subscriptions,
+invoices, invites, view-as and the audit log.
+
+The dashboard shows:
+
+- **לפנות היום**: who to write to today about Toran or Teder. Each card has the message,
+  which can be edited, a button that copies it and opens the chat, and שלחתי, ענו לי, מחר,
+  בעוד שבוע and לא מעוניינים (with the reason). A demo asked for on the website can go out
+  from the demo number, and a next step that is due has its own form.
+- The demos asked for on the website that have nothing to send yet, and the ready pages
+  with no way to reach the store.
+- **בשיחה**: who answered, with their next step.
+- **המשפך**: each product's funnel, with the rate from each stage to the next.
+- **לקוחות וכסף**: the monthly revenue before VAT, who pays, who is late, who has not paid
+  yet, and who renews in the next 7 days.
+
+The leads, the messages and the funnels come from Toran, which keeps the outreach: `GET
+/internal/ops` at each load, and every button is forwarded to `POST
+/internal/ops/<toran|teder>/<id>/<action>` (Toran's `docs/operator.md`, section 4). Accounts
+reaches Toran at `OF_TORAN_INTERNAL` (default `http://127.0.0.1:4710`) with
+`OF_INTERNAL_TOKEN`. Accounts works out the money and the funnels' last stage, the customers,
+from its own subscriptions. When Toran does not answer, its sections say so and the rest of
+the page works. The buttons work without JavaScript. With it (`static/admin.js`, the site's one
+script), they post in the background and the card goes away. In view-as the dashboard is closed.
+
 ## Try it
 
 ```sh
@@ -50,7 +79,8 @@ The full steps (DNS, Resend, Caddy, backups, checks) are in [docs/deploy.md](doc
 - [docs/internal-owner-phone.md](docs/internal-owner-phone.md): who a WhatsApp number is, for
   Toran's owner line: the link code, the claim, consent, and every answer.
 - [docs/internal-ops.md](docs/internal-ops.md): `/internal/ops/customers`, every workspace with
-  its people, subscriptions and invoices, for the operator's dashboard on Toran.
+  its people, subscriptions and invoices, for Toran; and the other direction, `/admin` calling
+  Toran's `/internal/ops`.
 - [docs/switch-over.md](docs/switch-over.md): what changes in each product, and in what order.
 
 ## Where things are
@@ -62,7 +92,7 @@ The full steps (DNS, Resend, Caddy, backups, checks) are in [docs/deploy.md](doc
 | `src/auth` | passwords, TOTP, tokens, rate limits, the `?next=` allowlist, sessions |
 | `src/accounts` | magic links and invites, workspaces, the superadmin, subscriptions, invoices, WhatsApp numbers, the operator's list of customers |
 | `src/mail` | Resend (or the outbox folder without a key), and the two emails |
-| `src/web` | `app.js` the public site, `internal.js` `/internal/session`, `/internal/owner-phone*` and `/internal/ops/customers`, `copy.js` every Hebrew word, `html.js` the pages |
+| `src/web` | `app.js` the public site, `internal.js` `/internal/session`, `/internal/owner-phone*` and `/internal/ops/customers`, `toran.js` the client for Toran's `/internal/ops`, `dashboard.js` the operator's dashboard, `copy.js` every Hebrew word, `html.js` the pages |
 | `scripts` | start, demo, `admin:create`, backup, `check:public`, `init-private` |
 | `deploy` | the Caddy block |
 | `ecosystem.config.cjs` | the pm2 job, `of-accounts` |
@@ -75,7 +105,8 @@ The full steps (DNS, Resend, Caddy, backups, checks) are in [docs/deploy.md](doc
 - `?next=` only to `https://<one label>.openfrequency.co.il` or a path here.
 - The superadmin: password and TOTP (one use per code), 5 tries per address in 15 minutes, 12-hour
   sessions, every action in the audit log, view-as read-only.
-- Every form: a CSRF token and an Origin check. Every page: CSP with no script, no framing.
+- Every form: a CSRF token and an Origin check. Every page: CSP with no script (except `/admin`,
+  which allows its own `static/admin.js` and nothing inline), no framing.
 - `/internal/session`, `/internal/owner-phone*` and `/internal/ops/customers`: their own port, never proxied, loopback only,
   a bearer token.
 

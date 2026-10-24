@@ -10,7 +10,9 @@ import { claimPhone, ownerOf, ownersOf, PhoneError, setConsent, validPhone } fro
 //   GET  /internal/owner-phones         a workspace's numbers
 //   POST /internal/owner-phone/claim    the number that sent a link code
 //   POST /internal/owner-phone/consent  "הפסק" and "התחל"
-//   GET  /internal/ops/customers        every workspace and its money, for the operator (docs/internal-ops.md)
+//   GET  /internal/ops/customers        every workspace and its money, for Toran (docs/internal-ops.md)
+//
+// The other direction, /admin calling Toran's /internal/ops for the operator's dashboard, is src/web/toran.js.
 //
 // Four locks, any one of which is enough on its own:
 //   - it listens on 127.0.0.1 on a port Caddy never proxies

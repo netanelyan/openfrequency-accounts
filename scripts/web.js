@@ -20,7 +20,7 @@ const env = process.env;
 const server = await listen(openDb());
 console.log(`of-accounts: http://127.0.0.1:${server.port}  (internal: http://127.0.0.1:${server.internalPort}), email: ${server.mailer.sending}`);
 if (String(env.OF_INTERNAL_TOKEN || '').trim().length < 32) {
-  console.log('OF_INTERNAL_TOKEN is unset or short: /internal/session refuses every request until it is set (32+ characters).');
+  console.log('OF_INTERNAL_TOKEN is unset or short: /internal/session refuses every request, and /admin does not call Toran, until it is set (32+ characters).');
 }
 if (String(env.SESSION_SECRET || '').trim().length < 32) {
   console.log('SESSION_SECRET is unset or short: forms open before a restart will need a reload after it.');

@@ -1,8 +1,12 @@
 # GET /internal/ops/customers
 
-The customers and the money, for the operator's dashboard on Toran (the section "לקוחות וכסף"
-on Toran's home page). Toran reads it at each page load. This is section 1 of Toran's
+Every customer workspace and its money, for Toran. This is section 1 of Toran's
 `docs/operator.md`, as built here. It is read-only: it changes nothing and writes no audit entry.
+
+The operator's dashboard itself is on our `/admin` now (section 4 of the same document), and it
+calls Toran the other way: see [/admin and Toran's /internal/ops](#admin-and-torans-internalops),
+below. `/admin` reads these same rows directly from the database (`opsCustomers()` in
+`src/accounts/ops.js`), for the money and the funnels' last stage.
 
 ## The request
 
@@ -94,6 +98,34 @@ stopped and unpaid is therefore `ending`, never `late` or `waiting`. Compare `pa
 
 Anything else (a timeout, a refused connection) means accounts is not answering: the dashboard
 shows the section as unavailable and the rest of the page as usual.
+
+## /admin and Toran's /internal/ops
+
+The other direction: the public site's `/admin` is a client of Toran's internal routes
+(`src/web/toran.js`). They live on Toran's listener, `OF_TORAN_INTERNAL` (default
+`http://127.0.0.1:4710`), and take the same `Authorization: Bearer <OF_INTERNAL_TOKEN>`.
+
+| Call | When | Timeout |
+|---|---|---|
+| `GET /internal/ops` | each load of `/admin` by the superadmin outside view-as | 3 s |
+| `POST /internal/ops/<toran\|teder>/<id>/<action>` | each button on the dashboard | 15 s |
+
+The POST body is JSON with only what the action takes: `by` always (the superadmin's name, else
+the email), `text` and `days` for `next`, `days` (1 or 7) for `later`, `reason` for `lost`.
+Before forwarding, `/admin` checks the superadmin's session, the CSRF token, that the session is
+not in view-as, the action's name and product, and the reason. Toran's `message` comes back as
+the flash line at the top of the page (or the page script's toast), and its `400 { error }` as
+an error line. A Toran that does not answer, or answers anything else, records nothing, and the
+line says so. Each forwarded action is written to our audit log as `ops_action`.
+
+While Toran does not answer, the dashboard's sections that come from it (who to write to, the
+conversations, the funnels) say so, and the money and the console work as usual. The funnels'
+last stage, `customers`, which Toran sends as null, is counted here: the workspaces, not
+disabled, with a subscription to that product that is `paid` or `ending`, and those of them that
+started in the last 30 days.
+
+Toran's links (`target.href`, `page`, `leadUrl`) reach the page only when they are `https:`,
+`http:` or `mailto:` addresses.
 
 ## Changes to this format
 
