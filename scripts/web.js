@@ -1,6 +1,7 @@
 #!/usr/bin/env node
-// npm start   the public site on 127.0.0.1:${PORT:-4740} and /internal/session on
-//             127.0.0.1:${INTERNAL_PORT:-4741}. pm2 runs this as of-accounts.
+// npm start   the public site on 127.0.0.1:${PORT:-4740} and /internal/session (and
+//             /internal/owner-phone*) on 127.0.0.1:${INTERNAL_PORT:-4741}. pm2 runs this
+//             as of-accounts.
 
 import { requireHome } from '../src/core/paths.js';
 import { loadEnv } from '../src/core/env.js';
@@ -23,6 +24,9 @@ if (String(env.OF_INTERNAL_TOKEN || '').trim().length < 32) {
 }
 if (String(env.SESSION_SECRET || '').trim().length < 32) {
   console.log('SESSION_SECRET is unset or short: forms open before a restart will need a reload after it.');
+}
+if (!String(env.OF_ASSISTANT_WA || '').trim()) {
+  console.log('OF_ASSISTANT_WA is unset: the home page makes WhatsApp link codes, but has no number to send them to.');
 }
 if (!String(env.PUBLIC_HOST || '').trim()) {
   console.log('PUBLIC_HOST is unset: development mode (plain http, a host-only cookie). Set it on the server.');

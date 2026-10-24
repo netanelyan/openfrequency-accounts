@@ -134,6 +134,39 @@ export const MIGRATIONS = [
     FROM workspace_products WHERE enabled = 1;
   `,
   `
+  -- WhatsApp numbers, for the owner line (docs/internal-owner-phone.md). A number proves itself by writing: the
+  -- customer asks for a link code here, sends it from their WhatsApp to the owner line, and Toran says which number
+  -- sent it. The code is kept as it is, not hashed: it signs nobody in, it only links the number that sends it, for
+  -- 30 minutes, once.
+  CREATE TABLE phone_links (
+    code            TEXT PRIMARY KEY,              -- LINK-XXXXXX
+    user_id         INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    workspace_id    INTEGER NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+    opt_in          INTEGER NOT NULL CHECK (opt_in IN (0, 1)),   -- the box "send me updates on WhatsApp"
+    created_at      TEXT NOT NULL,
+    expires_at      TEXT NOT NULL,
+    used_at         TEXT,
+    used_phone      TEXT
+  );
+  CREATE INDEX phone_links_user ON phone_links(user_id, workspace_id, created_at);
+
+  -- A number belongs to one user in one workspace. A removed number is deleted; the audit log keeps what happened.
+  -- Consent is two pairs of columns, the latest opt-in and the latest opt-out: the later of the two speaks for now.
+  CREATE TABLE user_phones (
+    phone           TEXT PRIMARY KEY CHECK (length(phone) BETWEEN 8 AND 15 AND phone GLOB '[1-9]*' AND phone NOT GLOB '*[^0-9]*'),
+    user_id         INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    workspace_id    INTEGER NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+    verified_at     TEXT NOT NULL,                 -- the last time the number sent a code
+    opt_in_at       TEXT,
+    opt_in_source   TEXT,                          -- 'accounts' | 'whatsapp'
+    opt_out_at      TEXT,
+    opt_out_source  TEXT,
+    created_at      TEXT NOT NULL
+  );
+  CREATE INDEX user_phones_workspace ON user_phones(workspace_id);
+  CREATE INDEX user_phones_user ON user_phones(user_id);
+  `,
+  `
   -- A workspace's invoices, for its customer to see and download. The invoice itself is issued by the accountant's
   -- invoicing service, which owns its number and what Israeli law asks of it: Accounts never makes one. The operator
   -- records each on /admin, with the PDF the service produced, and the customer's home lists them. The PDF is kept

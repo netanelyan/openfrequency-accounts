@@ -13,7 +13,8 @@ import { acceptInvite, consumeMagicLink, createInvite, InviteError, normEmail, p
 import { verifySuperadmin } from '../accounts/superadmin.js';
 import { createWorkspace, getWorkspace, listWorkspaces, recentAudit, setDisabled, setProduct, startViewAs, stopViewAs, WorkspaceError } from '../accounts/workspaces.js';
 import { inviteMail, magicLinkMail } from '../mail/messages.js';
-import { PRODUCT_NAMES, T, dayHe } from './copy.js';
+import { PRODUCT_NAMES, T, dayHe, phoneHe } from './copy.js';
+import { createLinkCode, openLinkCode, phoneIn, phonesFor, PHONE, removePhone, setConsent } from '../accounts/phones.js';
 import { describe, payMonth, setSubscription, subscriptionsOf } from '../accounts/subscriptions.js';
 import { addInvoice, invoiceIn, invoicesOf, PDF_MAX, removeInvoice } from '../accounts/invoices.js';
 import { cancelTeamInvite, inviteToTeam, removeMember, TeamError, teamOf } from '../accounts/team.js';
@@ -61,6 +62,12 @@ export function supportUrl(env = process.env) {
   if (/^(https:\/\/[^\s"'<>]+|mailto:[^\s"'<>]+|tel:\+?[0-9-]+)$/i.test(url)) return url;
   const mail = String(env.MAIL_REPLY_TO || '').trim();
   return validEmail(mail) ? `mailto:${mail}` : null;
+}
+
+/** The owner line's WhatsApp number in international digits (OF_ASSISTANT_WA), or null while it is unset. */
+export function assistantWa(env = process.env) {
+  const digits = String(env.OF_ASSISTANT_WA || '').replace(/[\s+-]/g, '');
+  return PHONE.test(digits) ? digits : null;
 }
 
 class Refused extends Error {
@@ -126,6 +133,7 @@ export function publicHandler({ db, env = process.env, mailer, limiters = defaul
   const dev = !publicHost;
   const urls = productUrls(env);
   const support = supportUrl(env);
+  const waNumber = assistantWa(env);
   const formAction = `'self' https://*.openfrequency.co.il${dev ? ' http://localhost:* http://127.0.0.1:*' : ''}`;
   const CSP = `default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action ${formAction}`;
 
@@ -247,6 +255,7 @@ export function publicHandler({ db, env = process.env, mailer, limiters = defaul
           others,
           invoices: invoicesOf(db, wsId),
           team: teamOf(db, wsId),
+          whatsapp: { phones: phonesFor(db, { userId: found.user.id, workspaceId: wsId, role: d.body.role }), code: openLinkCode(db, found.user.id, wsId), waNumber },
           role: d.body.role,
           readOnly: d.body.readOnly,
           support,
@@ -324,6 +333,32 @@ export function publicHandler({ db, env = process.env, mailer, limiters = defaul
         const inv = d.status === 200 ? invoiceIn(db, invoiceMatch[1], d.body.workspace.id) : null;
         if (!inv) return page(404, T.notFound, P.messagePage({ title: T.notFound, lead: '', links: [['/', T.logoutBack]] }));
         return pdf(inv);
+      }
+
+      // WhatsApp on the home page: a link code, a number removed, its updates on or off. Only a customer in their own
+      // workspace; the superadmin (in view-as, read-only) changes nothing here.
+      if (p.startsWith('/whatsapp/') && req.method === 'POST') {
+        if (!found) return redirect('/login');
+        if (found.user.is_superadmin) return page(403, T.loginTitle, P.messagePage({ title: T.waReadOnly, lead: '', links: [['/admin', T.adminTitle]] }));
+        const d = describeSession(db, sid);
+        if (d.status !== 200 || d.body.readOnly) return redirect('/');
+        const me = found.user;
+        const wsId = d.body.workspace.id;
+        if (p === '/whatsapp/link') {
+          createLinkCode(db, { user: me, workspaceId: wsId, optIn: f('updates') === '1', ip });
+          return redirect('/#whatsapp');
+        }
+        // A number of this workspace only: its own person, or the owner to remove it. Anything else changes nothing.
+        const row = phoneIn(db, f('phone'), wsId);
+        if (p === '/whatsapp/remove' && row && (row.user_id === me.id || d.body.role === 'client_owner')) {
+          removePhone(db, row.phone, { by: me, ip });
+          setFlash(T.flashWaRemoved(phoneHe(row.phone)));
+        } else if (p === '/whatsapp/updates' && row && row.user_id === me.id) {
+          const on = f('on') === '1';
+          setConsent(db, row.phone, { optIn: on, source: 'accounts', actor: me, ip });
+          setFlash((on ? T.flashWaOn : T.flashWaOff)(phoneHe(row.phone)));
+        }
+        return redirect('/#whatsapp');
       }
 
       if (p === '/login' && req.method !== 'POST') {

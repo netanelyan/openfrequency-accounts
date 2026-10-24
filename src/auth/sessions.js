@@ -105,14 +105,15 @@ export function chooseWorkspace(db, session, workspaceId) {
   return true;
 }
 
-const enabledProducts = (db, workspaceId) =>
+/** The products a workspace may open, sorted. */
+export const enabledProducts = (db, workspaceId) =>
   db
     .all('SELECT product FROM workspace_products WHERE workspace_id = ? AND enabled = 1', workspaceId)
     .map((r) => r.product)
     .filter((p) => PRODUCTS.includes(p))
     .sort();
 
-const workspaceOut = (w) => ({ id: w.id, slug: w.slug, name: w.name, disabled: Boolean(w.disabled_at) });
+export const workspaceOut = (w) => ({ id: w.id, slug: w.slug, name: w.name, disabled: Boolean(w.disabled_at) });
 
 /**
  * What /internal/session answers for a cookie value: { status, body }. The
