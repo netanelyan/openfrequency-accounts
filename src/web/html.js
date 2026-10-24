@@ -114,6 +114,19 @@ ${csrfField(csrf)}
 </form>
 </section>`;
 
+/**
+ * How far through the month already paid for: the days left and today's place in it above a <progress> (its role is
+ * progressbar, with the numbers and their words for a screen reader), filling from the right as the page reads.
+ */
+function paidBar(s, { saysLeft = true } = {}) {
+  const b = s.bar;
+  const left = b.days - b.day + 1;
+  return `<div class="meter">
+<p class="left">${saysLeft ? `<span>${esc(T.subLeft(left))}</span>` : ''}<span class="muted">${esc(T.subDay(b.day, b.days))}</span></p>
+<progress max="${b.days}" value="${b.day}" aria-label="${esc(T.subBarLabel(dayHe(b.from), dayHe(b.to)))}" aria-valuetext="${esc(`${T.subDay(b.day, b.days)}. ${T.subLeft(left)}`)}"></progress>
+</div>`;
+}
+
 // One product's subscription, as its customer sees it (src/accounts/subscriptions.js describe()).
 function subCard(p, s, href) {
   const name = PRODUCT_NAMES[p];
@@ -121,14 +134,15 @@ function subCard(p, s, href) {
   const vat = s?.vat === 'included' ? T.vatIncluded : s?.vat === 'excluded' ? T.vatExcluded : '';
   const lines = [];
   if (status === 'active') {
-    lines.push(`<p class="left">${esc(T.subLeft(s.left))}</p>`);
-    lines.push(`<progress max="${s.period}" value="${s.period - s.left + 1}" aria-label="${esc(T.subLeft(s.left))}"></progress>`);
+    lines.push(paidBar(s));
     if (s.next) lines.push(`<p>${esc(T.subNext(dayHe(s.next.on), ils(s.next.monthly), s.next.vat === 'excluded'))}</p>`);
     lines.push(`<p class="muted">${esc(T.subPaidUntil(dayHe(s.paid_until)))}</p>`);
   } else if (status === 'due') {
     lines.push(`<p class="warn">${esc(T.subDue(dayHe(s.next.on)))}</p>`);
   } else if (status === 'ending') {
+    // The days left are said once, in the warning; the bar shows where in the last month paid for today is.
     lines.push(`<p class="warn">${esc(T.subEnding(dayHe(s.ends_on), s.left))}</p>`);
+    if (s.bar) lines.push(paidBar(s, { saysLeft: false }));
   } else if (status === 'ended') {
     lines.push(`<p class="muted">${esc(T.subEnded(dayHe(s.ends_on)))}</p>`);
   } else {
@@ -246,7 +260,7 @@ function workspaceTile(w, csrf) {
       const d = describe(s.updated_at ? s : null);
       const sel = (v) => (s.vat === v ? ' selected' : '');
       return `<li><form method="post" action="${base}/subscription" class="sub-form">${csrfField(csrf)}<input type="hidden" name="product" value="${p}">
-<span class="sub-name">${productMark(p)}<b>${esc(PRODUCT_NAMES[p])}</b>${d ? `<span class="muted">${esc(T.subStatus[d.status])}${d.status === 'active' ? `, ${esc(T.subLeft(d.left))}` : ''}</span>` : `<span class="muted">${esc(T.subNone)}</span>`}</span>
+<span class="sub-name">${productMark(p)}<b>${esc(PRODUCT_NAMES[p])}</b>${d ? `<span class="muted">${esc(T.subStatus[d.status])}${d.status === 'active' ? `, ${esc(T.subLeft(d.bar.days - d.bar.day + 1))}` : ''}</span>` : `<span class="muted">${esc(T.subNone)}</span>`}</span>
 <label>${esc(T.subMonthly)}<input name="monthly" inputmode="decimal" dir="ltr" value="${esc(s.monthly ?? '')}"></label>
 <label>${esc(T.subSetupLabel)}<input name="setup" inputmode="decimal" dir="ltr" value="${esc(s.setup ?? '')}"></label>
 <label>${esc(T.subVat)}<select name="vat"><option value=""></option><option value="excluded"${sel('excluded')}>${esc(T.vatExcluded)}</option><option value="included"${sel('included')}>${esc(T.vatIncluded)}</option></select></label>

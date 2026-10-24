@@ -49,14 +49,16 @@ export function ensureSubscription(db, workspaceId, product, today = israelToday
   );
 }
 
-const money = (v) => {
+/** A price or an amount from a form, in ₪: null when empty. Throws WorkspaceError('bad_price'). */
+export const money = (v) => {
   const t = String(v ?? '').replace(/[,\s₪]/g, '');
   if (t === '') return null;
   const n = Number(t);
   if (!Number.isFinite(n) || n < 0 || n > 1_000_000) throw new WorkspaceError('bad_price');
   return n;
 };
-const day = (v) => {
+/** A day from a form, YYYY-MM-DD: null when empty. Throws WorkspaceError('bad_date'). */
+export const day = (v) => {
   const t = String(v ?? '').trim();
   if (t === '') return null;
   if (!DAY.test(t) || fromUtc(toUtc(t)) !== t) throw new WorkspaceError('bad_date');
@@ -99,26 +101,50 @@ export function payMonth(db, workspaceId, product, { by, ip = null }, today = is
 }
 
 /**
+ * The month already paid for that `today` falls in, for the bar: { from, to, days, day } (day 1 is its first day,
+ * today counted), or null when no paid month covers today. Paid months run back from paid_until a month at a time,
+ * as payMonth() adds them, so a customer paid three months ahead sees this month's bar, not one 90 days long. `last`
+ * cuts the month short (the last day of a subscription that is ending).
+ */
+export function paidMonth(paidUntil, today, last = paidUntil) {
+  if (!paidUntil || paidUntil < today) return null;
+  const after = addDays(paidUntil, 1);
+  let k = 1;
+  while (addMonths(after, -k) > today && k < 1200) k++;
+  const from = addMonths(after, -k);
+  const end = addDays(addMonths(after, 1 - k), -1);
+  const to = last && last < end ? last : end;
+  if (to < today) return null;
+  return { from, to, days: daysBetween(from, to) + 1, day: daysBetween(from, today) + 1 };
+}
+
+/**
  * What the customer sees of one subscription, on a given day. Pure.
  *   status   'active' | 'due' (the paid month is over) | 'ending' (stopped, its last day ahead) | 'ended' | 'open'
  *            (on, no payment recorded yet)
- *   left     days left: to the end of the paid month, or to the last day when it is ending
+ *   left     days left: to the last day paid for, or to the last day when it is ending
  *   period   the length of the current paid month, for the bar
+ *   bar      the paid month today is in (paidMonth() above), or null: there is no bar while nothing is paid, once
+ *            the paid month is over, or once it has ended
  *   next     the next charge: { on, monthly, vat }, or null when it is ending or ended
  */
 export function describe(s, today = israelToday()) {
   if (!s) return null;
   const base = { monthly: s.monthly, vat: s.vat, setup: s.setup, started_on: s.started_on, paid_until: s.paid_until, ends_on: s.ends_on };
-  if (s.ends_on && s.ends_on < today) return { ...base, status: 'ended', left: 0, period: null, next: null };
-  if (s.ends_on) return { ...base, status: 'ending', left: daysBetween(today, s.ends_on) + 1, period: null, next: null };
-  if (!s.paid_until) return { ...base, status: 'open', left: null, period: null, next: null };
-  if (s.paid_until < today) return { ...base, status: 'due', left: 0, period: null, next: { on: addDays(s.paid_until, 1), monthly: s.monthly, vat: s.vat } };
-  const start = addDays(addMonths(addDays(s.paid_until, 1), -1), 0);
+  if (s.ends_on && s.ends_on < today) return { ...base, status: 'ended', left: 0, period: null, bar: null, next: null };
+  if (s.ends_on) {
+    const bar = paidMonth(s.paid_until, today, s.ends_on);
+    return { ...base, status: 'ending', left: daysBetween(today, s.ends_on) + 1, period: bar?.days ?? null, bar, next: null };
+  }
+  if (!s.paid_until) return { ...base, status: 'open', left: null, period: null, bar: null, next: null };
+  if (s.paid_until < today) return { ...base, status: 'due', left: 0, period: null, bar: null, next: { on: addDays(s.paid_until, 1), monthly: s.monthly, vat: s.vat } };
+  const bar = paidMonth(s.paid_until, today);
   return {
     ...base,
     status: 'active',
     left: daysBetween(today, s.paid_until) + 1,
-    period: daysBetween(start, s.paid_until) + 1,
+    period: bar.days,
+    bar,
     next: { on: addDays(s.paid_until, 1), monthly: s.monthly, vat: s.vat },
   };
 }

@@ -363,17 +363,26 @@ main.wide .card.sub { margin: 0; display: flex; flex-direction: column; gap: 6px
 .card.sub > header .tag { margin-inline-start: auto; }
 .card.sub p { margin: 0; }
 .card.sub .price { font: 600 17px/1.4 var(--display); color: var(--ink); }
-.card.sub .left { margin-top: 10px; font-weight: 600; }
 .card.sub .warn { margin-top: 8px; color: var(--warn); background: var(--warn-bg); border-radius: var(--r-m); padding: 10px 12px; }
 .card.sub .go { margin-top: auto; padding-top: 16px; }
 .card.sub .go .button { width: 100%; min-height: 48px; }
 .s-due .tag, .s-ending .tag { background: var(--warn-bg); color: var(--warn); }
 .s-ended .tag { background: var(--fill); color: var(--ink-3); }
 .s-ended { opacity: 0.8; }
-progress { appearance: none; -webkit-appearance: none; width: 100%; height: 8px; margin: 4px 0 6px; border: 0; border-radius: 999px; background: var(--fill); overflow: hidden; }
-progress::-webkit-progress-bar { background: var(--fill); border-radius: 999px; }
+/* The month paid for: the words above, the bar under them. A <progress> fills from the inline start, the right
+   here, as the page reads; its track is the grey fill, its value the button blue (amber when it is ending). */
+.card.sub .meter { margin-top: 10px; }
+.card.sub .meter .left { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 2px 12px; margin: 0; font-weight: 600; }
+.card.sub .meter .left .muted { font-weight: 400; }
+.card.sub .warn + .meter { margin-top: 6px; }
+progress { appearance: none; -webkit-appearance: none; display: block; width: 100%; height: 10px; margin: 6px 0 8px; border: 0; border-radius: 999px; background: var(--fill-2); color: var(--accent-fill); overflow: hidden; }
+progress::-webkit-progress-bar { background: var(--fill-2); border-radius: 999px; }
 progress::-webkit-progress-value { background: var(--accent-fill); border-radius: 999px; }
 progress::-moz-progress-bar { background: var(--accent-fill); border-radius: 999px; }
+.s-ending progress { color: var(--warn); }
+.s-ending progress::-webkit-progress-value { background: var(--warn); }
+.s-ending progress::-moz-progress-bar { background: var(--warn); }
+@media (forced-colors: active) { progress { border: 1px solid CanvasText; } }
 
 ul.more { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
 ul.more a { display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-radius: var(--r); background: var(--inset); box-shadow: inset 0 0 0 1px var(--line); color: var(--ink); text-decoration: none; }
