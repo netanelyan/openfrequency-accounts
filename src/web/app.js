@@ -586,8 +586,13 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
           const links = found.user.is_superadmin ? [['/admin', T.adminTitle]] : [['/', SIGNUP.home], ['/logout', SIGNUP.signOut]];
           return page(200, SIGNUP.title, P.messagePage({ title: SIGNUP.signedInTitle(found.user.email), lead: found.user.is_superadmin ? '' : SIGNUP.signedInLead, links }));
         }
-        // With one product open, it starts chosen.
-        if (req.method !== 'POST') return page(200, SIGNUP.title, P.signupPage({ csrf, google: Boolean(google), open: openProducts, form: { products: openProducts.length === 1 ? openProducts : [] } }));
+        // The product the visitor came from (?p=, from the website's buttons) starts chosen, if sign-up offers it; with
+        // one product open, that one does.
+        if (req.method !== 'POST') {
+          const asked = url.searchParams.get('p');
+          const start = openProducts.includes(asked) ? [asked] : openProducts.length === 1 ? openProducts : [];
+          return page(200, SIGNUP.title, P.signupPage({ csrf, google: Boolean(google), open: openProducts, form: { products: start } }));
+        }
 
         const via = f('via') === 'google' && google ? 'google' : 'email';
         const raw = { name: f('name').slice(0, 200), business: f('business').slice(0, 200), email: f('email').slice(0, 254), products: form.getAll('products'), terms: f('terms') === '1' };

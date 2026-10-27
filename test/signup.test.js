@@ -88,6 +88,13 @@ test('open: the form asks for the name, the business, the products with a line e
     assert.match(page.headers['content-security-policy'], /script-src 'none'/);
     // The login page points to it.
     assert.match((await t.browser().get('/login')).body, /עוד אין לכם חשבון\? <a href="\/signup">להרשמה<\/a>/);
+    // Nothing is chosen with both open, and the website's button (?p=) chooses its product; an unknown one, nothing.
+    assert.doesNotMatch(page.body, /value="(toran|teder)" checked/);
+    assert.match((await t.browser().get('/signup?p=teder')).body, /value="teder" checked/);
+    const toran = (await t.browser().get('/signup?p=toran')).body;
+    assert.match(toran, /value="toran" checked/);
+    assert.doesNotMatch(toran, /value="teder" checked/);
+    assert.doesNotMatch((await t.browser().get('/signup?p=nope')).body, /value="(toran|teder)" checked/);
   } finally {
     await t.done();
   }

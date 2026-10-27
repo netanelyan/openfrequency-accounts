@@ -24,7 +24,7 @@ import { openWorkspace } from './workspaces.js';
 // opens nothing.
 
 /** The terms and privacy policy the form links to, by the date they were last updated (openfrequency.co.il). */
-export const TERMS_VERSION = '2026-10-24';
+export const TERMS_VERSION = '2026-10-27';
 export const TERMS_URL = 'https://openfrequency.co.il/terms';
 export const PRIVACY_URL = 'https://openfrequency.co.il/privacy';
 /** The website's page for leaving details, where a closed sign-up sends people. */
