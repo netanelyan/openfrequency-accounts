@@ -38,8 +38,33 @@ An address that already has an account gets a sign-in link instead, never a seco
 `OF_SIGNUP_PRODUCTS` (default `teder,toran`) says which products the form offers: one left out
 shows as coming soon and is refused (Toran waits for Meta's approval of WhatsApp: `teder`).
 Each confirmed sign-up sends a short email to every address in `OF_SIGNUP_NOTIFY` (unset: none),
-with who signed up, the business, the products, the time and a link to it on `/admin`.
-Payment is not taken yet: `src/accounts/billing.js` is the hook a card-clearing provider plugs into.
+with who signed up, the business, the products, the time and a link to it on `/admin`, and the
+customer a welcome email (pay first, then set up, with the prices and a link to `/setup`). The
+form shows each product's price, VAT excluded, with its setup fee.
+
+## The paywall, cancelling and deleting
+
+The products are behind a paywall: a workspace may use one only while a recorded payment covers
+today, or while the superadmin has marked it complimentary on `/admin/accounts`. There is no
+payment provider yet (`src/accounts/billing.js` is the hook one plugs into, `OF_BILLING_PROVIDER`),
+so payments are recorded on `/admin` ("התקבל תשלום לחודש" moves the paid-until day a month on).
+Teder and Toran ask `GET /internal/entitlement?workspace=<id>&product=<p>`: `access` is `paid`,
+`comp`, `unpaid`, `cancelled` or `off`, and `allowed` says whether to open. Every workspace that
+existed before the paywall (migration 7) is complimentary for the products it had on, so nothing
+that worked stops; a new sign-up is not. Until it is paid, `/setup` shows the payment as the
+first required step (leading to our WhatsApp while there is no provider) and the product's steps
+locked, and the home page's product card says "להסדיר תשלום". The home page shows the plan, the
+price, the day it is paid until, the next charge (once there is a provider) and the status in
+plain words.
+
+An owner cancels a product online from the home page (a confirmation page first): it works to
+the last day paid for and then stops, with nothing more charged, and can be taken back until
+then; the owners get an email and `OF_SIGNUP_NOTIFY` a notice. An owner (or the superadmin) can
+delete the workspace and its data, typing its name to confirm: Teder and Toran are asked first
+(`POST /internal/workspaces/<id>/delete`; a 404 does not stop it, any other failure does), then
+ours is deleted, the invoices kept and detached as the law asks. Teder and Toran email a
+workspace's people through `POST /internal/notify`, and each person chooses which emails they
+get, per product and kind, on `/notifications`. All of it is in [docs/setup.md](docs/setup.md).
 
 `/setup` is one checklist per workspace, for the products it has turned on only: each product is
 asked for its steps at `GET /internal/setup` (Teder at `OF_TEDER_INTERNAL`, Toran at
@@ -125,8 +150,9 @@ The full steps (DNS, Resend, Caddy, backups, checks) are in [docs/deploy.md](doc
   its people, subscriptions and invoices, for Toran; and the other direction, `/admin` calling
   Toran's `/internal/ops`.
 - [docs/switch-over.md](docs/switch-over.md): what changes in each product, and in what order.
-- [docs/setup.md](docs/setup.md): `/internal/setup`, each product's checklist for the setup page,
-  and the sign-up's settings.
+- [docs/setup.md](docs/setup.md): `/internal/setup`, each product's checklist for the setup page;
+  `/internal/entitlement`, the paywall; `/internal/notify`, product emails; the delete route each
+  product answers when a workspace is deleted; and the sign-up's settings.
 
 ## Where things are
 
@@ -135,9 +161,9 @@ The full steps (DNS, Resend, Caddy, backups, checks) are in [docs/deploy.md](doc
 | `src/db` | the SQLite database (`node:sqlite`) and its migrations |
 | `src/core` | paths, the `.env` loader, the clock, the audit log |
 | `src/auth` | passwords, TOTP, tokens, rate limits, the `?next=` allowlist, sessions, Google's half of signing in |
-| `src/accounts` | magic links and invites, public sign-up, workspaces, the superadmin, subscriptions, the payment hook, invoices, WhatsApp numbers, the operator's list of customers |
+| `src/accounts` | magic links and invites, public sign-up, workspaces, the superadmin, subscriptions, the payment hook, the paywall (`entitlement.js`), deleting a workspace (`erase.js`), product emails (`notify.js`), invoices, WhatsApp numbers, the operator's list of customers |
 | `src/mail` | Resend (or the outbox folder without a key), and the emails |
-| `src/web` | `app.js` the public site, `internal.js` `/internal/session`, `/internal/owner-phone*` and `/internal/ops/customers`, `toran.js` the client for Toran's `/internal/ops`, `setup.js` the client for each product's `/internal/setup`, `dashboard.js` the operator's dashboard, `copy.js` every Hebrew word, `html.js` the pages |
+| `src/web` | `app.js` the public site, `internal.js` `/internal/session`, `/internal/owner-phone*`, `/internal/ops/customers`, `/internal/entitlement` and `/internal/notify`, `toran.js` the client for Toran's `/internal/ops`, `setup.js` the client for each product's `/internal/setup`, `erase.js` the client for each product's delete route, `dashboard.js` the operator's dashboard, `copy.js` every Hebrew word, `html.js` the pages |
 | `scripts` | start, demo, `admin:create`, backup, `check:public`, `init-private` |
 | `deploy` | the Caddy block |
 | `ecosystem.config.cjs` | the pm2 job, `of-accounts` |

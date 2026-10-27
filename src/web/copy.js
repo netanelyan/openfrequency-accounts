@@ -86,7 +86,7 @@ export const T = {
 
   // ---- the customer's dashboard
   dashProducts: 'המוצרים שלכם',
-  subStatus: { active: 'פעיל', open: 'פעיל', due: 'מחכה לתשלום', ending: 'מסתיים', ended: 'הסתיים' },
+  subStatus: { active: 'פעיל', open: 'עוד לא שולם', due: 'מחכה לתשלום', ending: 'מסתיים', ended: 'הסתיים', comp: 'ללא תשלום', cancelled: 'בוטל' },
   subPrice: (amount, vat) => `${amount} לחודש, ${vat}`,
   vatIncluded: 'כולל מע״מ',
   vatExcluded: 'לא כולל מע״מ',
@@ -99,8 +99,16 @@ export const T = {
   subDue: (d) => `התשלום לחודש שהתחיל ב-${d} עוד לא הגיע אלינו. כשיגיע, נעדכן כאן.`,
   subEnding: (d, n) => `המנוי מסתיים ב-${d}. ${n === 1 ? 'זה היום האחרון שלו.' : `נשארו ${n} ימים.`}`,
   subEnded: (d) => `המנוי הסתיים ב-${d}.`,
-  subOpen: 'התשלום הראשון יופיע כאן כשנרשום אותו.',
+  subOpen: (product) => `${product} נפתח אחרי התשלום על המנוי.`,
   subSetup: (amount) => `דמי הקמה: ${amount}, פעם אחת`,
+  subComp: 'המנוי הזה אצלנו ללא תשלום.',
+  subCancelled: (d) => `ביטלתם את המנוי. הוא עובד עד ${d} ואז נעצר, ולא נחייב אתכם יותר.`,
+  subCancelledNow: 'ביטלתם את המנוי, ולא נחייב אתכם עליו.',
+  subPay: 'להסדיר תשלום',
+  subCancel: 'לבטל את המנוי',
+  subCancelLabel: (product) => `לבטל את המנוי ל${product}`,
+  subResume: 'להמשיך את המנוי',
+  subResumeLabel: (product) => `להמשיך את המנוי ל${product}`,
   dashInvoices: 'חשבוניות',
   invNone: 'עוד אין כאן חשבוניות. כל חשבונית שנוציא לכם תופיע כאן, עם המסמך עצמו להורדה.',
   invTitle: (product, number) => `${product}, חשבונית ${number}`,
@@ -138,6 +146,8 @@ export const T = {
   dashHelp: 'שאלה על המנוי או על החיוב? ענו לאחד המיילים שקיבלתם מאיתנו.',
   dashHelpAsk: 'שאלה על המנוי או על החיוב?',
   dashSignOutAll: 'יציאה מכל המכשירים',
+  dashNotifications: 'התראות במייל',
+  dashDelete: 'מחיקת החשבון',
 
   // ---- WhatsApp: the owner line (docs/internal-owner-phone.md)
   waTitle: 'וואטסאפ',
@@ -260,6 +270,17 @@ export const T = {
   invSave: 'שמירה',
   invRemove: 'הסרה',
   invAdminLine: (number, d, total) => `חשבונית ${number}, ${d}, ${total}`,
+  accessNames: { paid: 'שולם', comp: 'ללא תשלום', unpaid: 'לא שולם', cancelled: 'בוטל', off: 'כבוי' },
+  accessLine: (name, open, until) => `גישה: ${name}, ${open ? 'פתוח' : 'סגור'}${until ? `, עד ${until}` : ''}`,
+  compOn: 'לסמן ללא תשלום',
+  compOff: 'לבטל את הפטור מתשלום',
+  flashCompOn: (p, name) => `${p} ב-${name} מסומן ללא תשלום.`,
+  flashCompOff: (p, name) => `${p} ב-${name} כבר לא ללא תשלום. מעכשיו הוא פתוח רק כשיש תשלום.`,
+  wsDelete: 'מחיקת החשבון',
+  wsDeleteHint: 'מוחקים את החשבון ואת הנתונים שלו, גם בתדר ובתורן. החשבוניות נשמרות. אי אפשר לבטל את זה.',
+  wsDeleteLabel: 'שם העסק, לאישור',
+  wsDeleteButton: 'למחוק לצמיתות',
+  flashDeleted: (name) => `${name} נמחק, עם הנתונים שלו בתדר ובתורן. החשבוניות נשמרו.`,
   flashInvoiceAdded: (number, name) => `חשבונית ${number} נוספה ל-${name}.`,
   flashInvoiceRemoved: (number) => `חשבונית ${number} הוסרה מהחשבון. בשירות החשבוניות היא נשארת כמו שהיא.`,
 
@@ -291,6 +312,8 @@ export const T = {
     bad_amount: 'צריך סכום לפני מע״מ ואת המע״מ, במספרים. אם אין מע״מ, כתבו 0.',
     bad_pdf: 'צריך לצרף את החשבונית כקובץ PDF.',
     pdf_too_large: 'הקובץ גדול מ-5MB. חשבונית רגילה קטנה בהרבה, אז כדאי לבדוק שזה הקובץ הנכון.',
+    product_off: 'המוצר הזה לא פעיל בחשבון.',
+    name_mismatch: 'השם לא תואם את שם העסק, אז לא מחקנו כלום.',
   },
 };
 
@@ -329,6 +352,14 @@ export const AUDIT_NAMES = {
   signup_requested: 'בקשה להרשמה מהאתר',
   signup_refused: 'הרשמה לכתובת שכבר יש לה חשבון',
   signed_up: 'נרשמו מהאתר',
+  comp_set: 'סומן ללא תשלום',
+  comp_cleared: 'הפטור מתשלום בוטל',
+  subscription_cancelled: 'מנוי בוטל מהאתר',
+  subscription_resumed: 'מנוי שבוטל ממשיך',
+  workspace_deleted: 'חשבון נמחק',
+  workspace_delete_failed: 'מחיקה שלא הושלמה',
+  notify_sent: 'התראה נשלחה במייל',
+  notify_prefs_saved: 'הגדרות התראות נשמרו',
 };
 
 // ---- emails
@@ -387,6 +418,57 @@ export const MAIL = {
     'הוא עובד פעם אחת, במשך 15 דקות.',
     'לא ביקשתם? אפשר להתעלם מהמייל הזה. בלי הקישור אף אחד לא נכנס לחשבון שלכם.',
   ],
+  // Right after a sign-up is confirmed.
+  welcomeSubject: (business) => `החשבון של ${business} נפתח`,
+  welcomeLines: (business, link, providerReady, prices) => [
+    'שלום,',
+    `החשבון של ${business} ב-OpenFrequency פתוח. נשארו שני דברים.`,
+    providerReady
+      ? 'קודם התשלום על המנוי. משלמים בדף ההגדרה, ואחרי התשלום המוצרים נפתחים.'
+      : 'קודם התשלום על המנוי. התשלום באתר ייפתח בקרוב, ועד אז מסדרים אותו איתנו: ענו למייל הזה ונשלח לכם פרטים לתשלום. המוצרים נפתחים אחרי התשלום.',
+    ...[].concat(prices),
+    'אחר כך ההגדרה. בדף ההגדרה יש רשימה של מה שנשאר, וכל צעד מוביל למקום שבו עושים אותו.',
+    { link },
+    'אין סיסמה לזכור. נכנסים עם קישור שנשלח למייל, או עם Google.',
+  ],
+  welcomeButton: 'לדף ההגדרה',
+  welcomePrice: (product, monthly, setup) => `${product}: ${monthly} לחודש ועוד מע״מ, ודמי הקמה של ${setup} פעם אחת.`,
+
+  // To each owner, when a subscription is cancelled online.
+  cancelSubject: (product) => `ביטלתם את המנוי ל${product}`,
+  cancelLines: (business, product, until, link) => [
+    'שלום,',
+    until
+      ? `ביטלתם את המנוי ל${product} בחשבון של ${business}. ${product} ימשיך לעבוד עד ${until}, ואז ייעצר. לא נחייב אתכם יותר.`
+      : `ביטלתם את המנוי ל${product} בחשבון של ${business}. לא נחייב אתכם עליו.`,
+    until ? `התחרטתם? עד ${until} אפשר להמשיך את המנוי מהדף הראשי:` : 'הנתונים נשארים בחשבון. כדי למחוק אותם, יש בדף הראשי מחיקה של החשבון:',
+    { link },
+    'לא אתם ביטלתם? ענו למייל הזה ונבדוק.',
+  ],
+  cancelButton: 'לדף הראשי',
+
+  // To the owner (OF_SIGNUP_NOTIFY): a cancellation, its undo, a deleted account.
+  cancelNoticeSubject: (business, product) => `ביטול מנוי: ${business}, ${product}`,
+  cancelNoticeLines: (business, product, who, until, link) => [
+    'לקוח ביטל מנוי מהדף שלו.',
+    `עסק: ${business}`,
+    `מוצר: ${product}`,
+    `מי ביטל: ${who}`,
+    until ? `עובד עד: ${until}` : 'לא היה תשלום על היום, אז הביטול חל מהיום.',
+    { link },
+  ],
+  resumeNoticeSubject: (business, product) => `מנוי ממשיך: ${business}, ${product}`,
+  resumeNoticeLines: (business, product, who, link) => ['לקוח שביטל מנוי חזר בו, והמנוי ממשיך.', `עסק: ${business}`, `מוצר: ${product}`, `מי: ${who}`, { link }],
+  deleteNoticeSubject: (business) => `חשבון נמחק: ${business}`,
+  deleteNoticeLines: (business, who, at, byAdmin, lines, invoices) => [
+    byAdmin ? `החשבון של ${business} נמחק מהקונסולה.` : `הלקוח מחק את החשבון של ${business} מהדף שלו.`,
+    `מי מחק: ${who}`,
+    `מתי: ${at}`,
+    ...[].concat(lines),
+    `חשבוניות שנשמרו: ${invoices}`,
+  ],
+  deleteResults: { deleted: 'הנתונים נמחקו', not_found: 'לא היה שם מה למחוק (404)' },
+
   signature: 'OpenFrequency',
 };
 
@@ -405,6 +487,8 @@ export const SIGNUP = {
   productWhat: { toran: 'עונה ללקוחות שלכם בוואטסאפ', teder: 'מצגות בעברית לטיקטוק ולאינסטגרם' },
   soon: 'בקרוב',
   productSoon: 'ההרשמה אליו תיפתח בקרוב.',
+  price: (monthly, setup) => `${monthly} לחודש ועוד מע״מ, ודמי הקמה של ${setup} פעם אחת`,
+  pricesNote: 'משלמים אחרי שהחשבון נפתח, והמוצרים נפתחים אחרי התשלום. אפשר לבטל את המנוי מהדף הראשי, והוא עובד עד סוף התקופה ששולמה.',
   termsPre: 'מסכימים ל',
   termsLink: 'תנאי השימוש',
   termsMid: ' ול',
@@ -481,9 +565,20 @@ export const SETUP = {
   noSteps: 'אין כאן צעדים כרגע.',
   billingTitle: 'תשלום',
   billingStep: 'התשלום על המנוי',
-  billingSoon: 'התשלום באתר יתחבר בקרוב. בינתיים אפשר להמשיך בשאר הצעדים.',
-  billingTodo: 'נשאר לסדר את התשלום על המנוי.',
+  billingSoon: 'התשלום באתר ייפתח בקרוב. עד אז מסדרים אותו איתנו: כתבו לנו, ונשלח לכם פרטים לתשלום.',
+  billingTodo: 'משלמים בדף התשלום, ואחרי זה המוצרים נפתחים.',
   billingDone: 'המנוי שולם.',
+  billingComp: 'החשבון הזה אצלנו ללא תשלום.',
+  billingPay: 'לתשלום',
+  billingWrite: 'כתבו לנו בוואטסאפ',
+  billingContact: 'ליצירת קשר',
+  billingReply: 'אפשר גם לענות לאחד המיילים שקיבלתם מאיתנו.',
+  billingPrice: (product, monthly, vat, setup) => `${product}: ${monthly} לחודש, ${vat}${setup ? `, ודמי הקמה של ${setup} פעם אחת` : ''}`,
+  billingPaidUntil: (product, d) => `${product}: שולם עד ${d}`,
+  billingSupportText: (business) => `היי, כותבים מ״${business}״. רוצים לשלם על המנוי.`,
+  locked: 'נפתח אחרי התשלום',
+  lockedChip: 'אחרי התשלום',
+  lockedLead: (product) => `הצעדים של ${product} נפתחים אחרי התשלום.`,
   noProducts: 'עוד אין מוצר פעיל בחשבון הזה, אז אין מה להגדיר.',
   back: 'לדף הראשי',
 
@@ -493,6 +588,82 @@ export const SETUP = {
   cardButton: 'להמשך ההגדרה',
   nav: 'הגדרה',
   navLabel: 'החשבון',
+};
+
+// ---- cancelling a subscription online, /subscription/<product>/cancel
+
+export const CANCEL = {
+  title: 'ביטול מנוי',
+  heading: (product) => `ביטול המנוי ל${product}`,
+  leadPaid: (product, d) => `אם תבטלו, ${product} ימשיך לעבוד עד ${d}, היום האחרון ששילמתם עליו. אחרי זה הוא נעצר, ולא נחייב אתכם יותר.`,
+  leadUnpaid: (product) => `עוד לא שילמתם על ${product}, אז הביטול חל מהיום, ולא נחייב אתכם עליו.`,
+  undo: (d) => `עד ${d} אפשר לחזור בכם מהדף הראשי, בכפתור "להמשיך את המנוי".`,
+  keepsData: 'הביטול לא מוחק נתונים. כדי למחוק את החשבון ואת כל מה שבו, יש לזה כפתור נפרד בדף הראשי.',
+  confirm: 'לבטל את המנוי',
+  back: 'לא, חזרה לדף הראשי',
+  flashCancelled: (product, d) => `ביטלנו את המנוי ל${product}. הוא עובד עד ${d}, ושלחנו לכם אישור במייל.`,
+  flashCancelledNow: (product) => `ביטלנו את המנוי ל${product}, ושלחנו לכם אישור במייל.`,
+  flashResumed: (product) => `המנוי ל${product} ממשיך כרגיל.`,
+  readOnly: 'בצפייה כלקוח אי אפשר לשנות כלום.',
+  errors: {
+    not_owner: 'רק בעלי החשבון יכולים לבטל את המנוי.',
+    comp: 'המנוי הזה ללא תשלום, אז אין מה לבטל. כדי לסגור אותו, כתבו לנו.',
+    already: 'המנוי הזה כבר בוטל.',
+    ended: 'המנוי כבר הסתיים. כדי לחדש אותו, כתבו לנו.',
+    not_cancelled: 'המנוי הזה לא בוטל.',
+    product_off: 'המוצר הזה לא פעיל בחשבון.',
+  },
+};
+
+// ---- deleting the account and its data, /account/delete
+
+export const ERASE = {
+  title: 'מחיקת החשבון',
+  lead: (business) => `כאן מוחקים את החשבון של ${business} ואת הנתונים שלו. אי אפשר לבטל את זה אחרי שזה קורה.`,
+  goneTitle: 'מה נמחק',
+  gone: [
+    'כל מה שתדר ותורן שמרו עבור העסק.',
+    'האנשים בחשבון וההזמנות. מי שרשום רק בחשבון הזה נמחק אצלנו לגמרי, עם המייל והשם שלו.',
+    'מספרי הוואטסאפ והגדרות ההתראות.',
+    'המנויים. הם נעצרים מיד, ולא נחייב אתכם יותר.',
+  ],
+  keptTitle: 'מה נשאר',
+  kept: 'החשבוניות. החוק מחייב אותנו לשמור אותן, אז עותק שלהן נשאר אצלנו, עם שם העסק, מחוץ לחשבון. נשאר גם יומן הפעולות שלנו, שבו רשום מה קרה ומתי.',
+  cancelInstead: 'רוצים רק להפסיק לשלם ולשמור את הנתונים? אפשר לבטל את המנוי מהדף הראשי.',
+  confirmLabel: (business) => `כדי לאשר, כתבו את שם העסק: ${business}`,
+  button: 'למחוק את החשבון לצמיתות',
+  back: 'לא, חזרה לדף הראשי',
+  mismatch: 'השם לא תואם. כתבו את שם העסק בדיוק כמו שהוא מופיע למעלה.',
+  failed: (names, many) => `לא הצלחנו לסיים את המחיקה, כי ${names} ${many ? 'לא ענו' : 'לא ענה'} לנו. החשבון עדיין קיים. נסו שוב בעוד כמה דקות, ואם זה חוזר, כתבו לנו.`,
+  ownersOnly: 'רק בעלי החשבון יכולים למחוק אותו.',
+  readOnly: 'בצפייה כלקוח אי אפשר למחוק כלום. מוחקים חשבון מהקונסולה.',
+  doneTitle: 'החשבון נמחק',
+  doneLead: (business) => `מחקנו את החשבון של ${business} ואת הנתונים שלו, ויצאתם מהחשבון. עותק של החשבוניות נשמר אצלנו, כמו שהחוק מחייב.`,
+  doneLink: 'לאתר של OpenFrequency',
+  and: ' ו',
+};
+
+// ---- product emails, /notifications (src/accounts/notify.js)
+
+export const NOTIFY = {
+  title: 'התראות במייל',
+  lead: 'כאן בוחרים על מה נשלח לכם מייל, בכל מוצר בנפרד. ההגדרה שלכם בלבד, ולא משנה מה אחרים בחשבון מקבלים.',
+  defaults: 'בהתחלה בעלי החשבון מקבלים הכול, ושאר הצוות לא מקבל כלום.',
+  kinds: {
+    posts_waiting: 'פוסטים שמחכים לאישור',
+    weekly: 'סיכום שבועי',
+    monthly: 'סיכום חודשי',
+    connect_needed: 'חשבון שצריך לחבר מחדש',
+    publish_failed: 'פרסום שלא הצליח',
+  },
+  save: 'שמירה',
+  flashSaved: 'שמרנו. מעכשיו נשלח לכם רק את מה שסימנתם.',
+  noProducts: 'עוד אין מוצר פעיל בחשבון, אז אין על מה לשלוח.',
+  back: 'לדף הראשי',
+  readOnly: 'בצפייה כלקוח אי אפשר לשנות כלום.',
+  mailButton: (product) => `לפתוח את ${product}`,
+  mailFooter: (kind, product) => `קיבלתם את המייל הזה כי ההתראות על ${kind} ב${product} פועלות אצלכם.`,
+  mailFooterLink: 'לשנות את ההתראות',
 };
 
 const DATE = new Intl.DateTimeFormat('he-IL', { timeZone: 'Asia/Jerusalem', day: 'numeric', month: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' });

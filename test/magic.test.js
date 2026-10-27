@@ -9,7 +9,8 @@ import { advance, setNow, MINUTE } from '../src/core/clock.js';
 async function setup(opts) {
   const h = tempHome();
   setNow('2026-10-22T10:00:00.000Z');
-  makeWorkspace(h.db, 'dana-shop', { name: 'Dana Shop', products: ['teder'], members: { 'dana@example.com': 'client_owner' } });
+  // Complimentary: these tests are about the links, not the paywall (an unpaid workspace lands on /setup).
+  makeWorkspace(h.db, 'dana-shop', { name: 'Dana Shop', products: ['teder'], comp: true, members: { 'dana@example.com': 'client_owner' } });
   const site = await startSite(h.db, opts);
   return { ...h, ...site, done: async () => (await site.close(), h.cleanup()) };
 }

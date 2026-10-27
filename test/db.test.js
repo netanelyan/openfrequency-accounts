@@ -12,7 +12,7 @@ test('a fresh database runs every migration and records how many', () => {
   try {
     assert.equal(h.db.get('PRAGMA user_version').user_version, MIGRATIONS.length);
     const tables = h.db.all("SELECT name FROM sqlite_master WHERE type = 'table'").map((r) => r.name);
-    for (const t of ['users', 'recovery_codes', 'workspaces', 'memberships', 'workspace_products', 'subscriptions', 'sessions', 'tokens', 'audit', 'phone_links', 'user_phones', 'invoices']) assert.ok(tables.includes(t), t);
+    for (const t of ['users', 'recovery_codes', 'workspaces', 'memberships', 'workspace_products', 'subscriptions', 'sessions', 'tokens', 'audit', 'phone_links', 'user_phones', 'invoices', 'signups', 'notify_prefs', 'notify_log']) assert.ok(tables.includes(t), t);
   } finally {
     h.cleanup();
   }

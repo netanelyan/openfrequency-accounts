@@ -28,10 +28,14 @@ export function makeUser(db, email, { superadmin = false, name = '' } = {}) {
   return db.get('SELECT * FROM users WHERE id = ?', id);
 }
 
-/** A workspace with its products turned on, and members as { email: role }. Returns the row. */
-export function makeWorkspace(db, slug, { products = ['teder'], members = {}, name = slug } = {}) {
+/**
+ * A workspace with its products turned on, and members as { email: role }. Returns the row. Made after the paywall's
+ * migration, it is unpaid, as a new sign-up is; `comp: true` marks its products complimentary (free), as every
+ * workspace that existed before the paywall is, for the tests that are not about paying.
+ */
+export function makeWorkspace(db, slug, { products = ['teder'], members = {}, name = slug, comp = false } = {}) {
   const id = db.insert('workspaces', { slug, name, created_at: T0 });
-  for (const p of products) db.insert('workspace_products', { workspace_id: id, product: p, enabled: 1, updated_at: T0 });
+  for (const p of products) db.insert('workspace_products', { workspace_id: id, product: p, enabled: 1, comp: comp ? 1 : 0, updated_at: T0 });
   for (const [email, role] of Object.entries(members)) {
     const u = db.get('SELECT id FROM users WHERE email = ?', email) || makeUser(db, email);
     db.insert('memberships', { user_id: u.id, workspace_id: id, role, created_at: T0 });

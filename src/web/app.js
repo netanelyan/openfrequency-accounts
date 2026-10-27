@@ -15,12 +15,16 @@ import { acceptInvite, consumeMagicLink, createInvite, InviteError, normEmail, p
 import { verifySuperadmin } from '../accounts/superadmin.js';
 import { createWorkspace, getWorkspace, listWorkspaces, recentAudit, setDisabled, setProduct, startViewAs, stopViewAs, WorkspaceError } from '../accounts/workspaces.js';
 import { checkSignup, completeSignup, CONTACT_URL, dropSignup, peekSignup, requestSignup, SignupError, signupNotify, signupOpen, signupProducts } from '../accounts/signup.js';
-import { allPaid, billingReady, checkoutUrl } from '../accounts/billing.js';
-import { existingAccountMail, inviteMail, magicLinkMail, signupMail, signupNoticeMail } from '../mail/messages.js';
-import { OPS, PRODUCT_NAMES, SETUP, SIGNUP, T, dayHe, phoneHe } from './copy.js';
+import { billingReady, checkoutUrl } from '../accounts/billing.js';
+import { accessAll, accessFor, BillingError, cancelSubscription, resumeSubscription, setComp } from '../accounts/entitlement.js';
+import { eraseWorkspace, productsEver, sameName } from '../accounts/erase.js';
+import { prefsOf, savePrefs } from '../accounts/notify.js';
+import { cancelMail, cancelNoticeMail, deleteNoticeMail, existingAccountMail, inviteMail, magicLinkMail, signupMail, signupNoticeMail, welcomeMail } from '../mail/messages.js';
+import { CANCEL, ERASE, MAIL, NOTIFY, OPS, PRODUCT_NAMES, SETUP, SIGNUP, T, dayHe, ils, phoneHe } from './copy.js';
 import { setupClient, setupState } from './setup.js';
+import { eraseClient } from './erase.js';
 import { createLinkCode, openLinkCode, phoneIn, phonesFor, PHONE, removePhone, setConsent } from '../accounts/phones.js';
-import { describe, payMonth, setSubscription, subscriptionsOf } from '../accounts/subscriptions.js';
+import { describe, LIST_PRICES, payMonth, setSubscription, subscriptionsOf } from '../accounts/subscriptions.js';
 import { addInvoice, invoiceIn, invoicesOf, PDF_MAX, removeInvoice } from '../accounts/invoices.js';
 import { cancelTeamInvite, inviteToTeam, removeMember, TEAM_LIMIT, TeamError, teamOf } from '../accounts/team.js';
 import { opsCustomers } from '../accounts/ops.js';
@@ -151,7 +155,7 @@ const OPS_ACTION = /^\/admin\/ops\/(toran|teder)\/([^/]{1,300})\/([a-z]{1,20})$/
 // Where each button comes back to on the dashboard, without script.
 const OPS_BACK = ['contact', 'talking'];
 
-export function publicHandler({ db, env = process.env, mailer, limiters: given = {}, failDelayMs = 400, log = console.error, toran = toranClient({ env, log }), toranProxyMs, google = googleConfig(env), googleFetch = globalThis.fetch, setupMs, setupFetch = globalThis.fetch }) {
+export function publicHandler({ db, env = process.env, mailer, limiters: given = {}, failDelayMs = 400, log = console.error, toran = toranClient({ env, log }), toranProxyMs, google = googleConfig(env), googleFetch = globalThis.fetch, setupMs, setupFetch = globalThis.fetch, eraseFetch = setupFetch, eraseMs }) {
   const secret = sessionSecret(env);
   const publicHost = String(env.PUBLIC_HOST || '').trim().toLowerCase() || null;
   const dev = !publicHost;
@@ -163,13 +167,25 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
   const openProducts = signupProducts(env);
   // Each product's setup checklist (src/web/setup.js), for /setup, the home page and where a customer lands.
   const setup = setupClient({ env, log, productUrls: urls, fetchImpl: setupFetch, ...(setupMs ? { timeoutMs: setupMs } : {}) });
-  /** A workspace's checklist: its products' answers, payment, and whether it is finished (setupState()). */
+  /**
+   * A workspace's checklist: payment (the paywall: each product's access today), its products' answers, and whether
+   * it is finished (setupState()). Without a provider, payment leads to us: our WhatsApp with the words written, or
+   * the website's contact page.
+   */
   const setupFor = async (workspaceId) => {
     const products = enabledProducts(db, workspaceId);
     const ready = billingReady(env);
     const results = await setup.check(workspaceId, products);
-    return setupState(results, products, { billingReady: ready, paid: allPaid(subscriptionsOf(db, workspaceId), products), checkout: ready ? checkoutUrl(workspaceId, env) : null });
+    const name = db.get('SELECT name FROM workspaces WHERE id = ?', workspaceId)?.name || '';
+    return setupState(results, products, {
+      billingReady: ready,
+      access: accessAll(db, workspaceId),
+      checkout: ready ? checkoutUrl(workspaceId, env) : null,
+      contact: supportUrl(env, SETUP.billingSupportText(name)) || CONTACT_URL,
+    });
   };
+  // Deleting a workspace: the products' parts first (src/web/erase.js), then ours (src/accounts/erase.js).
+  const eraser = eraseClient({ env, log, fetchImpl: eraseFetch, ...(eraseMs ? { timeoutMs: eraseMs } : {}) });
   // The owner hears of each confirmed sign-up (OF_SIGNUP_NOTIFY). Called once its transaction has committed; the
   // mailer queues and never waits, and a failure here is logged and never stands in the customer's way.
   const notifyTo = signupNotify(env);
@@ -189,6 +205,43 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
     } catch (e) {
       log(`[accounts] the sign-up notice for workspace ${workspace.id} failed: ${e.message}`);
     }
+  };
+  // The owner hears the same way of each cancellation, its undo, and each deleted workspace. `make(to)` is the email.
+  const tellOwner = (make, what) => {
+    if (!notifyTo.length) return;
+    try {
+      for (const to of notifyTo) mailer.send(make(to));
+    } catch (e) {
+      log(`[accounts] the ${what} notice failed: ${e.message}`);
+    }
+  };
+  // Right after a sign-up is confirmed: the welcome email, what happens next (pay, then set up), with the prices.
+  const welcome = ({ user, workspace }, base) => {
+    try {
+      const subs = subscriptionsOf(db, workspace.id);
+      const prices = enabledProducts(db, workspace.id).map((p) =>
+        MAIL.welcomePrice(PRODUCT_NAMES[p], ils(subs[p]?.monthly ?? LIST_PRICES[p].monthly), ils(subs[p]?.setup ?? LIST_PRICES[p].setup))
+      );
+      mailer.send(welcomeMail(user.email, { business: workspace.name, link: `${base}/setup`, providerReady: billingReady(env), prices }));
+    } catch (e) {
+      log(`[accounts] the welcome email for workspace ${workspace.id} failed: ${e.message}`);
+    }
+  };
+  /**
+   * Delete a workspace: each product it has ever had deletes its part first; only when none failed (a 404 is "nothing
+   * there") is ours deleted. Returns { ok: true, name, invoicesKept, results } or { ok: false, error } (nothing here
+   * was deleted). The owner hears of it.
+   */
+  const eraseAll = async (w, { by, ip: from, source }) => {
+    const { results, ok, failed } = await eraser.erase(w.id, productsEver(db, w.id));
+    if (!ok) {
+      audit(db, { actor: by, action: 'workspace_delete_failed', workspaceId: w.id, ip: from, detail: { source, results } });
+      return { ok: false, error: ERASE.failed(failed.map((p) => PRODUCT_NAMES[p]).join(ERASE.and), failed.length > 1) };
+    }
+    const done = eraseWorkspace(db, w.id, { by, ip: from, source, products: results });
+    const at = new Date(now()).toISOString();
+    tellOwner((to) => deleteNoticeMail(to, { business: done.name, who: by.email, at, byAdmin: source === 'admin', results, invoicesKept: done.invoicesKept }), 'deletion');
+    return { ok: true, ...done, results };
   };
   const support = supportUrl(env);
   const waNumber = assistantWa(env);
@@ -350,6 +403,8 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
           productUrls: urls,
           canSwitch: mine.length > 1,
           subscriptions,
+          access: accessAll(db, wsId),
+          providerReady: billingReady(env),
           others,
           // Invoices are the owners' only: a member sees the team and the products, not what the business pays.
           invoices: d.body.role === 'client_owner' ? invoicesOf(db, wsId) : null,
@@ -409,8 +464,96 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
           banner = P.viewAsBanner(d.body.workspace.name, csrf);
         } else if (d.status === 409) return redirect(`/workspace?next=${encodeURIComponent('/setup')}`);
         else if (d.status !== 200) return redirect('/');
-        const state = await setupFor(d.body.workspace.id);
-        return page(200, SETUP.title, P.setupPage({ state, productUrls: urls, readOnly: d.body.readOnly, flash }), { wide: true, banner });
+        const wsId = d.body.workspace.id;
+        const state = await setupFor(wsId);
+        return page(200, SETUP.title, P.setupPage({ state, productUrls: urls, readOnly: d.body.readOnly, flash, access: accessAll(db, wsId), prices: subscriptionsOf(db, wsId) }), { wide: true, banner });
+      }
+
+      // The account, for a customer in their own workspace: cancelling a product's subscription (a confirmation page,
+      // then the POST) and taking it back, deleting the workspace and its data, and which product emails they get.
+      // Cancelling and deleting are its owners'; the superadmin (whose view-as is read-only) does neither from here.
+      const customerIn = (to) => {
+        const d = describeSession(db, sid);
+        if (d.status === 409) return { go: `/workspace?next=${encodeURIComponent(to)}` };
+        if (d.status !== 200 || d.body.readOnly) return { go: '/' };
+        return { d };
+      };
+
+      const subMatch = /^\/subscription\/(teder|toran)\/(cancel|resume)$/.exec(p);
+      if (subMatch) {
+        if (!found) return redirect('/login');
+        if (found.user.is_superadmin) return page(403, CANCEL.title, P.messagePage({ title: CANCEL.readOnly, lead: '', links: [['/admin', T.adminTitle]] }));
+        const { d, go } = customerIn(p);
+        if (go) return redirect(go);
+        const [, product, action] = subMatch;
+        const ws = d.body.workspace;
+        const name = PRODUCT_NAMES[product];
+        const refuse = (code, status = 400) => page(status, CANCEL.title, P.messagePage({ title: CANCEL.errors[code] || code, lead: '', links: [['/', CANCEL.back]] }));
+        if (d.body.role !== 'client_owner') return refuse('not_owner', 403);
+        if (action === 'cancel' && req.method !== 'POST') {
+          const a = accessFor(db, ws.id, product);
+          if (a.access === 'off') return refuse('product_off', 404);
+          if (a.access === 'comp') return refuse('comp');
+          if (a.access === 'cancelled') return refuse('already');
+          return page(200, CANCEL.title, P.cancelPage({ csrf, product, access: a }));
+        }
+        if (req.method !== 'POST') return redirect('/');
+        try {
+          if (action === 'cancel') {
+            const r = cancelSubscription(db, ws.id, product, { by: found.user, ip });
+            const owners = db.all("SELECT u.email FROM memberships m JOIN users u ON u.id = m.user_id WHERE m.workspace_id = ? AND m.role = 'client_owner' AND u.disabled_at IS NULL", ws.id);
+            for (const o of owners) mailer.send(cancelMail(o.email, { business: ws.name, product, lastDay: r.lastDay, paid: r.paid, link: `${base}/` }));
+            tellOwner((to) => cancelNoticeMail(to, { business: ws.name, product, who: found.user.email, lastDay: r.lastDay, paid: r.paid, link: `${base}/admin/accounts#ws-${ws.id}` }), 'cancellation');
+            setFlash(r.paid ? CANCEL.flashCancelled(name, dayHe(r.lastDay)) : CANCEL.flashCancelledNow(name));
+          } else {
+            resumeSubscription(db, ws.id, product, { by: found.user, ip });
+            tellOwner((to) => cancelNoticeMail(to, { business: ws.name, product, who: found.user.email, resumed: true, link: `${base}/admin/accounts#ws-${ws.id}` }), 'resumption');
+            setFlash(CANCEL.flashResumed(name));
+          }
+          return redirect('/');
+        } catch (e) {
+          if (!(e instanceof BillingError)) throw e;
+          return refuse(e.code);
+        }
+      }
+
+      if (p === '/account/delete') {
+        if (!found) return redirect('/login');
+        if (found.user.is_superadmin) return page(403, ERASE.title, P.messagePage({ title: ERASE.readOnly, lead: '', links: [['/admin/accounts', T.adminTitle]] }));
+        const { d, go } = customerIn(p);
+        if (go) return redirect(go);
+        if (d.body.role !== 'client_owner') return page(403, ERASE.title, P.messagePage({ title: ERASE.ownersOnly, lead: '', links: [['/', ERASE.back]] }));
+        const ws = getWorkspace(db, d.body.workspace.id);
+        const canCancel = enabledProducts(db, ws.id).some((pr) => ['paid', 'unpaid'].includes(accessFor(db, ws.id, pr).access));
+        const again = (status, error = '', typed = '') => page(status, ERASE.title, P.deletePage({ csrf, workspace: ws, error, typed, canCancel }));
+        if (req.method !== 'POST') return again(200);
+        const typed = f('name').slice(0, 200);
+        if (!sameName(typed, ws.name)) return again(400, ERASE.mismatch, typed);
+        const r = await eraseAll(ws, { by: found.user, ip, source: 'owner' });
+        if (!r.ok) return again(502, r.error, typed);
+        // Signed out everywhere: their account may be gone with the workspace, and if not, it has left it.
+        if (db.get('SELECT 1 FROM users WHERE id = ?', found.user.id)) revokeAllSessions(db, found.user.id, { reason: 'workspace_deleted', ip });
+        clearSession();
+        return page(200, ERASE.doneTitle, P.messagePage({ title: ERASE.doneTitle, lead: ERASE.doneLead(r.name), links: [['https://openfrequency.co.il/', ERASE.doneLink]] }));
+      }
+
+      // Which product emails this person gets (POST /internal/notify reads it). ?workspace= (the emails' footer link)
+      // opens it in that workspace, when they are in it.
+      if (p === '/notifications') {
+        if (!found) return redirect(`/login?next=${encodeURIComponent(p + url.search)}`);
+        if (found.user.is_superadmin) return redirect('/admin');
+        const want = Number((req.method === 'POST' ? f('workspace') : url.searchParams.get('workspace')) || 0);
+        if (want && want !== found.session.workspace_id && memberships(db, found.user.id).some((m) => m.id === want && !m.disabled_at)) chooseWorkspace(db, found.session, want);
+        const { d, go } = customerIn(p);
+        if (go) return redirect(go);
+        const ws = d.body.workspace;
+        if (req.method === 'POST') {
+          savePrefs(db, { userId: found.user.id, workspaceId: ws.id, on: new Set(form.getAll('on')) }, { by: found.user, ip });
+          setFlash(NOTIFY.flashSaved);
+          return redirect('/notifications');
+        }
+        const prefs = prefsOf(db, { userId: found.user.id, workspaceId: ws.id, role: d.body.role });
+        return page(200, NOTIFY.title, P.notificationsPage({ csrf, workspace: ws, prefs, flash }), { wide: true });
       }
 
       // Public sign-up (src/accounts/signup.js), only while OF_SIGNUP=1. Closed, the page says it opens soon and
@@ -432,6 +575,7 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
           if (!done) return dead();
           if (done.exists) return page(409, SIGNUP.existsTitle, P.messagePage({ title: SIGNUP.existsTitle, lead: SIGNUP.existsLead, links: [['/login', SIGNUP.toLogin]] }));
           noticeSignup(done, 'email', base);
+          welcome(done, base);
           if (found) revokeSession(db, sid, { reason: 'replaced', ip });
           setSession(done.user, { workspaceId: done.workspace.id });
           return redirect('/setup');
@@ -671,6 +815,7 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
           if (done.exists) return fail(403, SIGNUP.googleTaken, SIGNUP.googleTakenLead);
           bindGoogle(db, done.user, who);
           noticeSignup(done, 'google', base);
+          welcome(done, base);
           if (found) revokeSession(db, sid, { reason: 'replaced', ip });
           setSession(done.user, { workspaceId: done.workspace.id });
           return redirect('/setup');
@@ -771,7 +916,7 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
         const session = found.session;
         const banner = session.view_as_workspace_id ? P.viewAsBanner(db.get('SELECT name FROM workspaces WHERE id = ?', session.view_as_workspace_id)?.name || '', csrf) : '';
         const console_ = (status, extra = {}) =>
-          page(status, T.adminTitle, P.adminPage({ csrf, workspaces: listWorkspaces(db), audit: recentAudit(db), flash, ...extra }), { wide: true, banner });
+          page(status, T.adminTitle, P.adminPage({ csrf, workspaces: listWorkspaces(db).map((w) => ({ ...w, access: accessAll(db, w.id) })), audit: recentAudit(db), flash, ...extra }), { wide: true, banner });
         // The console's actions come back to the console, the dashboard's to the dashboard.
         const toConsole = () => redirect('/admin/accounts');
         const by = { by: me, ip };
@@ -875,6 +1020,36 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
               setSubscription(db, w.id, product, { monthly: f('monthly'), setup: f('setup'), vat: f('vat'), started_on: f('started_on'), paid_until: f('paid_until'), ends_on: f('ends_on') }, by);
               setFlash(T.flashSubSaved(PRODUCT_NAMES[product], w.name));
             }
+            return toConsole();
+          } catch (e) {
+            return problem(e, {});
+          }
+        }
+
+        // The paywall: a product marked complimentary (free), or no longer.
+        m = /^\/admin\/workspaces\/(\d+)\/comp$/.exec(p);
+        if (m) {
+          try {
+            const w = getWorkspace(db, m[1]);
+            const on = f('comp') === '1';
+            setComp(db, w.id, f('product'), on, by);
+            setFlash((on ? T.flashCompOn : T.flashCompOff)(PRODUCT_NAMES[f('product')], w.name));
+            return toConsole();
+          } catch (e) {
+            return problem(e, {});
+          }
+        }
+
+        // Delete a workspace and its data, as its owner can from their account: the name typed to confirm.
+        m = /^\/admin\/workspaces\/(\d+)\/delete$/.exec(p);
+        if (m) {
+          try {
+            const w = getWorkspace(db, m[1]);
+            if (w.deleted_at) throw new WorkspaceError('no_workspace');
+            if (!sameName(f('name'), w.name)) return console_(400, { error: T.errors.name_mismatch });
+            const r = await eraseAll(w, { by: me, ip, source: 'admin' });
+            if (!r.ok) return console_(502, { error: r.error });
+            setFlash(T.flashDeleted(r.name));
             return toConsole();
           } catch (e) {
             return problem(e, {});

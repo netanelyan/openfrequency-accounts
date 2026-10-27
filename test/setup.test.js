@@ -15,11 +15,13 @@ import { sampleSetup, startProduct } from './setup-fake.js';
 
 const URLS = { TEDER_URL: 'https://teder.openfrequency.co.il/', TORAN_URL: 'https://toran.openfrequency.co.il/' };
 
-async function setup({ products = ['teder'], env = {}, toran, teder, setupMs } = {}) {
+// The workspace is complimentary unless a test says otherwise (comp: false): most of these are about the products'
+// checklists, and the paywall's own tests are in test/paywall.test.js.
+async function setup({ products = ['teder'], env = {}, toran, teder, setupMs, comp = true } = {}) {
   const h = tempHome();
   setNow('2026-10-22T10:00:00.000Z');
   const fakes = { toran: await startProduct('toran', toran), teder: await startProduct('teder', teder) };
-  const ws = makeWorkspace(h.db, 'noa-shop', { name: 'Noa Shop', products, members: { 'noa@example.com': 'client_owner' } });
+  const ws = makeWorkspace(h.db, 'noa-shop', { name: 'Noa Shop', products, comp, members: { 'noa@example.com': 'client_owner' } });
   for (const p of products) ensureSubscription(h.db, ws.id, p);
   // These tests sign the same customer in many times: the link limits are not what they are about.
   const many = () => createLimiter({ rules: [{ max: 1000, windowMs: 15 * MINUTE }] });
@@ -63,18 +65,18 @@ test('a Teder-only workspace: only Teder is asked and shown, never Toran; its st
     assert.doesNotMatch(body, /תורן/);
     assert.doesNotMatch(body, /setup-toran|mark toran/);
     assert.match(body, /<section class="card setup-p" id="setup-teder">/);
-    // Payment first, coming soon while no provider is connected.
+    // Payment first: done, since this workspace is complimentary.
     assert.ok(body.indexOf('id="setup-billing"') < body.indexOf('id="setup-teder"'));
-    assert.match(body, /<li class="step st-soon"><span class="chip">בקרוב<\/span><span class="what"><b>התשלום על המנוי<\/b>/);
+    assert.match(body, /<li class="step st-done"><span class="chip">✓ בוצע<\/span><span class="what"><b>התשלום על המנוי<\/b><small>החשבון הזה אצלנו ללא תשלום\.<\/small>/);
     // The steps: done (no button), to do (the one blue button), and the optional one under "אפשר גם", no link.
     assert.match(body, /<li class="step st-done"><span class="chip">✓ בוצע<\/span><span class="what"><b>לחבר את חשבון האינסטגרם<\/b><\/span><\/li>/);
     assert.match(body, /<li class="step st-todo"><span class="chip">עוד לא<\/span><span class="what"><b>לבדוק את התשובה הראשונה<\/b><small>זה לוקח בערך חמש דקות\.<\/small><\/span><a class="button primary" href="https:\/\/teder\.openfrequency\.co\.il\/first" aria-label="להתחיל, לבדוק את התשובה הראשונה">להתחיל<\/a><\/li>/);
     assert.ok(body.indexOf('אפשר גם') > body.indexOf('לבדוק את התשובה הראשונה'));
     assert.match(body, /<p class="section-l">אפשר גם<\/p><ol class="steps"><li class="step st-todo"><span class="chip">עוד לא<\/span><span class="what"><b>להוסיף עוד מישהו מהצוות<\/b><\/span><\/li>/);
     assert.match(body, /<span class="tag off">עוד לא מוכן<\/span>/);
-    // 1 of the 3 steps that can be done now (payment, coming soon, is not counted).
-    assert.match(body, /1 מתוך 3 צעדים/);
-    assert.match(body, /<progress max="3" value="1"/);
+    // 2 of the 4 steps: payment and the first one done.
+    assert.match(body, /2 מתוך 4 צעדים/);
+    assert.match(body, /<progress max="4" value="2"/);
     assert.doesNotMatch(body, /<script/);
   } finally {
     await t.done();
@@ -169,7 +171,7 @@ test('a customer lands on /setup after signing in while a required step is left;
     const { b } = await signIn(t);
     let home = await b.get('/');
     assert.match(home.body, /<section class="card setup-card">/);
-    assert.match(home.body, /1 מתוך 3 צעדים הושלמו\./);
+    assert.match(home.body, /2 מתוך 4 צעדים הושלמו\./);
     assert.match(home.body, /<a class="button primary" href="\/setup">להמשך ההגדרה<\/a>/);
     assert.doesNotMatch(home.body, /href="\/setup">הגדרה</);
 
@@ -197,17 +199,21 @@ test('a customer lands on /setup after signing in while a required step is left;
   }
 });
 
-test('payment: "soon" without a provider; with one, a step to do until every subscription is paid', async () => {
-  const t = await setup({ products: ['toran'], toran: { answer: () => sampleSetup('toran', { done: true }) }, env: { OF_BILLING_PROVIDER: 'test-provider' } });
+test('payment, once a provider is connected: a step to do until the payment is in, then done and the products open', async () => {
+  const t = await setup({ products: ['toran'], comp: false, toran: { answer: () => sampleSetup('toran', { done: true }) }, env: { OF_BILLING_PROVIDER: 'test-provider' } });
   try {
     const { b, to } = await signIn(t);
     assert.equal(to, '/setup');
     let page = await b.get('/setup');
-    assert.match(page.body, /<li class="step st-todo"><span class="chip">עוד לא<\/span><span class="what"><b>התשלום על המנוי<\/b><small>נשאר לסדר את התשלום על המנוי\.<\/small><\/span><\/li>/);
+    // No checkout page yet (checkoutUrl() is a placeholder): the step still leads to us, never a dead end.
+    assert.match(page.body, /<li class="step st-todo"><span class="chip">עוד לא<\/span><span class="what"><b>התשלום על המנוי<\/b><small>התשלום באתר ייפתח בקרוב\.[^<]*<\/small><\/span><a class="button primary" href="https:\/\/openfrequency\.co\.il\/join">ליצירת קשר<\/a><\/li>/);
+    assert.match(page.body, /<section class="card setup-p locked" id="setup-toran">/);
     payMonth(t.db, t.ws.id, 'toran', { by: null });
     assert.equal((await signIn(t)).to, '/');
     page = await b.get('/setup');
     assert.match(page.body, /<li class="step st-done"><span class="chip">✓ בוצע<\/span><span class="what"><b>התשלום על המנוי<\/b><small>המנוי שולם\.<\/small>/);
+    assert.match(page.body, /תורן: שולם עד 21\.11\.2026/);
+    assert.match(page.body, /<section class="card setup-p" id="setup-toran">/);
   } finally {
     await t.done();
   }
@@ -246,9 +252,17 @@ test('the contract, without a network: links, shapes and the summary', () => {
   assert.equal(readSetup(null, 'teder'), null);
 
   const ok = { ok: true, ready: true, steps: [{ key: 'a', status: 'done', required: true }, { key: 'b', status: 'soon', required: false }] };
-  let s = setupState({ teder: ok }, ['teder']);
-  assert.deepEqual([s.done, s.total, s.complete, s.incomplete, s.unknown], [1, 1, true, false, false]);
-  s = setupState({ teder: ok, toran: { ok: false } }, ['teder', 'toran']);
+  const open = { allowed: true, access: 'paid' };
+  // Paid for: payment and the one step done ("soon" is not counted).
+  let s = setupState({ teder: ok }, ['teder'], { access: { teder: open } });
+  assert.deepEqual([s.done, s.total, s.complete, s.incomplete, s.unknown, s.billing.status], [2, 2, true, false, false, 'done']);
+  // Not paid for: payment to do, the product locked and not done, even though its own steps are.
+  s = setupState({ teder: ok }, ['teder'], { access: { teder: { allowed: false, access: 'unpaid' } }, contact: 'https://wa.me/972500000100' });
+  assert.deepEqual([s.done, s.total, s.complete, s.incomplete, s.billing.status, s.billing.href, s.sections[0].locked, s.sections[0].done], [1, 2, false, true, 'todo', 'https://wa.me/972500000100', true, false]);
+  // A provider with a checkout page: there, and not to us.
+  s = setupState({ teder: ok }, ['teder'], { billingReady: true, checkout: 'https://pay.example/x', contact: 'https://wa.me/1' });
+  assert.deepEqual([s.billing.href, s.billing.checkout], ['https://pay.example/x', true]);
+  s = setupState({ teder: ok, toran: { ok: false } }, ['teder', 'toran'], { access: { teder: open, toran: open } });
   assert.deepEqual([s.complete, s.incomplete, s.unknown], [false, false, true]);
   s = setupState({}, [], { billingReady: true });
   assert.equal(s.complete, true);

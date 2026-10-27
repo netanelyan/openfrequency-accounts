@@ -3,6 +3,9 @@ import { describeSession } from '../auth/sessions.js';
 import { PRODUCTS } from '../db/schema.js';
 import { opsCustomers } from '../accounts/ops.js';
 import { claimPhone, ownerOf, ownersOf, PhoneError, setConsent, validPhone } from '../accounts/phones.js';
+import { entitlement } from '../accounts/entitlement.js';
+import { checkNotify, logNotify, NOTIFY_PER_DAY, NotifyError, recipients, sentToday } from '../accounts/notify.js';
+import { productNoticeMail } from '../mail/messages.js';
 
 // The internal listener, for Teder and Toran on this machine:
 //   GET  /internal/session              who a browser is (docs/internal-session.md)
@@ -11,6 +14,8 @@ import { claimPhone, ownerOf, ownersOf, PhoneError, setConsent, validPhone } fro
 //   POST /internal/owner-phone/claim    the number that sent a link code
 //   POST /internal/owner-phone/consent  "הפסק" and "התחל"
 //   GET  /internal/ops/customers        every workspace and its money, for Toran (docs/internal-ops.md)
+//   GET  /internal/entitlement          may a workspace use a product today: the paywall (docs/setup.md)
+//   POST /internal/notify               email a workspace's people for a product, as each of them chose (docs/setup.md)
 //
 // The other direction, /admin calling Toran's /internal/ops for the operator's dashboard, is src/web/toran.js.
 //
@@ -46,8 +51,12 @@ const ROUTES = {
   '/internal/owner-phone/claim': 'POST',
   '/internal/owner-phone/consent': 'POST',
   '/internal/ops/customers': 'GET',
+  '/internal/entitlement': 'GET',
+  '/internal/notify': 'POST',
 };
 const BODY_LIMIT = 4096;
+// A notification's body is larger: its text (5,000 characters) and its html (50,000), in UTF-8.
+const NOTIFY_BODY_LIMIT = 256_000;
 const STATUS = { bad_phone: 400, not_linked: 404, unknown_code: 404, expired: 410, used: 409, phone_taken: 409 };
 const SOURCE = /^[a-z][a-z0-9_]{0,31}$/;
 
@@ -60,12 +69,12 @@ class Refused extends Error {
 }
 
 /** A small JSON object, or Refused: too_large past the limit, bad for anything that is not an object. */
-async function readJson(req) {
+async function readJson(req, limit = BODY_LIMIT) {
   let size = 0;
   const chunks = [];
   for await (const c of req) {
     size += c.length;
-    if (size > BODY_LIMIT) throw new Refused(413, 'too_large');
+    if (size > limit) throw new Refused(413, 'too_large');
     chunks.push(c);
   }
   let body;
@@ -78,7 +87,13 @@ async function readJson(req) {
   return body;
 }
 
-export function internalHandler(db, { env = process.env, log = console.error } = {}) {
+/** This site's own address, for the links in its emails: https://PUBLIC_HOST, or localhost in development. */
+export const accountsBase = (env = process.env) => {
+  const host = String(env.PUBLIC_HOST || '').trim().toLowerCase();
+  return host ? `https://${host}` : `http://localhost:${Number(env.PORT || 4740)}`;
+};
+
+export function internalHandler(db, { env = process.env, log = console.error, mailer = null, base = accountsBase(env) } = {}) {
   const token = String(env.OF_INTERNAL_TOKEN || '').trim();
   return async (req, res) => {
     if (!LOOPBACK.has(req.socket?.remoteAddress)) return json(res, 403, { error: 'not_local' });
@@ -128,9 +143,31 @@ export function internalHandler(db, { env = process.env, log = console.error } =
         }
         case '/internal/ops/customers':
           return json(res, 200, opsCustomers(db));
+        case '/internal/entitlement': {
+          const id = url.searchParams.get('workspace') ?? '';
+          if (!/^[1-9]\d{0,15}$/.test(id)) return json(res, 400, { error: 'bad_workspace' });
+          const product = url.searchParams.get('product');
+          if (!PRODUCTS.includes(product)) return json(res, 400, { error: 'bad_product' });
+          const answer = entitlement(db, Number(id), product);
+          return answer ? json(res, 200, answer) : json(res, 404, { error: 'no_workspace' });
+        }
+        case '/internal/notify': {
+          const n = checkNotify(await readJson(req, NOTIFY_BODY_LIMIT));
+          const w = db.get('SELECT id, name, deleted_at FROM workspaces WHERE id = ?', n.workspace);
+          if (!w || w.deleted_at) return json(res, 404, { error: 'no_workspace' });
+          if (!db.get('SELECT 1 FROM workspace_products WHERE workspace_id = ? AND product = ? AND enabled = 1', w.id, n.product)) return json(res, 409, { error: 'product_off' });
+          if (sentToday(db, w.id, n.product, n.kind) >= NOTIFY_PER_DAY) return json(res, 429, { error: 'rate_limited' });
+          if (!mailer) return json(res, 503, { error: 'not_configured' });
+          const to = recipients(db, w.id, n.product, n.kind);
+          const manage = `${base}/notifications?workspace=${w.id}`;
+          for (const r of to) mailer.send(productNoticeMail(r.email, { ...n, manage }));
+          logNotify(db, n, to.length);
+          return json(res, 202, { ok: true, sent: to.length });
+        }
       }
     } catch (e) {
       if (e instanceof Refused) return json(res, e.status, { error: e.code });
+      if (e instanceof NotifyError) return json(res, 400, { error: e.code });
       if (e instanceof PhoneError) return json(res, STATUS[e.code] || 400, { error: e.code });
       log(`[accounts] internal ${req.method} ${url.pathname}: ${e.stack || e.message}`);
       return json(res, 500, { error: 'server_error' });

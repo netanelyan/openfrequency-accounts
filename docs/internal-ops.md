@@ -43,7 +43,8 @@ Every answer is JSON with `Cache-Control: no-store`.
       "people": 2, "invitesWaiting": 1, "lastLoginAt": "2026-10-23T18:00:00.000Z",
       "subscriptions": [
         { "product": "toran", "monthly": 449, "vat": "excluded", "setup": 990, "startedOn": "2026-10-01",
-          "paidUntil": "2026-10-31", "endsOn": null, "state": "paid", "nextChargeOn": "2026-11-01" }
+          "paidUntil": "2026-10-31", "endsOn": null, "cancelledAt": null, "comp": false,
+          "state": "paid", "nextChargeOn": "2026-11-01" }
       ],
       "invoices": { "count": 2, "lastIssuedOn": "2026-10-01" }
     }
@@ -54,7 +55,7 @@ Every answer is JSON with `Cache-Control: no-store`.
 | Field | Meaning |
 |---|---|
 | `today` | Today in Israel, `YYYY-MM-DD`. Every `state` below is worked out for this day. |
-| `workspaces` | Every workspace, newest first (`createdAt`, then `id`), disabled ones included. The operator has no workspace of their own, so with no customers yet this is `[]`. |
+| `workspaces` | Every workspace, newest first (`createdAt`, then `id`), disabled ones included, deleted ones (docs/setup.md, "Deleting a workspace") left out. The operator has no workspace of their own, so with no customers yet this is `[]`. |
 | `disabled` | True when the superadmin disabled the workspace on `/admin`. |
 | `products` | The products turned on, sorted. |
 | `people` | Its members whose user is not disabled, owners included. |
@@ -64,6 +65,8 @@ Every answer is JSON with `Cache-Control: no-store`.
 | `monthly`, `setup` | ₪, before VAT when `vat` is `excluded`, with VAT when `included`. Any of `monthly`, `vat`, `setup`, `startedOn` can be `null` if the operator cleared it on `/admin`. |
 | `paidUntil` | The last day already paid for, or `null`. |
 | `endsOn` | Set once the subscription is stopped: its last day. |
+| `cancelledAt` | When the customer cancelled it online (docs/setup.md), or `null`. `endsOn` is then its last day. |
+| `comp` | True when the superadmin marked the product complimentary (the paywall, docs/setup.md): free, so the dashboard's money never counts it late or waiting. Every workspace that existed before the paywall is complimentary for the products it had on. |
 | `state` | Below. |
 | `nextChargeOn` | The day after `paidUntil` while `paid` or `late` (for `late`, the day the missed payment was due, in the past); `null` for `waiting`, `ending` and `ended`. |
 | `invoices` | How many invoices are recorded for the workspace, and the latest `issued_on` (`null` when none). |

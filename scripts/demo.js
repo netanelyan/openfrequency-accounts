@@ -34,6 +34,7 @@ const { createInvite, acceptInvite } = await import('../src/accounts/links.js');
 const { newTotpSecret } = await import('../src/auth/totp.js');
 const { nowIso } = await import('../src/core/clock.js');
 const { claimPhone, createLinkCode } = await import('../src/accounts/phones.js');
+const { ensureSubscription, payMonth } = await import('../src/accounts/subscriptions.js');
 
 const db = openDb();
 const ADMIN = 'admin@example.com';
@@ -43,7 +44,12 @@ const { codes } = setSuperadmin(db, { email: ADMIN, password: PASSWORD, totpSecr
 const admin = db.get('SELECT * FROM users WHERE email = ?', ADMIN);
 
 const ws = db.insert('workspaces', { slug: 'demo-shop', name: 'החנות לדוגמה', created_at: nowIso() });
-for (const product of ['teder', 'toran']) db.insert('workspace_products', { workspace_id: ws, product, enabled: 1, updated_at: nowIso() });
+for (const product of ['teder', 'toran']) {
+  db.insert('workspace_products', { workspace_id: ws, product, enabled: 1, updated_at: nowIso() });
+  ensureSubscription(db, ws, product);
+}
+// The paywall in both states: Teder paid for a month, Toran not paid yet (its steps locked on /setup).
+payMonth(db, ws, 'teder', { by: admin });
 const inv = createInvite(db, { workspaceId: ws, email: 'dana@example.com', role: 'client_owner', by: admin });
 const { user: dana } = acceptInvite(db, inv.token, { name: 'דנה' });
 claimPhone(db, { code: createLinkCode(db, { user: dana, workspaceId: ws, optIn: true }).code, phone: '972500000123' });
@@ -57,6 +63,9 @@ OpenFrequency accounts, demo  (database: .demo/, rebuilt each run)
                                           code: any of ${codes.slice(0, 3).join(', ')} (one use each)
                                           or add this key to an authenticator app: ${secret}
   http://127.0.0.1:${internalPort}/internal/session   Authorization: Bearer ${process.env.OF_INTERNAL_TOKEN}
+
+  The paywall (docs/setup.md):
+    curl -H "Authorization: Bearer ${process.env.OF_INTERNAL_TOKEN}" "http://127.0.0.1:${internalPort}/internal/entitlement?workspace=${ws}&product=toran"
 
   Toran's owner line (docs/internal-owner-phone.md):
     curl -H "Authorization: Bearer ${process.env.OF_INTERNAL_TOKEN}" "http://127.0.0.1:${internalPort}/internal/owner-phone?phone=972500000123"

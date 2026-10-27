@@ -23,9 +23,10 @@ try {
 
 const run = chromium ? test : test.skip;
 
-async function setup() {
+async function setup({ comp = true } = {}) {
   const h = tempHome();
-  makeWorkspace(h.db, 'dana-shop', { name: 'החנות של דנה', products: ['teder'], members: { 'dana@example.com': 'client_owner' } });
+  // Complimentary unless a test pays for it, so the sign-in lands on the home page (an unpaid workspace lands on /setup).
+  makeWorkspace(h.db, 'dana-shop', { name: 'החנות של דנה', products: ['teder'], comp, members: { 'dana@example.com': 'client_owner' } });
   const { codes } = setSuperadmin(h.db, { email: 'admin@example.com', password: 'a long enough password', totpSecret: newTotpSecret() });
   const site = await startSite(h.db, { env: { PUBLIC_HOST: '', TEDER_URL: 'http://localhost:4700/', OF_ASSISTANT_WA: '972500000100' } });
   const browser = await chromium.launch();
@@ -89,7 +90,8 @@ run('the superadmin signs in to the dashboard, and opens a workspace from the ac
 });
 
 run('the home page on a phone, in dark mode: the bar fills from the right, the invoices and the team fit, and the invite form works', async () => {
-  const t = await setup();
+  // Paid for, below: the month's bar is what this looks at.
+  const t = await setup({ comp: false });
   try {
     const { payMonth } = await import('../src/accounts/subscriptions.js');
     const { addInvoice } = await import('../src/accounts/invoices.js');

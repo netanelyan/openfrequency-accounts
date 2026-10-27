@@ -5,7 +5,7 @@ import path from 'node:path';
 import { tempHome } from './helpers.js';
 import { createMailer } from '../src/mail/send.js';
 import { inviteMail, magicLinkMail } from '../src/mail/messages.js';
-import { AUDIT_NAMES, MAIL, SETUP, SIGNUP, T } from '../src/web/copy.js';
+import { AUDIT_NAMES, CANCEL, ERASE, MAIL, NOTIFY, SETUP, SIGNUP, T } from '../src/web/copy.js';
 import { outboxDir } from '../src/core/paths.js';
 
 const LINK = 'https://accounts.openfrequency.co.il/auth/link?t=AbCdEfGhIjKlMnOpQrStUvWxYz0123456789_-abcd';
@@ -96,6 +96,9 @@ test('every Hebrew string keeps the voice rules', () => {
   walk(AUDIT_NAMES);
   walk(SIGNUP);
   walk(SETUP);
+  walk(CANCEL);
+  walk(ERASE);
+  walk(NOTIFY);
   const hebrew = strings.filter((s) => /[֐-׿]/.test(s));
   assert.ok(hebrew.length > 60, `only ${hebrew.length} Hebrew strings found`);
   for (const s of hebrew) {

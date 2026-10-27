@@ -9,8 +9,8 @@ import { addDays, describe, israelToday, subscriptionsOf } from './subscriptions
 /** describe()'s status, in the dashboard's words. `ending` is describe()'s: stopped, its last day ahead, paid or not. */
 export const STATE = { active: 'paid', open: 'waiting', due: 'late', ending: 'ending', ended: 'ended' };
 
-/** One subscription row as the dashboard reads it, on `today`. */
-export function opsSubscription(row, today) {
+/** One subscription row as the dashboard reads it, on `today`. `comp`: the product is free (the paywall's comp). */
+export function opsSubscription(row, today, comp = false) {
   const d = describe(row, today);
   return {
     product: row.product,
@@ -20,6 +20,8 @@ export function opsSubscription(row, today) {
     startedOn: row.started_on,
     paidUntil: row.paid_until,
     endsOn: row.ends_on,
+    cancelledAt: row.cancelled_at ?? null,
+    comp: Boolean(comp),
     state: STATE[d.status],
     nextChargeOn: d.next?.on ?? null,
   };
@@ -28,7 +30,7 @@ export function opsSubscription(row, today) {
 /** Every customer workspace, newest first, and today's Israel date: { today, workspaces }. */
 export function opsCustomers(db, today = israelToday()) {
   const t = nowIso();
-  const workspaces = db.all('SELECT id, slug, name, created_at, disabled_at FROM workspaces ORDER BY created_at DESC, id DESC').map((w) => {
+  const workspaces = db.all('SELECT id, slug, name, created_at, disabled_at FROM workspaces WHERE deleted_at IS NULL ORDER BY created_at DESC, id DESC').map((w) => {
     const subs = subscriptionsOf(db, w.id);
     const invoices = db.get('SELECT count(*) AS count, max(issued_on) AS last FROM invoices WHERE workspace_id = ?', w.id);
     return {
@@ -43,7 +45,7 @@ export function opsCustomers(db, today = israelToday()) {
       invitesWaiting: db.get("SELECT count(*) AS n FROM tokens WHERE kind = 'invite' AND workspace_id = ? AND used_at IS NULL AND expires_at > ?", w.id, t).n,
       // users.last_login_at: set on every sign-in (createSession), per person, not per workspace.
       lastLoginAt: db.get('SELECT max(u.last_login_at) AS at FROM memberships m JOIN users u ON u.id = m.user_id WHERE m.workspace_id = ?', w.id).at ?? null,
-      subscriptions: PRODUCTS.filter((p) => subs[p]).map((p) => opsSubscription(subs[p], today)),
+      subscriptions: PRODUCTS.filter((p) => subs[p]).map((p) => opsSubscription(subs[p], today, db.get('SELECT comp FROM workspace_products WHERE workspace_id = ? AND product = ?', w.id, p)?.comp)),
       invoices: { count: invoices.count, lastIssuedOn: invoices.last ?? null },
     };
   });
@@ -58,7 +60,7 @@ export const VAT = 0.18;
 /**
  * The money, from opsCustomers()' workspaces on `today`: the monthly revenue before VAT (paid and ending, a price
  * recorded with VAT included counted without it), how many pay for each product, who is late, who has not paid yet,
- * and who renews in the next 7 days. A disabled workspace counts nowhere. Ported from Toran's src/ops/funnel.ts.
+ * and who renews in the next 7 days. A disabled workspace, and a complimentary product, count nowhere. Ported from Toran's src/ops/funnel.ts.
  */
 export function opsMoney(workspaces, today) {
   const out = { mrr: 0, paying: { toran: 0, teder: 0 }, late: [], waiting: [], renewals: [] };
@@ -66,6 +68,8 @@ export function opsMoney(workspaces, today) {
   for (const w of workspaces) {
     if (w.disabled) continue;
     for (const s of w.subscriptions) {
+      // A complimentary product is not late and not waiting: there is nothing to pay.
+      if (s.comp) continue;
       const monthly = Number(s.monthly) || 0;
       const net = s.vat === 'included' ? Math.round((monthly / (1 + VAT)) * 100) / 100 : monthly;
       if (s.state === 'paid' || s.state === 'ending') {

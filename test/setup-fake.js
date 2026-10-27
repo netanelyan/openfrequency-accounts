@@ -1,9 +1,11 @@
 import { createServer } from 'node:http';
 import { TOKEN } from './site.js';
 
-// A pretend product (Toran or Teder) on 127.0.0.1 with the one internal route the setup page reads (docs/setup.md):
-// GET /internal/setup?workspace=<id>. It answers `state.answer(workspaceId)`: a body (an object, sent as JSON), or
-// { status, raw } to send something else as it is, or 'hang' to never answer. Every request is kept in `calls`.
+// A pretend product (Toran or Teder) on 127.0.0.1 with the internal routes accounts calls (docs/setup.md):
+// GET /internal/setup?workspace=<id>, which answers `state.answer(workspaceId)`: a body (an object, sent as JSON), or
+// { status, raw } to send something else as it is, or 'hang' to never answer; and POST
+// /internal/workspaces/<id>/delete, which answers `state.erase(workspaceId)`: a status (404, as a product without the
+// route would, unless a test says otherwise). Every request is kept in `calls`.
 
 /** A checklist in the contract's shape: one required step done, one required to do, one optional. Fictional. */
 export function sampleSetup(product, { ready = false, done = false } = {}) {
@@ -19,9 +21,9 @@ export function sampleSetup(product, { ready = false, done = false } = {}) {
   };
 }
 
-export async function startProduct(product, { token = TOKEN, answer = () => sampleSetup(product) } = {}) {
+export async function startProduct(product, { token = TOKEN, answer = () => sampleSetup(product), erase = () => 404 } = {}) {
   const calls = [];
-  const state = { answer };
+  const state = { answer, erase };
   const hanging = new Set();
   const server = createServer((req, res) => {
     const url = new URL(req.url, 'http://x');
@@ -29,6 +31,12 @@ export async function startProduct(product, { token = TOKEN, answer = () => samp
     if (req.headers.authorization !== `Bearer ${token}`) {
       res.writeHead(401, { 'content-type': 'application/json' });
       return res.end('{"error":"bad_token"}');
+    }
+    const del = /^\/internal\/workspaces\/(\d+)\/delete$/.exec(url.pathname);
+    if (req.method === 'POST' && del) {
+      const status = state.erase(del[1]);
+      res.writeHead(status, { 'content-type': 'application/json' });
+      return res.end(status < 300 ? '{"ok":true}' : '{"error":"x"}');
     }
     if (req.method !== 'GET' || url.pathname !== '/internal/setup') {
       res.writeHead(404, { 'content-type': 'application/json' });

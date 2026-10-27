@@ -1,13 +1,13 @@
 import { createServer } from 'node:http';
 import { publicHandler } from './app.js';
-import { internalHandler } from './internal.js';
+import { accountsBase, internalHandler } from './internal.js';
 import { createMailer } from '../mail/send.js';
 
 // Two listeners, both on 127.0.0.1:
 //
 //   PORT (4740)           the public site (app.js). Caddy holds the certificate
 //                         for accounts.openfrequency.co.il and passes requests here.
-//   INTERNAL_PORT (4741)  /internal/session and /internal/owner-phone* (internal.js),
+//   INTERNAL_PORT (4741)  /internal/session, /internal/owner-phone*, /internal/entitlement, /internal/notify (internal.js),
 //                         for Teder and Toran on this machine. Caddy never proxies
 //                         it, so no request from outside can reach it even if a
 //                         proxy rule is too broad.
@@ -26,7 +26,7 @@ export async function listen(db, { env = process.env, port = Number(env.PORT || 
   const pub = await listenOn(publicHandler({ db, env, mailer, ...opts }), port);
   let internal;
   try {
-    internal = await listenOn(internalHandler(db, { env, log: opts.log }), internalPort);
+    internal = await listenOn(internalHandler(db, { env, log: opts.log, mailer, base: accountsBase(env) }), internalPort);
   } catch (e) {
     pub.close();
     throw e;

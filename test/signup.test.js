@@ -223,7 +223,10 @@ test('the link opens exactly one user and one workspace, with only the products 
     assert.deepEqual(subs.map((s) => [s.product, s.monthly, s.setup, s.paid_until]), [['teder', 790, 1490, null]]);
     assert.deepEqual(t.db.all('SELECT user_id, role FROM memberships WHERE workspace_id = ?', ws.id).map((r) => ({ ...r })), [{ user_id: user.id, role: 'client_owner' }]);
     assert.equal(count(t.db, "tokens WHERE kind = 'invite'"), 0);
-    assert.equal(t.mails.length, 1);
+    // The confirmation link, then the welcome email (no notice: OF_SIGNUP_NOTIFY is unset here).
+    assert.deepEqual(t.mails.map((m) => m.subject), ['אישור החשבון שלכם ב-OpenFrequency', 'החשבון של Noa Ceramics נפתח']);
+    // Not complimentary: a new sign-up pays.
+    assert.deepEqual(t.db.all('SELECT comp FROM workspace_products WHERE workspace_id = ?', ws.id).map((r) => r.comp), [0]);
     assert.ok(t.db.get("SELECT 1 FROM audit WHERE action = 'signed_up' AND workspace_id = ?", ws.id));
 
     // Signed in, in their workspace: Teder knows them.
@@ -445,7 +448,7 @@ test('no notice when sign-up is closed, for the honeypot, past the limits, for a
     const b = off.browser();
     await signUp(b);
     assert.equal((await b.post('/signup/confirm', { t: tokenOf(off.mails[0].link) })).status, 303);
-    assert.equal(off.mails.length, 1);
+    assert.equal(off.mails.length, 2, 'the link and the welcome email, and no notice');
     assert.equal(notices(off.mails).length, 0);
   } finally {
     await off.done();

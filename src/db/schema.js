@@ -227,4 +227,47 @@ export const MIGRATIONS = [
   ALTER TABLE workspaces ADD COLUMN terms_version TEXT;
   ALTER TABLE workspaces ADD COLUMN terms_accepted_at TEXT;
   `,
+  `
+  -- The paywall (src/accounts/entitlement.js, docs/setup.md). A product opens for a workspace when a recorded payment
+  -- covers today, or when the superadmin marked it complimentary (comp: free, nothing to pay). Every workspace that
+  -- exists now was set up by hand, by the owner or for a customer: each product it has on is marked comp, so nothing
+  -- that works today stops. A workspace opened from now on (sign-up or console) starts with comp = 0.
+  ALTER TABLE workspace_products ADD COLUMN comp INTEGER NOT NULL DEFAULT 0 CHECK (comp IN (0, 1));
+  UPDATE workspace_products SET comp = 1 WHERE enabled = 1;
+
+  -- The customer cancelled online: when. ends_on is then the last day it works (the last day paid for, or the day of
+  -- the cancellation when nothing was paid). Undoing it before that day clears both.
+  ALTER TABLE subscriptions ADD COLUMN cancelled_at TEXT;
+
+  -- A workspace its owner (or the superadmin) deleted. The row stays, emptied, so its id is never given to another
+  -- workspace (Teder and Toran key their data by it) and the invoices kept by law still point at something. Everything
+  -- else of it is deleted (src/accounts/erase.js).
+  ALTER TABLE workspaces ADD COLUMN deleted_at TEXT;
+  -- An invoice of a deleted workspace: kept, with its PDF, and the business it was for, written on it.
+  ALTER TABLE invoices ADD COLUMN customer_name TEXT;
+  ALTER TABLE invoices ADD COLUMN detached_at TEXT;
+
+  -- Who gets which product email (POST /internal/notify, src/accounts/notify.js), as each person chose on
+  -- /notifications. No row: the default, on for an owner and off for a member.
+  CREATE TABLE notify_prefs (
+    user_id         INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    workspace_id    INTEGER NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+    product         TEXT NOT NULL CHECK (product IN ('teder', 'toran')),
+    kind            TEXT NOT NULL,
+    enabled         INTEGER NOT NULL CHECK (enabled IN (0, 1)),
+    updated_at      TEXT NOT NULL,
+    PRIMARY KEY (user_id, workspace_id, product, kind)
+  );
+
+  -- Each notification a product asked us to send, for its limit (a few a day for each workspace, product and kind).
+  CREATE TABLE notify_log (
+    id              INTEGER PRIMARY KEY,
+    workspace_id    INTEGER NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+    product         TEXT NOT NULL,
+    kind            TEXT NOT NULL,
+    at              TEXT NOT NULL,
+    recipients      INTEGER NOT NULL
+  );
+  CREATE INDEX notify_log_at ON notify_log(workspace_id, product, kind, at);
+  `,
 ];

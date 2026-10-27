@@ -695,3 +695,30 @@ ol.steps .button { min-height: 40px; padding: 0 18px; font-size: 15px; }
 .st-attention .chip { background: var(--warn-bg); color: var(--warn); }
 .st-done .what b { color: var(--ink-2); font-weight: 500; }
 @media (max-width: 560px) { ol.steps .button { flex: 1 1 100%; } }
+
+/* ------------------------------------------------------------ the paywall, cancelling, deleting, the emails */
+
+/* A product card's buttons: into the product (or to the payment), then cancelling or taking it back, one per row. */
+.card.sub .go { display: grid; gap: 8px; }
+.card.sub .go form, .card.sub .go form button { width: 100%; margin: 0; }
+.card.sub .go form button { min-height: 44px; }
+.s-open .tag, .s-cancelled .tag { background: var(--warn-bg); color: var(--warn); }
+.s-comp .tag { background: var(--ok-bg); color: var(--ok); }
+/* A step of a product that opens after the payment: there, quieter, and nothing to press. */
+.st-locked .what b { color: var(--ink-2); font-weight: 500; }
+.card.setup-p.locked > header .mark { filter: grayscale(1); opacity: 0.6; }
+.card.setup-p.locked > .muted { margin: 0 0 12px; }
+ul.prices { list-style: none; padding: 0; margin: 12px 0 0; display: grid; gap: 4px; font-weight: 500; }
+.card.setup-p#setup-billing > .muted { margin: 10px 0 0; }
+label.product-pick small.price { color: var(--ink-2); }
+/* The console: a product's access, and the form that deletes a workspace. */
+p.access { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin: 6px 0 0; flex: 1 0 100%; }
+details.ws-delete { margin-top: 12px; }
+details.ws-delete summary { cursor: pointer; color: var(--bad); font-size: 14px; font-weight: 500; min-height: 32px; display: flex; align-items: center; }
+details.ws-delete form { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px 12px; margin-top: 8px; }
+details.ws-delete small { flex: 1 0 100%; }
+.card.erase h2 { font-size: 17px; margin: 20px 0 6px; }
+.card.erase ul { margin: 0; padding-inline-start: 1.2em; display: grid; gap: 4px; }
+fieldset.notify { border: 0; padding: 0; margin: 20px 0 0; display: grid; gap: 6px; }
+fieldset.notify legend { display: flex; align-items: center; gap: 10px; font-size: 17px; padding: 0; margin-bottom: 6px; }
+fieldset.notify legend .mark { width: 32px; height: 32px; }

@@ -1,9 +1,10 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { ROOT } from '../core/paths.js';
-import { addDays, addMonths, describe, israelToday } from '../accounts/subscriptions.js';
+import { addDays, addMonths, describe, israelToday, LIST_PRICES } from '../accounts/subscriptions.js';
 import { total } from '../accounts/invoices.js';
-import { AUDIT_NAMES, OPS, PRODUCT_NAMES, ROLE_NAMES, SETUP, SIGNUP, T, dayHe, hourHe, ils, phoneHe, when } from './copy.js';
+import { KINDS } from '../accounts/notify.js';
+import { AUDIT_NAMES, CANCEL, ERASE, NOTIFY, OPS, PRODUCT_NAMES, ROLE_NAMES, SETUP, SIGNUP, T, dayHe, hourHe, ils, phoneHe, when } from './copy.js';
 import { PRIVACY_URL, TERMS_URL } from '../accounts/signup.js';
 
 // Server-rendered pages: Hebrew, right to left, one stylesheet. No script, except
@@ -143,18 +144,31 @@ function paidBar(s, { saysLeft = true } = {}) {
 </div>`;
 }
 
-// One product's subscription, as its customer sees it (src/accounts/subscriptions.js describe()).
-function subCard(p, s, href) {
+/**
+ * One product's subscription, as its customer sees it: the plan and its price, how far through the month paid for,
+ * the next charge (only once a payment provider is connected: before that the payments are arranged with us), and
+ * the status in plain words (src/accounts/subscriptions.js describe(), and the paywall's access, entitlement.js).
+ * While the paywall keeps it closed, its button leads to the payment instead of into the product. Its owner cancels
+ * it here (a confirmation page first) and takes a cancellation back before its last day.
+ */
+function subCard(p, s, href, { access = null, csrf = '', owner = false, providerReady = false } = {}) {
   const name = PRODUCT_NAMES[p];
-  const status = s?.status || 'open';
+  const comp = access?.access === 'comp';
+  const cancelled = !comp && access?.cancelled && s?.status !== 'ended';
+  const status = comp ? 'comp' : cancelled ? 'cancelled' : s?.status || 'open';
   const vat = s?.vat === 'included' ? T.vatIncluded : s?.vat === 'excluded' ? T.vatExcluded : '';
   const lines = [];
-  if (status === 'active') {
+  if (status === 'comp') {
+    lines.push(`<p class="muted">${esc(T.subComp)}</p>`);
+  } else if (status === 'active') {
     lines.push(paidBar(s));
-    if (s.next) lines.push(`<p>${esc(T.subNext(dayHe(s.next.on), ils(s.next.monthly), s.next.vat === 'excluded'))}</p>`);
+    if (s.next && providerReady) lines.push(`<p>${esc(T.subNext(dayHe(s.next.on), ils(s.next.monthly), s.next.vat === 'excluded'))}</p>`);
     lines.push(`<p class="muted">${esc(T.subPaidUntil(dayHe(s.paid_until)))}</p>`);
   } else if (status === 'due') {
     lines.push(`<p class="warn">${esc(T.subDue(dayHe(s.next.on)))}</p>`);
+  } else if (status === 'cancelled') {
+    lines.push(`<p class="warn">${esc(access.allowed ? T.subCancelled(dayHe(s.ends_on)) : T.subCancelledNow)}</p>`);
+    if (s.bar) lines.push(paidBar(s, { saysLeft: false }));
   } else if (status === 'ending') {
     // The days left are said once, in the warning; the bar shows where in the last month paid for today is.
     lines.push(`<p class="warn">${esc(T.subEnding(dayHe(s.ends_on), s.left))}</p>`);
@@ -162,14 +176,27 @@ function subCard(p, s, href) {
   } else if (status === 'ended') {
     lines.push(`<p class="muted">${esc(T.subEnded(dayHe(s.ends_on)))}</p>`);
   } else {
-    lines.push(`<p class="muted">${esc(T.subOpen)}</p>`);
+    lines.push(`<p class="muted">${esc(T.subOpen(name))}</p>`);
   }
+  if (status === 'open' && s?.setup) lines.push(`<p class="muted">${esc(T.subSetup(ils(s.setup)))}</p>`);
   if (s?.started_on) lines.push(`<p class="muted">${esc(T.subSince(dayHe(s.started_on)))}</p>`);
+  const locked = access && !access.allowed;
+  const go =
+    status === 'ended' || (status === 'cancelled' && locked)
+      ? ''
+      : locked
+        ? `<a class="button primary" href="/setup#setup-billing">${esc(T.subPay)}</a>`
+        : `<a class="button primary" href="${esc(href)}">${esc(T.homeOpen(name))}</a>`;
+  let change = '';
+  if (owner && status === 'cancelled' && s?.ends_on && s.ends_on >= israelToday())
+    change = button(`/subscription/${p}/resume`, T.subResume, csrf, { kind: 'quiet', label: T.subResumeLabel(name) });
+  else if (owner && ['active', 'open', 'due'].includes(status))
+    change = `<a class="button quiet" href="/subscription/${esc(p)}/cancel" aria-label="${esc(T.subCancelLabel(name))}">${esc(T.subCancel)}</a>`;
   return `<article class="card sub s-${status}">
 <header>${productMark(p)}<h3>${esc(name)}</h3><span class="tag">${esc(T.subStatus[status])}</span></header>
-${s?.monthly != null ? `<p class="price">${esc(T.subPrice(ils(s.monthly), vat))}</p>` : ''}
+${s?.monthly != null && !comp ? `<p class="price">${esc(T.subPrice(ils(s.monthly), vat))}</p>` : ''}
 ${lines.join('\n')}
-${status !== 'ended' ? `<p class="go"><a class="button primary" href="${esc(href)}">${esc(T.homeOpen(name))}</a></p>` : ''}
+${go || change ? `<p class="go">${go}${change}</p>` : ''}
 </article>`;
 }
 
@@ -275,9 +302,10 @@ ${form}
  * `setup` (null once setup is finished): a card that leads to /setup while a product says a step is left, and a
  * "הגדרה" link in the header instead while a product has not answered.
  */
-export function homePage({ csrf, user, workspace, products, productUrls, canSwitch, subscriptions = {}, others = [], invoices = null, team, role, readOnly = false, support = null, supportTeam = null, flash = '', teamError = '', teamForm = {}, whatsapp = {}, setup = null }) {
+export function homePage({ csrf, user, workspace, products, productUrls, canSwitch, subscriptions = {}, access = {}, providerReady = false, others = [], invoices = null, team, role, readOnly = false, support = null, supportTeam = null, flash = '', teamError = '', teamForm = {}, whatsapp = {}, setup = null }) {
+  const owner = role === 'client_owner' && !readOnly;
   const subs = products.length
-    ? `<div class="subs">${products.map((p) => subCard(p, subscriptions[p], productUrls[p])).join('')}</div>`
+    ? `<div class="subs">${products.map((p) => subCard(p, subscriptions[p], productUrls[p], { access: access[p], csrf, owner, providerReady })).join('')}</div>`
     : `<section class="card"><p class="muted">${esc(T.homeNoProducts)}</p></section>`;
   const more = others.length
     ? `<div class="list-h"><h2>${esc(T.dashMore)}</h2></div>
@@ -299,7 +327,8 @@ ${whatsappCard({ csrf, readOnly, ...whatsapp })}
 ${teamCard({ csrf, user, team: team || { members: [], invites: [], taken: 0, limit: 0, full: true }, role, readOnly, support: supportTeam || support, error: teamError, form: teamForm })}
 <section class="card"><h2>${esc(T.dashAccount)}</h2>
 <dl class="facts"><div><dt>${esc(T.dashEmail)}</dt><dd class="ltr">${esc(user.email)}</dd></div><div><dt>${esc(T.dashBusiness)}</dt><dd>${esc(workspace.name)}</dd></div></dl>
-<p class="row">${canSwitch ? `<a class="button" href="/workspace">${esc(T.homeSwitch)}</a>` : ''}<a class="button" href="/logout">${esc(T.dashSignOutAll)}</a></p>
+<p class="row">${canSwitch ? `<a class="button" href="/workspace">${esc(T.homeSwitch)}</a>` : ''}<a class="button" href="/notifications">${esc(T.dashNotifications)}</a><a class="button" href="/logout">${esc(T.dashSignOutAll)}</a></p>
+${owner ? `<p class="links"><a href="/account/delete">${esc(T.dashDelete)}</a></p>` : ''}
 </section>
 </div>
 <p class="muted center">${support ? `${esc(T.dashHelpAsk)} <a href="${esc(support)}">${esc(T.supportWrite)}</a>` : esc(T.dashHelp)}</p>`;
@@ -318,7 +347,7 @@ export function signupPage({ csrf, form = {}, error = '', google = false, open =
   // the form's data, with a "בקרוב" tag and one line on why.
   const product = (p) =>
     open.includes(p)
-      ? `<label class="product-pick"><input type="checkbox" name="products" value="${p}"${chosen.includes(p) ? ' checked' : ''}>${productMark(p)}<span><b>${esc(PRODUCT_NAMES[p])}</b><small>${esc(SIGNUP.productWhat[p])}</small></span></label>`
+      ? `<label class="product-pick"><input type="checkbox" name="products" value="${p}"${chosen.includes(p) ? ' checked' : ''}>${productMark(p)}<span><b>${esc(PRODUCT_NAMES[p])}</b><small>${esc(SIGNUP.productWhat[p])}</small><small class="price">${esc(SIGNUP.price(ils(LIST_PRICES[p].monthly), ils(LIST_PRICES[p].setup)))}</small></span></label>`
       : `<label class="product-pick soon"><input type="checkbox" disabled aria-describedby="su-soon-${p}">${productMark(p)}<span><b>${esc(PRODUCT_NAMES[p])}</b><small id="su-soon-${p}">${esc(SIGNUP.productSoon)}</small></span><span class="tag off">${esc(SIGNUP.soon)}</span></label>`;
   const order = ['toran', 'teder'].sort((a, b) => Number(!open.includes(a)) - Number(!open.includes(b)));
   return `
@@ -335,6 +364,7 @@ ${csrfField(csrf)}
 <fieldset class="products-pick"><legend>${esc(SIGNUP.productsLegend)}</legend>
 ${order.map(product).join('\n')}
 ${open.length > 1 ? `<small>${esc(SIGNUP.productsHint)}</small>` : ''}
+<small>${esc(SIGNUP.pricesNote)}</small>
 </fieldset>
 <label class="check terms"><input type="checkbox" name="terms" value="1" required${form.terms ? ' checked' : ''}> <span>${esc(SIGNUP.termsPre)}<a href="${esc(TERMS_URL)}" target="_blank" rel="noopener">${esc(SIGNUP.termsLink)}</a>${esc(SIGNUP.termsMid)}<a href="${esc(PRIVACY_URL)}" target="_blank" rel="noopener">${esc(SIGNUP.privacyLink)}</a></span></label>
 <div class="hp" aria-hidden="true"><label for="su-website">${esc(SIGNUP.honeypot)}</label><input id="su-website" name="website" tabindex="-1" autocomplete="off"></div>
@@ -371,36 +401,69 @@ export const signupConfirmPage = ({ csrf, token, row }) => `
 
 /**
  * One step: its status, its title and detail, and its button when it has a link and is not done (none in view-as).
- * The first step on the page that can be started is the one blue button.
+ * The first step on the page that can be started is the one blue button. A step of a product the paywall keeps
+ * closed is shown locked: no button, and "אחרי התשלום" unless it is done already.
  */
-function stepRow(s, { readOnly, first }) {
-  const can = s.href && s.status !== 'done' && s.status !== 'soon' && !readOnly;
+function stepRow(s, { readOnly, first, locked = false }) {
+  if (locked && s.status !== 'done') {
+    return `<li class="step st-locked"><span class="chip">${esc(SETUP.lockedChip)}</span><span class="what"><b>${esc(s.title)}</b>${s.detail ? `<small>${esc(s.detail)}</small>` : ''}</span></li>`;
+  }
+  const can = !locked && s.href && s.status !== 'done' && s.status !== 'soon' && !readOnly;
   const verb = s.status === 'todo' ? SETUP.start : SETUP.open;
   const btn = can ? `<a class="button ${first() ? 'primary' : 'quiet'}" href="${esc(s.href)}" aria-label="${esc(SETUP.actionLabel(verb, s.title))}">${esc(verb)}</a>` : '';
   return `<li class="step st-${esc(s.status)}"><span class="chip">${esc(SETUP.status[s.status])}</span><span class="what"><b>${esc(s.title)}</b>${s.detail ? `<small>${esc(s.detail)}</small>` : ''}</span>${btn}</li>`;
 }
 
 /**
- * The checklist (setupState() in src/web/setup.js): how far along, then payment, then a section for each product the
- * workspace has turned on, and nothing about one it has not.
+ * The payment step, first: what is still to pay, product by product (the price recorded on the subscription: the
+ * list price before VAT, and the setup fee until the first payment), or until when it is paid. Without a payment
+ * provider it says the online payment opens soon and leads to us; with one, to its checkout.
  */
-export function setupPage({ state, productUrls, readOnly = false, flash = '' }) {
+function billingCard(b, { readOnly, first, products, access, prices }) {
+  const done = b.status === 'done';
+  const detail = done ? (b.comp ? SETUP.billingComp : SETUP.billingDone) : b.checkout ? SETUP.billingTodo : SETUP.billingSoon;
+  const label = b.checkout ? SETUP.billingPay : /^https:\/\/wa\.me\//.test(b.href || '') ? SETUP.billingWrite : SETUP.billingContact;
+  const btn = !done && b.href && !readOnly ? `<a class="button ${first() ? 'primary' : 'quiet'}" href="${esc(b.href)}">${esc(label)}</a>` : '';
+  const lines = products
+    .map((p) => {
+      const a = access[p];
+      const s = prices[p] || {};
+      if (a?.access === 'comp') return '';
+      if (a?.allowed && a.paidUntil) return `<li>${esc(SETUP.billingPaidUntil(PRODUCT_NAMES[p], dayHe(a.paidUntil)))}</li>`;
+      if (s.monthly == null) return '';
+      const vat = s.vat === 'included' ? T.vatIncluded : T.vatExcluded;
+      return `<li>${esc(SETUP.billingPrice(PRODUCT_NAMES[p], ils(s.monthly), vat, !s.paid_until && s.setup ? ils(s.setup) : ''))}</li>`;
+    })
+    .join('');
+  return `<section class="card setup-p" id="setup-billing"><header><div><h2>${esc(SETUP.billingTitle)}</h2></div><span class="tag${done ? '' : ' off'}">${esc(done ? SETUP.ready : SETUP.notReady)}</span></header>
+<ol class="steps"><li class="step st-${done ? 'done' : 'todo'}"><span class="chip">${esc(SETUP.status[done ? 'done' : 'todo'])}</span><span class="what"><b>${esc(SETUP.billingStep)}</b><small>${esc(detail)}</small></span>${btn}</li></ol>
+${lines ? `<ul class="prices">${lines}</ul>` : ''}
+${!done && !b.checkout ? `<p class="muted">${esc(SETUP.billingReply)}</p>` : ''}
+</section>`;
+}
+
+/**
+ * The checklist (setupState() in src/web/setup.js): how far along, then payment, then a section for each product the
+ * workspace has turned on, and nothing about one it has not. A product the paywall keeps closed shows its steps
+ * locked, "נפתח אחרי התשלום".
+ */
+export function setupPage({ state, productUrls, readOnly = false, flash = '', access = {}, prices = {} }) {
   let used = false;
   const first = () => (used ? false : (used = true));
-  const steps = (list) => `<ol class="steps">${list.map((s) => stepRow(s, { readOnly, first })).join('')}</ol>`;
-  const b = state.billing;
-  const billingDetail = b.status === 'soon' ? SETUP.billingSoon : b.status === 'done' ? SETUP.billingDone : SETUP.billingTodo;
+  const steps = (list, locked) => `<ol class="steps">${list.map((s) => stepRow(s, { readOnly, first, locked })).join('')}</ol>`;
+  const billing = state.billing ? billingCard(state.billing, { readOnly, first, products: state.sections.map((s) => s.product), access, prices }) : '';
   const sections = state.sections
     .map((sec) => {
       const p = sec.product;
-      const head = `<header>${productMark(p)}<div><h2>${esc(PRODUCT_NAMES[p])}</h2><small>${esc(SIGNUP.productWhat[p])}</small></div>${
-        sec.ok ? `<span class="tag${sec.done ? '' : ' off'}">${esc(sec.done ? SETUP.ready : SETUP.notReady)}</span>` : ''
-      }</header>`;
+      const tag = sec.locked ? `<span class="tag off">${esc(SETUP.locked)}</span>` : sec.ok ? `<span class="tag${sec.done ? '' : ' off'}">${esc(sec.done ? SETUP.ready : SETUP.notReady)}</span>` : '';
+      const head = `<header>${productMark(p)}<div><h2>${esc(PRODUCT_NAMES[p])}</h2><small>${esc(SIGNUP.productWhat[p])}</small></div>${tag}</header>`;
+      const lockedLead = sec.locked ? `<p class="muted">${esc(SETUP.lockedLead(PRODUCT_NAMES[p]))}</p>` : '';
       if (!sec.ok) {
+        if (sec.locked) return `<section class="card setup-p locked" id="setup-${p}">${head}${lockedLead}</section>`;
         return `<section class="card setup-p" id="setup-${p}">${head}<p class="warn">${esc(SETUP.failed)}</p><p><a class="button quiet" href="${esc(productUrls[p])}">${esc(SETUP.failedLink(PRODUCT_NAMES[p]))}</a></p></section>`;
       }
-      const body = (sec.required.length ? steps(sec.required) : '') + (sec.optional.length ? `<p class="section-l">${esc(SETUP.optional)}</p>${steps(sec.optional)}` : '');
-      return `<section class="card setup-p" id="setup-${p}">${head}${body || `<p class="muted">${esc(SETUP.noSteps)}</p>`}</section>`;
+      const body = (sec.required.length ? steps(sec.required, sec.locked) : '') + (sec.optional.length ? `<p class="section-l">${esc(SETUP.optional)}</p>${steps(sec.optional, sec.locked)}` : '');
+      return `<section class="card setup-p${sec.locked ? ' locked' : ''}" id="setup-${p}">${head}${lockedLead}${body || `<p class="muted">${esc(SETUP.noSteps)}</p>`}</section>`;
     })
     .join('\n');
   return `
@@ -412,9 +475,82 @@ ${state.total ? `<div class="meter"><p class="left"><span>${esc(SETUP.progress(s
 ${state.complete ? `<p class="notice" role="status">${esc(SETUP.allDone)}</p>` : ''}
 ${state.unknown ? `<p class="muted">${esc(SETUP.unknown)}</p>` : ''}
 </section>
-<section class="card setup-p" id="setup-billing"><header><div><h2>${esc(SETUP.billingTitle)}</h2></div></header>${steps([{ ...b, title: SETUP.billingStep, detail: billingDetail }])}</section>
+${billing}
 ${sections}`;
 }
+
+// ---- the account: cancelling a subscription, deleting the account, the product emails
+
+/**
+ * Before a subscription is cancelled: what happens (it works to the last day paid for, then stops, and nothing more is
+ * charged; with nothing paid, it stops today), that it can be taken back until then, and that no data is deleted.
+ */
+export const cancelPage = ({ csrf, product, access, error = '' }) => {
+  const name = PRODUCT_NAMES[product];
+  const paid = access.access === 'paid';
+  const until = dayHe(paid ? access.paidUntil : israelToday());
+  return `
+<section class="card">
+<h1>${esc(CANCEL.heading(name))}</h1>
+<p class="lead">${esc(paid ? CANCEL.leadPaid(name, until) : CANCEL.leadUnpaid(name))}</p>
+<p>${esc(CANCEL.undo(until))}</p>
+<p class="muted">${esc(CANCEL.keepsData)}</p>
+${error ? `<p class="error" role="alert">${esc(error)}</p>` : ''}
+<div class="row">${button(`/subscription/${product}/cancel`, CANCEL.confirm, csrf, { kind: 'danger' })}<a class="button quiet" href="/">${esc(CANCEL.back)}</a></div>
+</section>`;
+};
+
+/**
+ * Before a workspace is deleted: that it is permanent, what is deleted and what is kept (the invoices, by law, and the
+ * audit log), and the business's name to type. The superadmin's console has its own form (workspaceTile).
+ */
+export const deletePage = ({ csrf, workspace, error = '', typed = '', canCancel = false }) => `
+<section class="card erase">
+<h1>${esc(ERASE.title)}</h1>
+<p class="lead">${esc(ERASE.lead(workspace.name))}</p>
+<h2>${esc(ERASE.goneTitle)}</h2>
+<ul>${ERASE.gone.map((l) => `<li>${esc(l)}</li>`).join('')}</ul>
+<h2>${esc(ERASE.keptTitle)}</h2>
+<p>${esc(ERASE.kept)}</p>
+${canCancel ? `<p class="muted">${esc(ERASE.cancelInstead)}</p>` : ''}
+<form method="post" action="/account/delete">
+${csrfField(csrf)}
+<label for="erase-name">${esc(ERASE.confirmLabel(workspace.name))}</label>
+<input id="erase-name" name="name" required maxlength="200" autocomplete="off" value="${esc(typed)}"${error ? ' aria-invalid="true" aria-describedby="erase-err"' : ''}>
+${error ? `<p class="error" id="erase-err" role="alert">${esc(error)}</p>` : ''}
+<div class="row"><button class="danger">${esc(ERASE.button)}</button><a class="button quiet" href="/">${esc(ERASE.back)}</a></div>
+</form>
+</section>`;
+
+/**
+ * Which product emails this person gets in this workspace: a box for each kind of each product it has on, ticked as
+ * they chose (an owner's all ticked, a member's none, until they save). Nothing to press when read-only.
+ */
+export const notificationsPage = ({ csrf, workspace, prefs, readOnly = false, flash = '' }) => {
+  const products = Object.keys(prefs);
+  const groups = products
+    .map(
+      (p) => `<fieldset class="notify"><legend>${productMark(p)}<b>${esc(PRODUCT_NAMES[p])}</b></legend>
+${KINDS.map((k) => `<label class="check"><input type="checkbox" name="on" value="${p}:${k}"${prefs[p][k] ? ' checked' : ''}${readOnly ? ' disabled' : ''}> ${esc(NOTIFY.kinds[k])}</label>`).join('\n')}
+</fieldset>`
+    )
+    .join('\n');
+  return `
+<header class="top"><div class="brand">${ofMark()}<h1>${esc(NOTIFY.title)}</h1></div><a class="button quiet" href="/">${esc(NOTIFY.back)}</a></header>
+${flash ? `<p class="flash" role="status">${esc(flash)}</p>` : ''}
+<section class="card">
+<p class="lead">${esc(NOTIFY.lead)}</p>
+<p class="muted">${esc(NOTIFY.defaults)}</p>
+${
+  products.length
+    ? `<form method="post" action="/notifications">${csrfField(csrf)}<input type="hidden" name="workspace" value="${esc(workspace.id)}">
+${groups}
+${readOnly ? `<p class="muted">${esc(NOTIFY.readOnly)}</p>` : `<button class="primary">${esc(NOTIFY.save)}</button>`}
+</form>`
+    : `<p class="muted">${esc(NOTIFY.noProducts)}</p>`
+}
+</section>`;
+};
 
 export const messagePage = ({ title, lead, links: pairs = [] }) => `
 <section class="card">
@@ -493,6 +629,17 @@ function invoiceForm(base, p, s, csrf) {
 <button class="quiet">${esc(T.invSave)}</button></form></details>`;
 }
 
+/**
+ * The paywall, for one product of a workspace on the console: its access today (paid, complimentary, unpaid,
+ * cancelled, off), whether it is open, until when, and the button that marks it complimentary or takes that back.
+ */
+function accessRow(base, p, a, on, csrf) {
+  if (!a) return '';
+  const until = a.access === 'cancelled' ? a.lastDay : a.access === 'paid' ? a.paidUntil : null;
+  const toggle = on ? button(`${base}/comp`, a.comp ? T.compOff : T.compOn, csrf, { fields: { product: p, comp: a.comp ? '0' : '1' }, kind: 'quiet' }) : '';
+  return `<p class="access a-${esc(a.access)}"><span class="muted">${esc(T.accessLine(T.accessNames[a.access], a.allowed, until ? dayHe(until) : ''))}</span>${toggle}</p>`;
+}
+
 function workspaceTile(w, csrf) {
   const base = `/admin/workspaces/${w.id}`;
   const products = Object.entries(w.products)
@@ -523,6 +670,7 @@ function workspaceTile(w, csrf) {
 <label>${esc(T.subPaid)}<input name="paid_until" type="date" value="${esc(s.paid_until ?? '')}"></label>
 <label>${esc(T.subEnds)}<input name="ends_on" type="date" value="${esc(s.ends_on ?? '')}"></label>
 <button class="quiet">${esc(T.subSave)}</button></form>${button(`${base}/subscription/pay`, T.subPayMonth, csrf, { fields: { product: p }, kind: 'quiet' })}
+${accessRow(base, p, w.access?.[p], w.products[p], csrf)}
 ${invoiceForm(base, p, s, csrf)}</li>`;
     })
     .join('');
@@ -548,6 +696,10 @@ ${w.invoices?.length ? `<p class="section-l">${esc(T.dashInvoices)}</p><ul class
 ${viewAs}
 <span class="end">${w.disabled_at ? button(`${base}/enable`, T.enableWs, csrf, { kind: 'quiet' }) : button(`${base}/disable`, T.disableWs, csrf, { kind: 'danger' })}</span>
 </div>
+<details class="ws-delete"><summary>${esc(T.wsDelete)}</summary>
+<form method="post" action="${base}/delete" class="inline">${csrfField(csrf)}<small>${esc(T.wsDeleteHint)}</small>
+<label>${esc(T.wsDeleteLabel)}<input name="name" required maxlength="200" autocomplete="off" placeholder="${esc(w.name)}"></label>
+<button class="danger">${esc(T.wsDeleteButton)}</button></form></details>
 </article>`;
 }
 

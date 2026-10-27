@@ -160,8 +160,14 @@ test('turning a product on or off is seen by the next request from that product'
     assert.equal((await t.internal(sid, 'teder')).json.error, 'product_disabled');
     assert.deepEqual((await t.internal(sid)).json.products, ['toran']);
     assert.match((await t.admin.get('/admin/accounts')).body, /תדר כבוי עכשיו ב-חנות של דנה/);
-    const home = await b.get('/');
+    // Turned on, nothing paid yet: its card leads to the payment. Marked complimentary, into the product.
+    let home = await b.get('/');
+    assert.match(home.body, /<a class="button primary" href="\/setup#setup-billing">להסדיר תשלום<\/a>/);
+    assert.doesNotMatch(home.body, /כניסה לתורן|כניסה לתדר/);
+    await t.admin.post(`/admin/workspaces/${id}/comp`, { product: 'toran', comp: '1' });
+    home = await b.get('/');
     assert.match(home.body, /כניסה לתורן/);
+    assert.match(home.body, /<span class="tag">ללא תשלום<\/span>/);
     assert.doesNotMatch(home.body, /כניסה לתדר/);
   } finally {
     await t.done();
@@ -278,7 +284,11 @@ test("the customer's dashboard: each product's subscription, recorded on the con
     const { b } = await accept(t, t.mails[0]);
     let home = (await b.get('/')).body;
     assert.match(home, /790 ₪ לחודש, לא כולל מע״מ/, 'the list price, from the day it was turned on');
-    assert.match(home, /התשלום הראשון יופיע כאן כשנרשום אותו\./);
+    // Nothing paid yet: said in plain words (not "active"), with the setup fee, and the button leads to the payment.
+    assert.match(home, /<span class="tag">עוד לא שולם<\/span>/);
+    assert.match(home, /תדר נפתח אחרי התשלום על המנוי\./);
+    assert.match(home, /דמי הקמה: 1,490 ₪, פעם אחת/);
+    assert.match(home, /href="\/setup#setup-billing">להסדיר תשלום</);
     assert.match(home, /מנוי מאז 22\.10\.2026/);
     assert.match(home, /עוד מאיתנו[^]*openfrequency\.co\.il\/toran/, 'Toran, which they do not have, is offered');
     assert.match(home, /מי בחשבון[^]*דנה[^]*בעלים/);
@@ -292,7 +302,10 @@ test("the customer's dashboard: each product's subscription, recorded on the con
     assert.match(home, /<span class="tag">פעיל<\/span>/);
     assert.match(home, /נשארו 31 ימים בחודש ששולם/);
     assert.match(home, /<progress max="31" value="1"/);
-    assert.match(home, /החיוב הבא: 790 ₪ ועוד מע״מ, ב-22\.11\.2026/);
+    assert.match(home, /שולם עד 21\.11\.2026/);
+    assert.match(home, /<a class="button primary" href="https:\/\/teder\.openfrequency\.co\.il\/">כניסה לתדר<\/a>/);
+    // No payment provider yet, so no "next charge": the payments are arranged with us.
+    assert.doesNotMatch(home, /החיוב הבא/);
 
     // Stopped: its last day is the end of the month paid for.
     await t.admin.post(`/admin/workspaces/${w.id}/subscription`, { product: 'teder', monthly: '790', setup: '1490', vat: 'excluded', started_on: '2026-10-22', paid_until: '2026-11-21', ends_on: '2026-11-21' });

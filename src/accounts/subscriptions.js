@@ -84,6 +84,8 @@ export function setSubscription(db, workspaceId, product, form, { by, ip = null 
        paid_until = excluded.paid_until, ends_on = excluded.ends_on, updated_at = excluded.updated_at`,
     w.id, product, row.monthly, row.vat, row.setup, row.started_on, row.paid_until, row.ends_on, nowIso()
   );
+  // A last day cleared here undoes a cancellation too: the subscription goes on.
+  if (!row.ends_on) db.run('UPDATE subscriptions SET cancelled_at = NULL WHERE workspace_id = ? AND product = ?', w.id, product);
   audit(db, { actor: by, action: 'subscription_saved', workspaceId: w.id, ip, detail: { product, ...row } });
   return w;
 }

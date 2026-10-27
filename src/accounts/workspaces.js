@@ -105,10 +105,10 @@ export function getWorkspace(db, id) {
   return w;
 }
 
-/** Every workspace with its members, products, subscriptions, invoices and open invites, newest first. */
+/** Every workspace (not deleted) with its members, products, subscriptions, invoices and open invites, newest first. */
 export function listWorkspaces(db) {
   const t = nowIso();
-  return db.all('SELECT * FROM workspaces ORDER BY created_at DESC, id DESC').map((w) => ({
+  return db.all('SELECT * FROM workspaces WHERE deleted_at IS NULL ORDER BY created_at DESC, id DESC').map((w) => ({
     ...w,
     products: Object.fromEntries(PRODUCTS.map((p) => [p, Boolean(db.get('SELECT enabled FROM workspace_products WHERE workspace_id = ? AND product = ?', w.id, p)?.enabled)])),
     members: db.all(

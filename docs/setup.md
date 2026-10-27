@@ -1,8 +1,10 @@
 # Sign-up and the setup page
 
 A business can open its own account at `/signup`, and every customer has one page, `/setup`,
-that lists what is left before their products work. This is the contract Teder and Toran answer
-for that page, and the settings that turn each part on.
+that lists what is left before their products work, the payment first. This is the contract Teder
+and Toran answer for that page, the paywall they ask (`GET /internal/entitlement`), the product
+emails they send through us (`POST /internal/notify`), the route they answer when a workspace is
+deleted, and the settings that turn each part on.
 
 ## The settings
 
@@ -10,11 +12,12 @@ for that page, and the settings that turn each part on.
 |---|---|---|
 | `OF_SIGNUP` | unset | `1` opens `/signup`. Anything else: `/signup` says "ההרשמה תיפתח בקרוב" with a link to `https://openfrequency.co.il/join`, and every POST to it is refused (403). |
 | `OF_SIGNUP_PRODUCTS` | `teder,toran` | The products `/signup` offers, comma-separated, unknown names ignored. One left out shows as "בקרוב" with its box off and is refused, by the form and through Google; with one product open, it starts chosen. The console opens any product either way. |
-| `OF_SIGNUP_NOTIFY` | unset | Comma-separated addresses that get a short email on each confirmed sign-up. Unset, no notice. |
-| `OF_TEDER_INTERNAL` | `http://127.0.0.1:4700` | Where `/setup` reaches Teder's internal routes. |
-| `OF_TORAN_INTERNAL` | `http://127.0.0.1:4710` | Where `/setup` reaches Toran's (the same address `/admin` uses). |
-| `OF_INTERNAL_TOKEN` | unset | The bearer token for both. Unset or shorter than 32 characters, no product is asked and each says "לא הצלחנו לבדוק כרגע". |
-| `OF_BILLING_PROVIDER` | unset | The payment hook. Unset, `billingReady()` is false and payment shows as a step that is coming soon. |
+| `OF_SIGNUP_NOTIFY` | unset | Comma-separated addresses that get a short email on each confirmed sign-up, each online cancellation (and its undo) and each deleted workspace. Unset, no notice. |
+| `OF_TEDER_INTERNAL` | `http://127.0.0.1:4700` | Where `/setup` reaches Teder's internal routes, and where a deleted workspace's data is deleted. |
+| `OF_TORAN_INTERNAL` | `http://127.0.0.1:4710` | Where `/setup` reaches Toran's (the same address `/admin` uses), and the same for deleting. |
+| `OF_INTERNAL_TOKEN` | unset | The bearer token for both directions. Unset or shorter than 32 characters, no product is asked (each says "לא הצלחנו לבדוק כרגע", and deleting a workspace stops), and our internal routes answer 503. |
+| `OF_BILLING_PROVIDER` | unset | The payment hook. Unset, `billingReady()` is false: the payment step says the online payment opens soon and leads to us, and the home page shows no next charge. |
+| `OF_SUPPORT_WA` | unset | Our WhatsApp, where the payment step's button leads while there is no provider. Unset, it leads to `https://openfrequency.co.il/join`. |
 
 ## Sign-up
 
@@ -54,9 +57,16 @@ put on one line (no control characters or bidi overrides) and escaped in the HTM
 is sent for the form alone, a closed sign-up, the honeypot, a form past the limits, or an address
 that already has an account. A notice that fails to send is logged and never holds up the sign-up.
 
-Payment is not taken here. The subscription starts in the state the console calls "open" (on,
-no payment recorded). `src/accounts/billing.js` has the hooks a card-clearing provider will plug
-into: `billingReady(env)` and `checkoutUrl()`, which is null until a provider is connected.
+Right after the confirmation (by the link or by Google) the customer gets a **welcome email**:
+the account is open, the payment comes first (with each product's price before VAT and its setup
+fee; without a provider, "answer this email and we send the payment details"), then the setup,
+with a button to `/setup`.
+
+Payment is not taken here. The subscription starts unpaid (the console's "open": on, no payment
+recorded), and a new sign-up is never complimentary, so its products stay behind the paywall
+(below) until a payment is recorded. `src/accounts/billing.js` has the hooks a card-clearing
+provider will plug into: `billingReady(env)` and `checkoutUrl()`, which is null until a provider
+is connected.
 
 ## /setup
 
@@ -118,14 +128,168 @@ site) is dropped and the step has no button.
 
 ### What the page and the landing do with it
 
-- Payment comes first: `soon` while `billingReady()` is false; once it is true, `todo` until
-  every subscription the workspace has is paid for, then `done`.
-- The count at the top ("3 מתוך 5 צעדים") is the steps done out of every step that can be done
-  now: a `soon` step is not counted, nor are the steps of a product that did not answer.
-- A product's checklist is finished when it says `ready: true` and every required step is `done`.
+- Payment comes first, and it is required: `todo` until every product the workspace has on is
+  allowed by the paywall (paid for, or complimentary), then `done`. It lists each product's price
+  as recorded on its subscription (before VAT, with the setup fee until the first payment), or
+  the day it is paid until. With no provider (`billingReady()` false) it says the online payment
+  opens soon and its button reaches us: our WhatsApp (`OF_SUPPORT_WA`, with "רוצים לשלם על המנוי"
+  written) or, unset, `https://openfrequency.co.il/join`. Once a provider is connected and
+  `checkoutUrl()` gives a page, the button goes there.
+- A product that is not allowed yet is **locked**: its steps are shown (asked of the product as
+  usual), with "נפתח אחרי התשלום" and no buttons; a step it already reports done stays done.
+- The count at the top ("3 מתוך 5 צעדים") is the steps done out of every step there is, payment
+  included: a `soon` step is not counted, nor are the steps of a product that did not answer.
+- A product's checklist is finished when it is allowed, says `ready: true`, and every required
+  step is `done`.
 - After a customer signs in (link, Google, or opening `/login` already signed in), and only when
-  there is no `?next=`: while a product that answered is not finished, or payment is ready and
-  not made, they land on `/setup`; otherwise on the home page. A product that does not answer is
-  never a reason to land on `/setup`.
-- The home page shows a "הגדרת החשבון" card while a product says it is not finished, and a
-  "הגדרה" link at the top until every product has said it is.
+  there is no `?next=`: while payment is not in, or a product that answered is not finished, they
+  land on `/setup`; otherwise on the home page. A product that does not answer is never a reason
+  to land on `/setup`.
+- The home page shows a "הגדרת החשבון" card while setup is not finished, and a "הגדרה" link at
+  the top until every product has said it is. A product that is not allowed has "להסדיר תשלום"
+  on its card instead of the way into it. Each card says its status in plain words (פעיל, עוד לא
+  שולם, מחכה לתשלום, בוטל, ללא תשלום, מסתיים, הסתיים), the price, the setup fee until the first
+  payment, the day it is paid until, and the next charge once a provider is connected.
+
+## The paywall
+
+The product is sold behind a paywall: a workspace uses a product only while it is **allowed**.
+There is no payment provider yet, so "paid" is what the superadmin records on `/admin/accounts`:
+"התקבל תשלום לחודש" moves the subscription's last paid day (`paid_until`) a month on (from the
+last paid day, or from today when that has passed), and the date can be edited by hand in the same
+form. The console shows each product's access ("גישה: שולם, פתוח, עד 21.11.2026") and a button
+that marks it complimentary or takes that back (`comp_set`, `comp_cleared` in the audit log).
+
+| `access` | When | `allowed` |
+|---|---|---|
+| `off` | The product is not on for the workspace, or the workspace is disabled or deleted. | false |
+| `comp` | The superadmin marked the product complimentary (free). | true |
+| `cancelled` | The customer cancelled online, or the superadmin set a last day. | until the last day paid for (and the last day, if that is earlier), then false |
+| `paid` | A recorded payment covers today (`paid_until` is today or later). | true |
+| `unpaid` | Anything else: on, nothing paid for today. | false |
+
+They are checked in that order. Days are Israel calendar days.
+
+**Migration 7** marked every workspace that existed before it complimentary, for each product it
+had on at that moment: those were set up by hand (the owner's own and the first customers), and
+nothing that worked stops. A workspace opened after it, by sign-up or by the console, and a
+product turned on after it, is not complimentary until the superadmin says so.
+
+### GET /internal/entitlement
+
+On the internal listener (127.0.0.1:4741), with its four locks (loopback socket, loopback Host,
+never proxied, `OF_INTERNAL_TOKEN` as a bearer token).
+
+```
+GET http://127.0.0.1:4741/internal/entitlement?workspace=<id>&product=<teder|toran>
+Authorization: Bearer <OF_INTERNAL_TOKEN>
+```
+
+`200`, never cached:
+
+```json
+{ "workspace": 7, "product": "teder", "enabled": true, "access": "paid", "allowed": true,
+  "paidThrough": "2026-11-21T21:59:59.999Z", "cancelAt": null }
+```
+
+| Field | Meaning |
+|---|---|
+| `enabled` | The product is on and the workspace is neither disabled nor deleted. |
+| `access`, `allowed` | The table above. Decide on `allowed`; `access` says why. |
+| `paidThrough` | The end of the last day paid for, Israel time, as an ISO instant in UTC (the last millisecond of that day), or `null` when nothing was ever paid. It is given whatever the access, so it can be in the past. |
+| `cancelAt` | Set only while `access` is `cancelled`: the end of the last day it works, the same way. Otherwise `null`. |
+
+`400 {"error":"bad_workspace"}` for a workspace that is not a positive integer, `400
+{"error":"bad_product"}` for a missing or unknown product, `404 {"error":"no_workspace"}` for an
+id we never had (a deleted workspace is `200` with `off`), `401` without the token, `503` while
+the token is unset or short here, `405` for any other method.
+
+## Cancelling online
+
+On the home page, each product an owner pays for (or has not paid yet) has "לבטל את המנוי". It
+opens a confirmation page (`GET /subscription/<product>/cancel`): it keeps working to the last day
+paid for, then stops, and nothing more is charged (with nothing paid for today, it stops today);
+it can be taken back until then; no data is deleted. Confirming (`POST`) sets `cancelled_at` and
+the last day (`ends_on`), so the entitlement says `cancelled` with its `cancelAt`. Each owner of
+the workspace gets an email confirming it, and every address in `OF_SIGNUP_NOTIFY` a notice
+("ביטול מנוי: <business>, <product>"). Until the last day the card says "בוטל" and offers
+"להמשיך את המנוי" (`POST /subscription/<product>/resume`), which clears both; the owner hears of
+that too. Members see neither button; a complimentary product has nothing to cancel; the
+superadmin's view-as changes nothing. Clearing the last day on `/admin` also undoes a
+cancellation.
+
+## Deleting a workspace
+
+An owner opens `/account/delete` (linked under "הפרטים שלכם"): it says it is permanent, what is
+deleted and what is kept, and asks for the business's name (spaces and letter case not counted).
+The superadmin can do the same from each workspace on `/admin/accounts`. Then:
+
+1. Each product the workspace has ever had (on or off, or with a subscription) is asked, in
+   parallel, for at most 10 seconds:
+
+   ```
+   POST <OF_TEDER_INTERNAL or OF_TORAN_INTERNAL>/internal/workspaces/<workspace id>/delete
+   Authorization: Bearer <OF_INTERNAL_TOKEN>
+   Content-Type: application/json
+
+   {}
+   ```
+
+   Any `2xx` means deleted. `404` means there was nothing to delete there (or the product has no
+   such route yet): it is logged and does not stop anything. Anything else (another status, no
+   answer, no token configured) stops everything: nothing is deleted here, the page says which
+   product did not answer and to try again, and the audit log has `workspace_delete_failed`. So a
+   product's route should be idempotent: asked again for a workspace it already deleted, it
+   answers `2xx` or `404`.
+2. Then ours, in one transaction: the memberships, the invites, the products and subscriptions,
+   the WhatsApp numbers and link codes, the notification choices and log, the sign-up that opened
+   it, and every person who was in this workspace and no other (their email, name, sessions and
+   links). Everyone else's sessions leave it. The person who deleted it is signed out everywhere.
+3. Kept: the invoices, with their PDFs, as the law asks; each is marked detached
+   (`detached_at`) with the business it was for (`customer_name`). The audit log stays too. The
+   workspace's row stays, emptied (no name, slug `deleted-<id>-`, disabled, `deleted_at`), so
+   its id is never given to another workspace: Teder and Toran key their data by it. It is left
+   out of `/admin/accounts` and `/internal/ops/customers`.
+4. Every address in `OF_SIGNUP_NOTIFY` gets "חשבון נמחק: <business>", with who deleted it, when,
+   what each product answered and how many invoices were kept.
+
+## Product emails: POST /internal/notify
+
+Teder and Toran ask us to email a workspace's people; each person chooses which they get.
+
+```
+POST http://127.0.0.1:4741/internal/notify
+Authorization: Bearer <OF_INTERNAL_TOKEN>
+Content-Type: application/json
+
+{ "workspace": 7, "product": "teder", "kind": "posts_waiting",
+  "subject": "3 פוסטים מחכים לאישור", "text": "יש 3 פוסטים חדשים.\n\nאפשר לאשר אותם מהטלפון.",
+  "link": "https://teder.openfrequency.co.il/review" }
+```
+
+| Field | Rules |
+|---|---|
+| `workspace` | A positive integer (a JSON number, not a string). |
+| `product` | `teder` or `toran`, and on for the workspace. |
+| `kind` | `posts_waiting`, `weekly`, `monthly`, `connect_needed` or `publish_failed`. |
+| `subject` | A string of at most 200 characters; made one line, without control characters or bidi overrides, and cut to 150. Not empty after that. |
+| `text` | A string of at most 5,000 characters; plain text, its line breaks kept (an empty line starts a paragraph), other control characters and bidi overrides removed. Not empty. |
+| `html` | Optional, a string of at most 50,000 characters. Checked and **not used**: the email's HTML is made here from `text`, escaped, so nothing a product sends reaches an inbox as markup. |
+| `link` | An absolute `https` URL on `openfrequency.co.il` or a subdomain, default port, no user name or password. The email's button ("לפתוח את <product>"). |
+
+Who gets it: the workspace's people (not disabled) who have that kind on for that product. With
+no choice saved, an owner (`client_owner`) gets every kind and a member none. Each email ends with
+a line to turn it off, linking to `https://<PUBLIC_HOST>/notifications?workspace=<id>`.
+
+Answers: `202 {"ok": true, "sent": <how many emails>}` (also when nobody wants it: `sent` is 0);
+`400 {"error": "<bad_workspace|bad_product|bad_kind|bad_subject|bad_text|bad_html|bad_link|bad>"}`
+(`bad` for a body that is not a JSON object); `404 {"error":"no_workspace"}` for one we do not
+have, or one deleted; `409 {"error":"product_off"}` when the product is not on for it; `413` past
+256 KB; `429 {"error":"rate_limited"}` past 3 of one kind for one product to one workspace in 24
+hours; `401`, `503` and `405` as for every internal route. Each one sent is in the audit log
+(`notify_sent`), and counted in `notify_log` for the limit.
+
+`/notifications` is the page where a signed-in person ticks, for each product the workspace has
+on, each kind they want. It is linked from every such email and from the home page. Saving it
+writes a choice for every kind of those products (`notify_prefs`), for that person in that
+workspace only.

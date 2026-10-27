@@ -138,24 +138,42 @@ export function setupClient({ env = process.env, fetchImpl = globalThis.fetch, l
 }
 
 /**
- * The page's model, from the products' answers (in the order of `products`) and the payment hook. The payment step
- * comes first: "soon" while no provider is connected, then "todo" until every subscription is paid for. Pure.
- *   sections    one per product: { product, ok, ready, required: [...], optional: [...] }, the required steps first
- *   done/total  the steps done, out of every step that can be done now (a "soon" step is not counted)
- *   incomplete  a product that answered is not finished, or payment is ready and not paid
+ * The page's model, from the products' answers (in the order of `products`), each product's access (the paywall,
+ * src/accounts/entitlement.js accessFor()) and the payment hook. Pure.
+ *   billing     the payment step, first and required, or null with no product on. "done" once every product is
+ *               allowed (paid for, or complimentary); until then "todo", leading to the provider's checkout once one
+ *               is connected (billingReady) and, before that, to us (`contact`: our WhatsApp or the contact page)
+ *   sections    one per product: { product, ok, locked, ready, done, required: [...], optional: [...] }. A product
+ *               that is not allowed yet is locked: its steps are shown, closed, until the payment is in
+ *   done/total  the steps done, out of every step there is now (a "soon" step is not counted)
+ *   incomplete  payment is not in, or a product that answered is not finished
  *   unknown     a product did not answer
  *   complete    neither
  */
-export function setupState(results, products, { billingReady = false, paid = false, checkout = null } = {}) {
-  const billing = { key: 'billing', status: billingReady ? (paid ? 'done' : 'todo') : 'soon', href: billingReady && !paid ? checkout : null, required: billingReady };
+export function setupState(results, products, { billingReady = false, access = {}, checkout = null, contact = null } = {}) {
+  const allowed = (p) => Boolean(access[p]?.allowed);
+  const paidAll = products.length > 0 && products.every(allowed);
+  const billing = products.length
+    ? {
+        key: 'billing',
+        status: paidAll ? 'done' : 'todo',
+        mode: billingReady ? 'provider' : 'contact',
+        comp: products.every((p) => access[p]?.access === 'comp'),
+        // A connected provider with no checkout page to send them to yet still leaves a way to reach us.
+        href: paidAll ? null : (billingReady && checkout) || contact,
+        checkout: Boolean(!paidAll && billingReady && checkout),
+        required: true,
+      }
+    : null;
   const sections = products.map((p) => {
     const r = results[p];
-    if (!r?.ok) return { product: p, ok: false };
-    return { product: p, ok: true, ready: r.ready, done: productDone(r), required: r.steps.filter((s) => s.required), optional: r.steps.filter((s) => !s.required) };
+    const locked = !allowed(p);
+    if (!r?.ok) return { product: p, ok: false, locked };
+    return { product: p, ok: true, locked, ready: r.ready, done: !locked && productDone(r), required: r.steps.filter((s) => s.required), optional: r.steps.filter((s) => !s.required) };
   });
-  const counted = [billing, ...sections.flatMap((s) => (s.ok ? [...s.required, ...s.optional] : []))].filter((s) => s.status !== 'soon');
+  const counted = [...(billing ? [billing] : []), ...sections.flatMap((s) => (s.ok ? [...s.required, ...s.optional] : []))].filter((s) => s.status !== 'soon');
   // With no product turned on there is nothing to set up, and nothing to pay for.
-  const incomplete = sections.some((s) => s.ok && !s.done) || (billingReady && !paid && products.length > 0);
+  const incomplete = products.length > 0 && (!paidAll || sections.some((s) => s.ok && !s.done));
   const unknown = sections.some((s) => !s.ok);
-  return { billing, sections, done: counted.filter((s) => s.status === 'done').length, total: counted.length, incomplete, unknown, complete: !incomplete && !unknown };
+  return { billing, sections, paid: paidAll, done: counted.filter((s) => s.status === 'done').length, total: counted.length, incomplete, unknown, complete: !incomplete && !unknown };
 }
