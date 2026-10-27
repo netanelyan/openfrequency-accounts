@@ -1,7 +1,7 @@
 import { MAIL, when } from '../web/copy.js';
 import { esc } from '../web/html.js';
 
-// The two emails, as plain text and as simple right-to-left HTML that reads
+// The emails (a sign-in link, an invite, a sign-up to confirm), as plain text and as simple right-to-left HTML that reads
 // the same in Gmail, Outlook and a phone. The link is also written out in full,
 // for a mail program that hides buttons.
 
@@ -33,3 +33,9 @@ export const inviteMail = (to, workspaceName, link, expiresAt) => ({
   to,
   ...build(MAIL.inviteSubject(workspaceName), MAIL.inviteLines(workspaceName, link, when(expiresAt)), MAIL.inviteButton),
 });
+
+/** Public sign-up: the link that confirms the address and opens the account (src/accounts/signup.js). */
+export const signupMail = (to, business, link) => ({ to, ...build(MAIL.signupSubject, MAIL.signupLines(business, link), MAIL.signupButton) });
+
+/** Public sign-up, for an address that already has an account: a sign-in link to it instead of a second one. */
+export const existingAccountMail = (to, link) => ({ to, ...build(MAIL.existingSubject, MAIL.existingLines(link), MAIL.magicButton) });

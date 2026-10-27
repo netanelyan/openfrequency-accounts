@@ -9,13 +9,16 @@ import { clientIp, cookies, csrfFor, csrfOk, isHttps, sessionSecret } from '../a
 import { createLimiter, LIMITS } from '../auth/limiter.js';
 import { safeNext } from '../auth/next.js';
 import { finishGoogle, GoogleError, googleConfig, openFlow, sameState, sealFlow, startGoogle, FLOW_TTL } from '../auth/google.js';
-import { bindGoogle, mailbox, userForGoogle } from '../accounts/google.js';
-import { chooseWorkspace, createSession, describeSession, findSession, LIFETIME, memberships, revokeAllSessions, revokeSession, sessionCookie, sessionFromJar } from '../auth/sessions.js';
+import { bindGoogle, googleMatch, mailbox, userForGoogle } from '../accounts/google.js';
+import { chooseWorkspace, createSession, describeSession, enabledProducts, findSession, LIFETIME, memberships, revokeAllSessions, revokeSession, sessionCookie, sessionFromJar } from '../auth/sessions.js';
 import { acceptInvite, consumeMagicLink, createInvite, InviteError, normEmail, peekInvite, peekMagicLink, requestMagicLink, revokeInvite, validEmail } from '../accounts/links.js';
 import { verifySuperadmin } from '../accounts/superadmin.js';
 import { createWorkspace, getWorkspace, listWorkspaces, recentAudit, setDisabled, setProduct, startViewAs, stopViewAs, WorkspaceError } from '../accounts/workspaces.js';
-import { inviteMail, magicLinkMail } from '../mail/messages.js';
-import { OPS, PRODUCT_NAMES, T, dayHe, phoneHe } from './copy.js';
+import { checkSignup, completeSignup, CONTACT_URL, dropSignup, peekSignup, requestSignup, SignupError, signupOpen } from '../accounts/signup.js';
+import { allPaid, billingReady, checkoutUrl } from '../accounts/billing.js';
+import { existingAccountMail, inviteMail, magicLinkMail, signupMail } from '../mail/messages.js';
+import { OPS, PRODUCT_NAMES, SETUP, SIGNUP, T, dayHe, phoneHe } from './copy.js';
+import { setupClient, setupState } from './setup.js';
 import { createLinkCode, openLinkCode, phoneIn, phonesFor, PHONE, removePhone, setConsent } from '../accounts/phones.js';
 import { describe, payMonth, setSubscription, subscriptionsOf } from '../accounts/subscriptions.js';
 import { addInvoice, invoiceIn, invoicesOf, PDF_MAX, removeInvoice } from '../accounts/invoices.js';
@@ -56,7 +59,13 @@ const FILES = {
 const V = Date.now().toString(36);
 
 export function defaultLimiters() {
-  return { magicEmail: createLimiter(LIMITS.magicPerEmail), magicIp: createLimiter(LIMITS.magicPerIp), adminLogin: createLimiter(LIMITS.adminLogin) };
+  return {
+    magicEmail: createLimiter(LIMITS.magicPerEmail),
+    magicIp: createLimiter(LIMITS.magicPerIp),
+    adminLogin: createLimiter(LIMITS.adminLogin),
+    signupEmail: createLimiter(LIMITS.signupPerEmail),
+    signupIp: createLimiter(LIMITS.signupPerIp),
+  };
 }
 
 export function productUrls(env = process.env) {
@@ -142,11 +151,23 @@ const OPS_ACTION = /^\/admin\/ops\/(toran|teder)\/([^/]{1,300})\/([a-z]{1,20})$/
 // Where each button comes back to on the dashboard, without script.
 const OPS_BACK = ['contact', 'talking'];
 
-export function publicHandler({ db, env = process.env, mailer, limiters = defaultLimiters(), failDelayMs = 400, log = console.error, toran = toranClient({ env, log }), toranProxyMs, google = googleConfig(env), googleFetch = globalThis.fetch }) {
+export function publicHandler({ db, env = process.env, mailer, limiters: given = {}, failDelayMs = 400, log = console.error, toran = toranClient({ env, log }), toranProxyMs, google = googleConfig(env), googleFetch = globalThis.fetch, setupMs, setupFetch = globalThis.fetch }) {
   const secret = sessionSecret(env);
   const publicHost = String(env.PUBLIC_HOST || '').trim().toLowerCase() || null;
   const dev = !publicHost;
   const urls = productUrls(env);
+  // Any limiter the caller does not pass is the usual one.
+  const limiters = { ...defaultLimiters(), ...given };
+  const signupOn = signupOpen(env);
+  // Each product's setup checklist (src/web/setup.js), for /setup, the home page and where a customer lands.
+  const setup = setupClient({ env, log, productUrls: urls, fetchImpl: setupFetch, ...(setupMs ? { timeoutMs: setupMs } : {}) });
+  /** A workspace's checklist: its products' answers, payment, and whether it is finished (setupState()). */
+  const setupFor = async (workspaceId) => {
+    const products = enabledProducts(db, workspaceId);
+    const ready = billingReady(env);
+    const results = await setup.check(workspaceId, products);
+    return setupState(results, products, { billingReady: ready, paid: allPaid(subscriptionsOf(db, workspaceId), products), checkout: ready ? checkoutUrl(workspaceId, env) : null });
+  };
   const support = supportUrl(env);
   const waNumber = assistantWa(env);
   const formAction = `'self' https://*.openfrequency.co.il${dev ? ' http://localhost:* http://127.0.0.1:*' : ''}`;
@@ -292,8 +313,10 @@ export function publicHandler({ db, env = process.env, mailer, limiters = defaul
         return s.row;
       };
       // The customer's home: each product's subscription, the other products, the invoices, who is in the account.
-      const dashboard = (d, status = 200, extra = {}) => {
+      const dashboard = async (d, status = 200, extra = {}) => {
         const wsId = d.body.workspace.id;
+        // While setup is not finished: the card when a product says so, the link in the header until we know it is.
+        const st = await setupFor(wsId);
         const mine = memberships(db, found.user.id).filter((m) => !m.disabled_at);
         const subscriptions = Object.fromEntries(Object.entries(subscriptionsOf(db, wsId)).map(([prod, row]) => [prod, describe(row)]));
         const others = PRODUCTS.filter((prod) => !d.body.products.includes(prod));
@@ -315,15 +338,22 @@ export function publicHandler({ db, env = process.env, mailer, limiters = defaul
           support,
           supportTeam: supportUrl(env, T.supportTeamText(d.body.workspace.name, TEAM_LIMIT)),
           flash,
+          setup: st.complete ? null : { done: st.done, total: st.total, incomplete: st.incomplete },
           ...extra,
         });
         return page(status, T.homeHello(found.user.name || found.user.email), body, { wide: true });
       };
       const clearSession = () => out.cookies.push(sessionCookie('', { secure, clear: true }));
-      const landing = (user, session, to) => {
+      // Where a sign-in lands: ?next= first; then, for a customer whose workspace is not set up yet (a product that
+      // answered says a required step is left, or payment is ready and not made), the setup page; else home. A
+      // product that does not answer is not a reason to send anyone to /setup.
+      const landing = async (user, session, to) => {
         if (user.is_superadmin) return to || '/admin';
         if (!session.workspace_id) return `/workspace${to ? `?next=${encodeURIComponent(to)}` : ''}`;
-        return to || '/';
+        if (to) return to;
+        const w = db.get('SELECT disabled_at FROM workspaces WHERE id = ?', session.workspace_id);
+        if (!w || w.disabled_at) return '/';
+        return (await setupFor(session.workspace_id)).incomplete ? '/setup' : '/';
       };
 
       // ---------------------------------------------------------------- customers
@@ -343,7 +373,93 @@ export function publicHandler({ db, env = process.env, mailer, limiters = defaul
           const links = [...(mine.length ? [['/workspace', T.homeSwitch]] : []), ['/logout', T.homeSignOut]];
           return page(403, T.loginTitle, P.messagePage({ title: T.homeClosed(ws?.name || ''), lead: '', links }));
         }
-        return dashboard(d);
+        return await dashboard(d);
+      }
+
+      // The setup page: one checklist, for the products this workspace has turned on and no other (src/web/setup.js).
+      // The superadmin sees it in view-as, read-only; outside view-as, their place is /admin.
+      if (p === '/setup' && req.method !== 'POST') {
+        if (!found) return redirect('/login');
+        const d = describeSession(db, sid);
+        let banner = '';
+        if (found.user.is_superadmin) {
+          if (!d.body.viewAs || !d.body.workspace) return redirect('/admin');
+          banner = P.viewAsBanner(d.body.workspace.name, csrf);
+        } else if (d.status === 409) return redirect(`/workspace?next=${encodeURIComponent('/setup')}`);
+        else if (d.status !== 200) return redirect('/');
+        const state = await setupFor(d.body.workspace.id);
+        return page(200, SETUP.title, P.setupPage({ state, productUrls: urls, readOnly: d.body.readOnly, flash }), { wide: true, banner });
+      }
+
+      // Public sign-up (src/accounts/signup.js), only while OF_SIGNUP=1. Closed, the page says it opens soon and
+      // every POST is refused.
+      if (p === '/signup' || p === '/signup/confirm') {
+        if (!signupOn) {
+          const body = P.messagePage({ title: SIGNUP.closedTitle, lead: SIGNUP.closedLead, links: [[CONTACT_URL, SIGNUP.closedLink], ['/login', T.loginTitle]] });
+          return page(req.method === 'POST' ? 403 : 200, SIGNUP.title, body);
+        }
+        const dead = () => page(410, SIGNUP.deadTitle, P.deadPage({ title: SIGNUP.deadTitle, lead: SIGNUP.deadLead, href: '/signup', label: SIGNUP.again }));
+
+        if (p === '/signup/confirm') {
+          if (req.method !== 'POST') {
+            const t = url.searchParams.get('t') || '';
+            const row = peekSignup(db, t, 'email');
+            return row ? page(200, SIGNUP.confirmTitle, P.signupConfirmPage({ csrf, token: t, row })) : dead();
+          }
+          const done = completeSignup(db, f('t'), { kind: 'email', ip });
+          if (!done) return dead();
+          if (done.exists) return page(409, SIGNUP.existsTitle, P.messagePage({ title: SIGNUP.existsTitle, lead: SIGNUP.existsLead, links: [['/login', SIGNUP.toLogin]] }));
+          if (found) revokeSession(db, sid, { reason: 'replaced', ip });
+          setSession(done.user, { workspaceId: done.workspace.id });
+          return redirect('/setup');
+        }
+
+        // Someone already signed in: their account is open. A second workspace is the superadmin's to open.
+        if (found) {
+          const links = found.user.is_superadmin ? [['/admin', T.adminTitle]] : [['/', SIGNUP.home], ['/logout', SIGNUP.signOut]];
+          return page(200, SIGNUP.title, P.messagePage({ title: SIGNUP.signedInTitle(found.user.email), lead: found.user.is_superadmin ? '' : SIGNUP.signedInLead, links }));
+        }
+        if (req.method !== 'POST') return page(200, SIGNUP.title, P.signupPage({ csrf, google: Boolean(google), signup: signupOn }));
+
+        const via = f('via') === 'google' && google ? 'google' : 'email';
+        const raw = { name: f('name').slice(0, 200), business: f('business').slice(0, 200), email: f('email').slice(0, 254), products: form.getAll('products'), terms: f('terms') === '1' };
+        const again = (status, error, extra) => send(status, P.layout({ title: SIGNUP.title, body: P.signupPage({ csrf, form: raw, error, google: Boolean(google) }), v: V }), extra);
+        const sent = (email) => page(200, SIGNUP.sentTitle, P.signupSentPage({ email }));
+        // The honeypot: a field people never see. Filled, it was not a person: the same page as a real sign-up, and
+        // nothing kept or sent.
+        if (f('website')) {
+          limiters.signupIp.hit(ip);
+          return sent(normEmail(raw.email));
+        }
+        let ok;
+        try {
+          ok = checkSignup(raw, { needEmail: via === 'email' });
+        } catch (e) {
+          if (!(e instanceof SignupError)) throw e;
+          return again(400, SIGNUP.errors[e.code]);
+        }
+        const wait = Math.max(limiters.signupIp.check(ip) || 0, via === 'email' ? limiters.signupEmail.check(ok.email) || 0 : 0);
+        if (wait) return again(429, SIGNUP.tooMany(wait), { 'retry-after': String(wait) });
+        limiters.signupIp.hit(ip);
+
+        if (via === 'google') {
+          // The choices wait here, under a token that rides in the signed Google flow cookie, not in any URL.
+          const { token } = requestSignup(db, ok, { kind: 'google', ip });
+          const { url: to, flow } = startGoogle({ clientId: google.clientId, redirectUri: googleCallback, signup: token });
+          out.cookies.push(`${googleName}=${sealFlow(flow, secret)}; Path=/; Max-Age=${FLOW_TTL / 1000}; HttpOnly; SameSite=Lax${sec}`);
+          return redirect(to);
+        }
+
+        limiters.signupEmail.hit(ok.email);
+        const r = requestSignup(db, ok, { kind: 'email', ip });
+        if (r.exists) {
+          // The address has an account: a sign-in link to it, never a second one. The page says the same either way.
+          const link = requestMagicLink(db, ok.email, { ip });
+          if (link) mailer.send(existingAccountMail(link.user.email, `${base}/auth/link?t=${link.token}`));
+        } else {
+          mailer.send(signupMail(ok.email, ok.business, `${base}/signup/confirm?t=${r.token}`));
+        }
+        return sent(ok.email);
       }
 
       // The team on the home page: an owner invites someone, cancels an invite, removes someone. Only a customer in
@@ -374,7 +490,7 @@ export function publicHandler({ db, env = process.env, mailer, limiters = defaul
           return redirect('/#team');
         } catch (e) {
           if (!(e instanceof TeamError || e instanceof InviteError)) throw e;
-          return dashboard(d, e.code === 'not_owner' ? 403 : 400, { teamError: T.teamErrors[e.code] || T.errors[e.code] || e.code, teamForm: { email: f('email'), role: f('role') } });
+          return await dashboard(d, e.code === 'not_owner' ? 403 : 400, { teamError: T.teamErrors[e.code] || T.errors[e.code] || e.code, teamForm: { email: f('email'), role: f('role') } });
         }
       }
 
@@ -418,19 +534,19 @@ export function publicHandler({ db, env = process.env, mailer, limiters = defaul
 
       if (p === '/login' && req.method !== 'POST') {
         const to = next(url.searchParams.get('next'));
-        if (found) return redirect(landing(found.user, found.session, to));
+        if (found) return redirect(await landing(found.user, found.session, to));
         const out_ = url.searchParams.get('out');
         const notice = out_ === 'all' ? T.signedOutAll(Number(url.searchParams.get('n')) || 0) : out_ ? T.signedOut : '';
-        return page(200, T.loginTitle, P.loginPage({ csrf, next: to || '', notice, google: Boolean(google) }));
+        return page(200, T.loginTitle, P.loginPage({ csrf, next: to || '', notice, google: Boolean(google), signup: signupOn }));
       }
 
       if (p === '/login') {
         const email = normEmail(f('email'));
         const to = next(f('next'));
-        if (!validEmail(email)) return page(400, T.loginTitle, P.loginPage({ csrf, next: to || '', email: f('email').slice(0, 254), error: T.badEmail, google: Boolean(google) }));
+        if (!validEmail(email)) return page(400, T.loginTitle, P.loginPage({ csrf, next: to || '', email: f('email').slice(0, 254), error: T.badEmail, google: Boolean(google), signup: signupOn }));
         const wait = Math.max(limiters.magicIp.check(ip) || 0, limiters.magicEmail.check(email) || 0);
         if (wait) {
-          return send(429, P.layout({ title: T.loginTitle, body: P.loginPage({ csrf, next: to || '', email, error: T.tooMany(wait), google: Boolean(google) }), v: V }), { 'retry-after': String(wait) });
+          return send(429, P.layout({ title: T.loginTitle, body: P.loginPage({ csrf, next: to || '', email, error: T.tooMany(wait), google: Boolean(google), signup: signupOn }), v: V }), { 'retry-after': String(wait) });
         }
         limiters.magicIp.hit(ip);
         limiters.magicEmail.hit(email);
@@ -453,7 +569,7 @@ export function publicHandler({ db, env = process.env, mailer, limiters = defaul
         if (!used) return dead();
         if (found) revokeSession(db, sid, { reason: 'replaced', ip });
         const row = setSession(used.user);
-        return redirect(landing(used.user, row, next(used.next)));
+        return redirect(await landing(used.user, row, next(used.next)));
       }
 
       // Sign in with Google: off to Google with a fresh state (and the invite, when it is one being accepted), then
@@ -475,8 +591,8 @@ export function publicHandler({ db, env = process.env, mailer, limiters = defaul
         // The callback. The flow cookie is used once, whatever happens next.
         const flow = openFlow(jar[googleName], secret);
         out.cookies.push(`${googleName}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax${sec}`);
-        const back = flow?.invite ? `/invite?t=${encodeURIComponent(flow.invite)}` : `/login${flow?.next ? `?next=${encodeURIComponent(flow.next)}` : ''}`;
-        const fail = (status, title, lead) => page(status, T.googleTitle, P.messagePage({ title, lead, links: [[back, T.googleAgain]] }));
+        const back = flow?.invite ? `/invite?t=${encodeURIComponent(flow.invite)}` : flow?.signup ? '/signup' : `/login${flow?.next ? `?next=${encodeURIComponent(flow.next)}` : ''}`;
+        const fail = (status, title, lead, more = []) => page(status, T.googleTitle, P.messagePage({ title, lead, links: [[back, T.googleAgain], ...more] }));
         if (!flow || !sameState(url.searchParams.get('state'), flow)) return fail(400, T.googleStale, T.googleStaleLead);
         const code = url.searchParams.get('code');
         if (url.searchParams.get('error') || !code) {
@@ -507,11 +623,39 @@ export function publicHandler({ db, env = process.env, mailer, limiters = defaul
           return redirect('/');
         }
 
+        // Sign-up with Google: the form's choices wait under the flow's token. An address or a Google account that is
+        // already someone's opens nothing new: a customer's signs them in to the account they have.
+        if (flow.signup) {
+          const signupDead = () => page(410, SIGNUP.deadTitle, P.deadPage({ title: SIGNUP.deadTitle, lead: SIGNUP.deadLead, href: '/signup', label: SIGNUP.again }));
+          if (!signupOn) return page(403, SIGNUP.title, P.messagePage({ title: SIGNUP.closedTitle, lead: SIGNUP.closedLead, links: [[CONTACT_URL, SIGNUP.closedLink]] }));
+          if (!peekSignup(db, flow.signup, 'google')) return signupDead();
+          const match = googleMatch(db, who);
+          if (match.user) {
+            dropSignup(db, flow.signup, 'google');
+            const user = userForGoogle(db, who, { ip });
+            if (found) revokeSession(db, sid, { reason: 'replaced', ip });
+            const row = setSession(user);
+            setFlash(SIGNUP.googleExisting(user.email));
+            return redirect(await landing(user, row, null));
+          }
+          if (match.taken) {
+            dropSignup(db, flow.signup, 'google');
+            return fail(403, SIGNUP.googleTaken, SIGNUP.googleTakenLead);
+          }
+          const done = completeSignup(db, flow.signup, { kind: 'google', email: who.email, ip });
+          if (!done) return signupDead();
+          if (done.exists) return fail(403, SIGNUP.googleTaken, SIGNUP.googleTakenLead);
+          bindGoogle(db, done.user, who);
+          if (found) revokeSession(db, sid, { reason: 'replaced', ip });
+          setSession(done.user, { workspaceId: done.workspace.id });
+          return redirect('/setup');
+        }
+
         const user = userForGoogle(db, who, { ip });
-        if (!user) return fail(403, T.googleNoAccount(who.email), T.googleNoAccountLead);
+        if (!user) return fail(403, T.googleNoAccount(who.email), signupOn ? T.googleNoAccountLeadOpen : T.googleNoAccountLead, signupOn ? [['/signup', T.loginSignup]] : []);
         if (found) revokeSession(db, sid, { reason: 'replaced', ip });
         const row = setSession(user);
-        return redirect(landing(user, row, next(flow.next)));
+        return redirect(await landing(user, row, next(flow.next)));
       }
 
       if (p === '/invite') {
@@ -519,7 +663,7 @@ export function publicHandler({ db, env = process.env, mailer, limiters = defaul
         if (req.method !== 'POST') {
           const t = url.searchParams.get('t') || '';
           const live = peekInvite(db, t);
-          return live ? page(200, T.inviteTitle(live.workspace.name), P.invitePage({ csrf, token: t, email: live.row.email, workspace: live.workspace, google: Boolean(google) })) : dead();
+          return live ? page(200, T.inviteTitle(live.workspace.name), P.invitePage({ csrf, token: t, email: live.row.email, workspace: live.workspace, google: Boolean(google), signup: signupOn })) : dead();
         }
         const done = acceptInvite(db, f('t'), { name: f('name'), ip });
         if (!done) return dead();

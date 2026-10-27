@@ -1,8 +1,10 @@
 import { audit } from '../core/audit.js';
 
-// Who a Google account is here. Google signs nobody up: like the emailed link,
-// it opens an account that already exists (or, with an invite, the one the
-// invite makes). The superadmin never signs in this way.
+// Who a Google account is here. Signing in with Google opens an account that
+// already exists, like the emailed link (or, with an invite, the one the invite
+// makes); only the public sign-up's "continue with Google" makes a new one
+// (signup.js), and only when googleMatch() finds nobody. The superadmin never
+// signs in this way.
 //
 // The first time, the user is found by the address Google has verified and the
 // Google account's sub is kept on them (migration 5). From then on the sub is
@@ -37,20 +39,28 @@ function sameMailbox(db, email) {
   return db.all("SELECT * FROM users WHERE email LIKE '%@gmail.com' OR email LIKE '%@googlemail.com'").filter((u) => mailbox(u.email) === box && usable(u) && !u.google_sub);
 }
 
-/** The customer this Google account signs in as, or null. Binds the sub on first use and fills an empty name. */
-export function userForGoogle(db, { sub, email, name = '' }, { ip = null } = {}) {
+/**
+ * What this Google account is here, without signing anyone in: `user`, the customer it would sign in as (or null), and
+ * `taken`, whether any account here already has its sub or its address (a disabled one and the superadmin's included).
+ * Sign-up opens an account only when both are empty.
+ */
+export function googleMatch(db, { sub, email }) {
   const bySub = db.get('SELECT * FROM users WHERE google_sub = ?', sub);
+  const exact = db.get('SELECT * FROM users WHERE email = ?', email);
   let user = null;
   if (bySub) user = usable(bySub) ? bySub : null;
+  else if (usable(exact) && !exact.google_sub) user = exact;
   else {
-    const exact = db.get('SELECT * FROM users WHERE email = ?', email);
-    if (usable(exact) && !exact.google_sub) user = exact;
-    else {
-      // The same Gmail mailbox under another spelling, when exactly one customer account has it.
-      const others = sameMailbox(db, email);
-      if (others.length === 1) user = others[0];
-    }
+    // The same Gmail mailbox under another spelling, when exactly one customer account has it.
+    const others = sameMailbox(db, email);
+    if (others.length === 1) user = others[0];
   }
+  return { user, taken: Boolean(user || bySub || exact) };
+}
+
+/** The customer this Google account signs in as, or null. Binds the sub on first use and fills an empty name. */
+export function userForGoogle(db, { sub, email, name = '' }, { ip = null } = {}) {
+  const { user } = googleMatch(db, { sub, email });
   audit(db, { actor: user, action: user ? 'sign_in' : 'google_refused', ip, detail: { method: 'google', email, ...(user && user.email !== email ? { account: user.email } : {}) } });
   if (!user) return null;
   bindGoogle(db, user, { sub, name });

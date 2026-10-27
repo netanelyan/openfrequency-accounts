@@ -28,6 +28,7 @@ if (String(env.SESSION_SECRET || '').trim().length < 32) {
 if (!String(env.OF_ASSISTANT_WA || '').trim()) {
   console.log('OF_ASSISTANT_WA is unset: the home page makes WhatsApp link codes, but has no number to send them to.');
 }
+console.log(String(env.OF_SIGNUP || '').trim() === '1' ? 'Sign-up is open (OF_SIGNUP=1): /signup opens new accounts.' : 'Sign-up is closed: /signup says it opens soon. OF_SIGNUP=1 opens it.');
 if (!String(env.PUBLIC_HOST || '').trim()) {
   console.log('PUBLIC_HOST is unset: development mode (plain http, a host-only cookie). Set it on the server.');
 }

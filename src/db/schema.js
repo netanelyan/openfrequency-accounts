@@ -196,4 +196,35 @@ export const MIGRATIONS = [
   ALTER TABLE users ADD COLUMN google_sub TEXT;
   CREATE UNIQUE INDEX users_google_sub ON users(google_sub) WHERE google_sub IS NOT NULL;
   `,
+  `
+  -- Public sign-up (src/accounts/signup.js), open while OF_SIGNUP=1. The form's answers wait here until the address
+  -- is confirmed: by the link in an email (kind 'email', 15 minutes, like a magic link) or by Google (kind 'google',
+  -- the row's token kept in the signed Google flow cookie, never in a URL; its email comes from Google). Using it is
+  -- one UPDATE ... WHERE used_at IS NULL, as with every token here. Hashes only.
+  CREATE TABLE signups (
+    id                INTEGER PRIMARY KEY,
+    token_hash        TEXT NOT NULL UNIQUE,
+    kind              TEXT NOT NULL CHECK (kind IN ('email', 'google')),
+    email             TEXT COLLATE NOCASE,            -- NULL for 'google' until Google says who it is
+    name              TEXT NOT NULL,
+    business          TEXT NOT NULL,
+    products_json     TEXT NOT NULL,                  -- ["toran"], ["teder"] or both
+    terms_version     TEXT NOT NULL,                  -- the terms and privacy policy they accepted
+    terms_accepted_at TEXT NOT NULL,
+    created_at        TEXT NOT NULL,
+    expires_at        TEXT NOT NULL,
+    used_at           TEXT,
+    user_id           INTEGER REFERENCES users(id) ON DELETE SET NULL,          -- what it opened, once used
+    workspace_id      INTEGER REFERENCES workspaces(id) ON DELETE SET NULL,
+    ip                TEXT,
+    CHECK (kind = 'google' OR email IS NOT NULL)
+  );
+  CREATE INDEX signups_email ON signups(email, created_at);
+
+  -- Who accepted which terms, and when: the customer who signed up, and the workspace they opened.
+  ALTER TABLE users ADD COLUMN terms_version TEXT;
+  ALTER TABLE users ADD COLUMN terms_accepted_at TEXT;
+  ALTER TABLE workspaces ADD COLUMN terms_version TEXT;
+  ALTER TABLE workspaces ADD COLUMN terms_accepted_at TEXT;
+  `,
 ];

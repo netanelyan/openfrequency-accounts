@@ -65,4 +65,7 @@ export const LIMITS = {
   // Magic-link requests, counted whether or not the address is a user.
   magicPerEmail: { rules: [{ max: 3, windowMs: 15 * MINUTE }, { max: 10, windowMs: DAY }] },
   magicPerIp: { rules: [{ max: 10, windowMs: 15 * MINUTE }, { max: 50, windowMs: DAY }] },
+  // Public sign-up (/signup): every form sent is counted, the honeypot's and an address that has an account included.
+  signupPerEmail: { rules: [{ max: 3, windowMs: 15 * MINUTE }, { max: 10, windowMs: DAY }] },
+  signupPerIp: { rules: [{ max: 5, windowMs: HOUR }, { max: 20, windowMs: DAY }] },
 };

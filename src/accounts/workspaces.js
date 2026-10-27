@@ -20,24 +20,43 @@ export const SLUG = /^[a-z0-9](?:[a-z0-9-]{0,38}[a-z0-9])?$/;
 
 /** Open a workspace with its products and send its owner an invite. Throws WorkspaceError. */
 export function createWorkspace(db, { name, slug, ownerEmail, products = [] }, { by, ip = null }) {
+  checkWorkspace(db, { name, slug });
+  ownerEmail = normEmail(ownerEmail);
+  if (!validEmail(ownerEmail)) throw new WorkspaceError('bad_email');
+  if (db.get('SELECT 1 FROM users WHERE email = ? AND is_superadmin = 1', ownerEmail)) throw new WorkspaceError('superadmin_email');
+  return db.tx(() => {
+    const workspace = openWorkspace(db, { name, slug, products }, { by, ip });
+    const invite = createInvite(db, { workspaceId: workspace.id, email: ownerEmail, role: 'client_owner', by, ip });
+    return { workspace, invite };
+  });
+}
+
+/** A workspace's name and slug, trimmed, or WorkspaceError: bad_name, bad_slug, slug_taken. */
+function checkWorkspace(db, { name, slug }) {
   name = String(name ?? '').trim();
   slug = String(slug ?? '').trim().toLowerCase();
-  ownerEmail = normEmail(ownerEmail);
   if (!name || name.length > 80) throw new WorkspaceError('bad_name');
   if (!SLUG.test(slug)) throw new WorkspaceError('bad_slug');
-  if (!validEmail(ownerEmail)) throw new WorkspaceError('bad_email');
   if (db.get('SELECT 1 FROM workspaces WHERE slug = ?', slug)) throw new WorkspaceError('slug_taken');
-  if (db.get('SELECT 1 FROM users WHERE email = ? AND is_superadmin = 1', ownerEmail)) throw new WorkspaceError('superadmin_email');
+  return { name, slug };
+}
+
+/**
+ * The part of opening a workspace that the superadmin's console and the public sign-up share: the workspace, each
+ * chosen product turned on, and its subscription at the list price with nothing paid yet (ensureSubscription). No
+ * owner and no invite: the caller adds whoever owns it. Throws WorkspaceError. Returns the workspace's row.
+ */
+export function openWorkspace(db, { name, slug, products = [], terms = null }, { by, ip = null, source = 'admin' }) {
+  ({ name, slug } = checkWorkspace(db, { name, slug }));
   const chosen = PRODUCTS.filter((p) => products.includes(p));
   return db.tx(() => {
-    const id = db.insert('workspaces', { slug, name, created_at: nowIso() });
+    const id = db.insert('workspaces', { slug, name, created_at: nowIso(), ...(terms ? { terms_version: terms.version, terms_accepted_at: terms.at } : {}) });
     for (const p of chosen) {
       db.insert('workspace_products', { workspace_id: id, product: p, enabled: 1, updated_at: nowIso() });
       ensureSubscription(db, id, p);
     }
-    audit(db, { actor: by, action: 'workspace_created', workspaceId: id, ip, detail: { slug, name, products: chosen } });
-    const invite = createInvite(db, { workspaceId: id, email: ownerEmail, role: 'client_owner', by, ip });
-    return { workspace: db.get('SELECT * FROM workspaces WHERE id = ?', id), invite };
+    audit(db, { actor: by, action: 'workspace_created', workspaceId: id, ip, detail: { slug, name, products: chosen, ...(source !== 'admin' ? { source } : {}) } });
+    return db.get('SELECT * FROM workspaces WHERE id = ?', id);
   });
 }
 

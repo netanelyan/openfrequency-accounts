@@ -130,7 +130,8 @@ test('a customer and a signed-out browser never reach the dashboard or its butto
       assert.equal(r.status, 403);
       assert.doesNotMatch(r.body, /סומן/);
     }
-    assert.equal(t.fake.calls.length, 0);
+    // The customer's home page asks Toran for its setup checklist (/internal/setup); nothing of the dashboard's.
+    assert.equal(t.fake.calls.filter((c) => !c.path.startsWith('/internal/setup?')).length, 0);
   } finally {
     await t.done();
   }

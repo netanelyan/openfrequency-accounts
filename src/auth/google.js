@@ -12,7 +12,7 @@ import { now, MINUTE } from '../core/clock.js';
 // verified is accepted.
 //
 // What the round trip needs to remember (the state, the nonce, the PKCE
-// verifier, where to go next, an invite) lives in one short-lived cookie,
+// verifier, where to go next, an invite, a sign-up's token) lives in one short-lived cookie,
 // signed with SESSION_SECRET. The state in Google's answer must match it, so
 // nobody can finish a sign-in in a browser that did not start it.
 
@@ -41,8 +41,8 @@ const rand = () => randomBytes(32).toString('base64url');
 const challengeOf = (verifier) => createHash('sha256').update(verifier).digest('base64url');
 
 /** A new round trip: where to send the browser, and what to keep in the flow cookie. */
-export function startGoogle({ clientId, redirectUri, next = null, invite = null, loginHint = '' }) {
-  const flow = { state: rand(), nonce: rand(), verifier: rand(), next, invite, at: now() };
+export function startGoogle({ clientId, redirectUri, next = null, invite = null, signup = null, loginHint = '' }) {
+  const flow = { state: rand(), nonce: rand(), verifier: rand(), next, invite, signup, at: now() };
   const q = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,

@@ -5,8 +5,10 @@ import { hashToken, looksLikeToken, newToken } from '../auth/tokens.js';
 // Magic links and invites. Both are a random token in an email, stored only as
 // its SHA-256, good once, for a short while.
 //
-//   magic   15 minutes. Only for an existing, active customer: there is no
-//           public signup, and the superadmin signs in with a password and TOTP.
+//   magic   15 minutes. Only for an existing, active customer: a new one comes
+//           from an invite or from the public sign-up (signup.js, its own link
+//           with these same rules), and the superadmin signs in with a password
+//           and TOTP.
 //   invite  72 hours. Made by the superadmin for one email, one workspace and one
 //           role. Accepting it creates the user if needed and adds the membership.
 //

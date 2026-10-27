@@ -7,10 +7,11 @@ their own: they read the shared session cookie and ask this service who it belon
 It owns:
 
 - **users**: customers sign in with Google or with an emailed link (single use, 15
-  minutes). The superadmin signs in with a password and a TOTP code. There is no public
-  signup: Google, like the link, opens only an account we made or an invite we sent.
+  minutes). The superadmin signs in with a password and a TOTP code. A customer's account is
+  one we made, one an invite made, or, while `OF_SIGNUP=1`, one they opened at `/signup`
+  (below); otherwise Google, like the link, opens nothing.
 - **workspaces**: one per customer business, opened by the superadmin, who invites
-  its owner (the invite is good for 72 hours).
+  its owner (the invite is good for 72 hours), or by the business itself at `/signup`.
 - **memberships**: a user's role in a workspace, `client_owner` or `client_member`. A
   workspace's owner invites people from its home page, cancels an invite and removes
   someone; a workspace holds 3 people, its owners and the invites still waiting included,
@@ -24,6 +25,22 @@ It owns:
 - **sessions**: a random id in the `__Secure-of_session` cookie for
   `.openfrequency.co.il`. Signing out ends it for every product at once, and "sign out
   on all devices" ends every session the user has.
+
+## Sign-up and the setup page
+
+Public sign-up is built and closed until `OF_SIGNUP=1` is set; until then `/signup` says it opens
+soon, with a link to the website's contact page, and refuses every POST. Open, a business gives
+its full name, its name, the products it wants (Toran, Teder or both) and its email, and accepts
+the terms and the privacy policy. An emailed link (15 minutes, one use, like the sign-in link), or
+"continue with Google", opens the user, the workspace with only those products (each with its
+subscription at the list price and nothing paid yet) and makes them its owner, without an invite.
+An address that already has an account gets a sign-in link instead, never a second workspace.
+Payment is not taken yet: `src/accounts/billing.js` is the hook a card-clearing provider plugs into.
+
+`/setup` is one checklist per workspace, for the products it has turned on only: each product is
+asked for its steps at `GET /internal/setup` (Teder at `OF_TEDER_INTERNAL`, Toran at
+`OF_TORAN_INTERNAL`), and a customer lands there after signing up, and after signing in while a
+required step is left. The contract and the settings are in [docs/setup.md](docs/setup.md).
 
 ## The operator's dashboard, /admin
 
@@ -104,6 +121,8 @@ The full steps (DNS, Resend, Caddy, backups, checks) are in [docs/deploy.md](doc
   its people, subscriptions and invoices, for Toran; and the other direction, `/admin` calling
   Toran's `/internal/ops`.
 - [docs/switch-over.md](docs/switch-over.md): what changes in each product, and in what order.
+- [docs/setup.md](docs/setup.md): `/internal/setup`, each product's checklist for the setup page,
+  and the sign-up's settings.
 
 ## Where things are
 
@@ -112,9 +131,9 @@ The full steps (DNS, Resend, Caddy, backups, checks) are in [docs/deploy.md](doc
 | `src/db` | the SQLite database (`node:sqlite`) and its migrations |
 | `src/core` | paths, the `.env` loader, the clock, the audit log |
 | `src/auth` | passwords, TOTP, tokens, rate limits, the `?next=` allowlist, sessions, Google's half of signing in |
-| `src/accounts` | magic links and invites, workspaces, the superadmin, subscriptions, invoices, WhatsApp numbers, the operator's list of customers |
-| `src/mail` | Resend (or the outbox folder without a key), and the two emails |
-| `src/web` | `app.js` the public site, `internal.js` `/internal/session`, `/internal/owner-phone*` and `/internal/ops/customers`, `toran.js` the client for Toran's `/internal/ops`, `dashboard.js` the operator's dashboard, `copy.js` every Hebrew word, `html.js` the pages |
+| `src/accounts` | magic links and invites, public sign-up, workspaces, the superadmin, subscriptions, the payment hook, invoices, WhatsApp numbers, the operator's list of customers |
+| `src/mail` | Resend (or the outbox folder without a key), and the emails |
+| `src/web` | `app.js` the public site, `internal.js` `/internal/session`, `/internal/owner-phone*` and `/internal/ops/customers`, `toran.js` the client for Toran's `/internal/ops`, `setup.js` the client for each product's `/internal/setup`, `dashboard.js` the operator's dashboard, `copy.js` every Hebrew word, `html.js` the pages |
 | `scripts` | start, demo, `admin:create`, backup, `check:public`, `init-private` |
 | `deploy` | the Caddy block |
 | `ecosystem.config.cjs` | the pm2 job, `of-accounts` |
@@ -124,6 +143,9 @@ The full steps (DNS, Resend, Caddy, backups, checks) are in [docs/deploy.md](doc
 - Session ids, link tokens and recovery codes are stored only as SHA-256; the password as scrypt.
 - Magic links: 15 minutes, one use, a button before they are used (mail scanners open links),
   3 per address and 10 per IP in 15 minutes, the same answer whether or not the address exists.
+- Sign-up (while `OF_SIGNUP=1`): the link is a magic link's (15 minutes, one use, a button
+  first), 3 per address in 15 minutes and 5 per IP in an hour, a honeypot field, the same answer
+  whether or not the address has an account, and never a second workspace for one.
 - Google: the authorization code flow with PKCE, a state and a nonce in a signed 10-minute
   cookie, a verified address only; the Google account is tied to the user on first use.
 - `?next=` only to `https://<one label>.openfrequency.co.il` or a path here.

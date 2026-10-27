@@ -3,7 +3,8 @@ import path from 'node:path';
 import { ROOT } from '../core/paths.js';
 import { addDays, addMonths, describe, israelToday } from '../accounts/subscriptions.js';
 import { total } from '../accounts/invoices.js';
-import { AUDIT_NAMES, OPS, PRODUCT_NAMES, ROLE_NAMES, T, dayHe, hourHe, ils, phoneHe, when } from './copy.js';
+import { AUDIT_NAMES, OPS, PRODUCT_NAMES, ROLE_NAMES, SETUP, SIGNUP, T, dayHe, hourHe, ils, phoneHe, when } from './copy.js';
+import { PRIVACY_URL, TERMS_URL } from '../accounts/signup.js';
 
 // Server-rendered pages: Hebrew, right to left, one stylesheet. No script, except
 // the operator's dashboard on /admin (dashboard.js), which loads static/admin.js
@@ -76,7 +77,7 @@ const googleDoor = (href, label, or, hint = '') => `
 ${hint ? `<p class="muted center">${esc(hint)}</p>` : ''}
 <p class="or" role="separator"><span>${esc(or)}</span></p>`;
 
-export const loginPage = ({ csrf, next = '', email = '', error = '', notice = '', google = false }) => `
+export const loginPage = ({ csrf, next = '', email = '', error = '', notice = '', google = false, signup = false }) => `
 <section class="card">
 <h1>${esc(T.loginHeading)}</h1>
 ${notice ? `<p class="notice" role="status">${esc(notice)}</p>` : ''}
@@ -91,7 +92,7 @@ ${error ? `<p class="error" id="err" role="alert">${esc(error)}</p>` : ''}
 <button class="primary">${esc(T.loginButton)}</button>
 </form>
 </section>
-<p class="muted center">${esc(T.loginNoAccount)}</p>`;
+${signup ? `<p class="muted center">${esc(T.loginNoAccountOpen)} <a href="/signup">${esc(T.loginSignup)}</a></p>` : `<p class="muted center">${esc(T.loginNoAccount)}</p>`}`;
 
 export const sentPage = ({ email, next = '' }) => `
 <section class="card">
@@ -271,8 +272,10 @@ ${form}
 /**
  * The customer's home: each product they have with its subscription (the price, the days left in the month paid
  * for, the next charge), the other products, the invoices, their WhatsApp, who is in the account, and their own details.
+ * `setup` (null once setup is finished): a card that leads to /setup while a product says a step is left, and a
+ * "הגדרה" link in the header instead while a product has not answered.
  */
-export function homePage({ csrf, user, workspace, products, productUrls, canSwitch, subscriptions = {}, others = [], invoices = null, team, role, readOnly = false, support = null, supportTeam = null, flash = '', teamError = '', teamForm = {}, whatsapp = {} }) {
+export function homePage({ csrf, user, workspace, products, productUrls, canSwitch, subscriptions = {}, others = [], invoices = null, team, role, readOnly = false, support = null, supportTeam = null, flash = '', teamError = '', teamForm = {}, whatsapp = {}, setup = null }) {
   const subs = products.length
     ? `<div class="subs">${products.map((p) => subCard(p, subscriptions[p], productUrls[p])).join('')}</div>`
     : `<section class="card"><p class="muted">${esc(T.homeNoProducts)}</p></section>`;
@@ -283,9 +286,10 @@ export function homePage({ csrf, user, workspace, products, productUrls, canSwit
         .join('')}</ul>`
     : '';
   return `
-<header class="top"><div class="brand">${ofMark()}<h1>${esc(T.homeHello(user.name || user.email))}</h1></div><a class="button quiet" href="/logout">${esc(T.homeSignOut)}</a></header>
+<header class="top"><div class="brand">${ofMark()}<h1>${esc(T.homeHello(user.name || user.email))}</h1></div><nav class="top-links" aria-label="${esc(SETUP.navLabel)}">${setup && !setup.incomplete ? `<a class="button quiet" href="/setup">${esc(SETUP.nav)}</a>` : ''}<a class="button quiet" href="/logout">${esc(T.homeSignOut)}</a></nav></header>
 ${flash ? `<p class="flash" role="status">${esc(flash)}</p>` : ''}
 <p class="lead dash-who">${esc(T.homeWho(user.email, workspace.name))}</p>
+${setup?.incomplete ? `<section class="card setup-card"><div><h2>${esc(SETUP.cardTitle)}</h2><p class="muted">${esc(SETUP.cardLead(setup.done, setup.total))}</p></div><a class="button primary" href="/setup">${esc(SETUP.cardButton)}</a></section>` : ''}
 <div class="list-h"><h2>${esc(T.dashProducts)}</h2></div>
 ${subs}
 ${more}
@@ -299,6 +303,112 @@ ${teamCard({ csrf, user, team: team || { members: [], invites: [], taken: 0, lim
 </section>
 </div>
 <p class="muted center">${support ? `${esc(T.dashHelpAsk)} <a href="${esc(support)}">${esc(T.supportWrite)}</a>` : esc(T.dashHelp)}</p>`;
+}
+
+// ---- public sign-up (src/accounts/signup.js)
+
+/**
+ * The sign-up form: name, business, products (each with its line), the terms, a honeypot, and the email; and, while
+ * Google is set up, "continue with Google", a second submit button of the same form, so the choices go with it (kept
+ * on our side, never in the URL). It skips the browser's checks, since Google brings the address; ours still run.
+ */
+export function signupPage({ csrf, form = {}, error = '', google = false }) {
+  const chosen = [].concat(form.products || []);
+  const product = (p) =>
+    `<label class="product-pick"><input type="checkbox" name="products" value="${p}"${chosen.includes(p) ? ' checked' : ''}>${productMark(p)}<span><b>${esc(PRODUCT_NAMES[p])}</b><small>${esc(SIGNUP.productWhat[p])}</small></span></label>`;
+  return `
+<section class="card signup">
+<h1>${esc(SIGNUP.heading)}</h1>
+<p class="lead">${esc(SIGNUP.lead)}</p>
+<form method="post" action="/signup">
+${csrfField(csrf)}
+<label for="su-name">${esc(SIGNUP.nameLabel)}</label>
+<input id="su-name" name="name" autocomplete="name" required minlength="2" maxlength="80" value="${esc(form.name || '')}">
+<label for="su-business">${esc(SIGNUP.businessLabel)}</label>
+<input id="su-business" name="business" autocomplete="organization" required minlength="2" maxlength="80" value="${esc(form.business || '')}" aria-describedby="su-business-hint">
+<small id="su-business-hint">${esc(SIGNUP.businessHint)}</small>
+<fieldset class="products-pick"><legend>${esc(SIGNUP.productsLegend)}</legend>
+${['toran', 'teder'].map(product).join('\n')}
+<small>${esc(SIGNUP.productsHint)}</small>
+</fieldset>
+<label class="check terms"><input type="checkbox" name="terms" value="1" required${form.terms ? ' checked' : ''}> <span>${esc(SIGNUP.termsPre)}<a href="${esc(TERMS_URL)}" target="_blank" rel="noopener">${esc(SIGNUP.termsLink)}</a>${esc(SIGNUP.termsMid)}<a href="${esc(PRIVACY_URL)}" target="_blank" rel="noopener">${esc(SIGNUP.privacyLink)}</a></span></label>
+<div class="hp" aria-hidden="true"><label for="su-website">${esc(SIGNUP.honeypot)}</label><input id="su-website" name="website" tabindex="-1" autocomplete="off"></div>
+<label for="su-email">${esc(SIGNUP.emailLabel)}</label>
+<input id="su-email" name="email" type="email" inputmode="email" autocomplete="email" dir="ltr" required maxlength="254" placeholder="name@example.com" value="${esc(form.email || '')}">
+${error ? `<p class="error" id="su-err" role="alert">${esc(error)}</p>` : ''}
+<button class="primary" name="via" value="email">${esc(SIGNUP.submit)}</button>
+${google ? `<p class="or" role="separator"><span>${esc(SIGNUP.or)}</span></p>
+<button class="google" name="via" value="google" formnovalidate>${GOOGLE_G}<span>${esc(SIGNUP.googleButton)}</span></button>
+<p class="muted center">${esc(SIGNUP.googleHint)}</p>` : ''}
+</form>
+</section>
+<p class="muted center">${esc(SIGNUP.haveAccount)} <a href="/login">${esc(SIGNUP.toLogin)}</a></p>`;
+}
+
+export const signupSentPage = ({ email }) => `
+<section class="card">
+<h1>${esc(SIGNUP.sentTitle)}</h1>
+<p class="lead">${esc(SIGNUP.sentLead(email))}</p>
+<p class="muted">${esc(SIGNUP.sentSpam)}</p>
+</section>
+${links([['/signup', SIGNUP.again]])}`;
+
+/** The page the email's link opens: what is about to be opened, and the button (mail scanners open links). */
+export const signupConfirmPage = ({ csrf, token, row }) => `
+<section class="card">
+<h1>${esc(SIGNUP.confirmTitle)}</h1>
+<p class="lead">${esc(SIGNUP.confirmLead(row.business, row.email))}</p>
+<p class="muted">${esc(SIGNUP.confirmProducts(row.products.map((p) => PRODUCT_NAMES[p]).join(SIGNUP.and)))}</p>
+<form method="post" action="/signup/confirm">${csrfField(csrf)}<input type="hidden" name="t" value="${esc(token)}"><button class="primary">${esc(SIGNUP.confirmButton)}</button></form>
+</section>`;
+
+// ---- the setup page (src/web/setup.js)
+
+/**
+ * One step: its status, its title and detail, and its button when it has a link and is not done (none in view-as).
+ * The first step on the page that can be started is the one blue button.
+ */
+function stepRow(s, { readOnly, first }) {
+  const can = s.href && s.status !== 'done' && s.status !== 'soon' && !readOnly;
+  const verb = s.status === 'todo' ? SETUP.start : SETUP.open;
+  const btn = can ? `<a class="button ${first() ? 'primary' : 'quiet'}" href="${esc(s.href)}" aria-label="${esc(SETUP.actionLabel(verb, s.title))}">${esc(verb)}</a>` : '';
+  return `<li class="step st-${esc(s.status)}"><span class="chip">${esc(SETUP.status[s.status])}</span><span class="what"><b>${esc(s.title)}</b>${s.detail ? `<small>${esc(s.detail)}</small>` : ''}</span>${btn}</li>`;
+}
+
+/**
+ * The checklist (setupState() in src/web/setup.js): how far along, then payment, then a section for each product the
+ * workspace has turned on, and nothing about one it has not.
+ */
+export function setupPage({ state, productUrls, readOnly = false, flash = '' }) {
+  let used = false;
+  const first = () => (used ? false : (used = true));
+  const steps = (list) => `<ol class="steps">${list.map((s) => stepRow(s, { readOnly, first })).join('')}</ol>`;
+  const b = state.billing;
+  const billingDetail = b.status === 'soon' ? SETUP.billingSoon : b.status === 'done' ? SETUP.billingDone : SETUP.billingTodo;
+  const sections = state.sections
+    .map((sec) => {
+      const p = sec.product;
+      const head = `<header>${productMark(p)}<div><h2>${esc(PRODUCT_NAMES[p])}</h2><small>${esc(SIGNUP.productWhat[p])}</small></div>${
+        sec.ok ? `<span class="tag${sec.done ? '' : ' off'}">${esc(sec.done ? SETUP.ready : SETUP.notReady)}</span>` : ''
+      }</header>`;
+      if (!sec.ok) {
+        return `<section class="card setup-p" id="setup-${p}">${head}<p class="warn">${esc(SETUP.failed)}</p><p><a class="button quiet" href="${esc(productUrls[p])}">${esc(SETUP.failedLink(PRODUCT_NAMES[p]))}</a></p></section>`;
+      }
+      const body = (sec.required.length ? steps(sec.required) : '') + (sec.optional.length ? `<p class="section-l">${esc(SETUP.optional)}</p>${steps(sec.optional)}` : '');
+      return `<section class="card setup-p" id="setup-${p}">${head}${body || `<p class="muted">${esc(SETUP.noSteps)}</p>`}</section>`;
+    })
+    .join('\n');
+  return `
+<header class="top"><div class="brand">${ofMark()}<h1>${esc(SETUP.heading)}</h1></div><a class="button quiet" href="/">${esc(SETUP.back)}</a></header>
+${flash ? `<p class="flash" role="status">${esc(flash)}</p>` : ''}
+<section class="card setup-sum">
+<p class="lead">${esc(state.sections.length ? SETUP.lead : SETUP.noProducts)}</p>
+${state.total ? `<div class="meter"><p class="left"><span>${esc(SETUP.progress(state.done, state.total))}</span></p><progress max="${state.total}" value="${state.done}" aria-label="${esc(SETUP.progressLabel)}" aria-valuetext="${esc(SETUP.progress(state.done, state.total))}"></progress></div>` : ''}
+${state.complete ? `<p class="notice" role="status">${esc(SETUP.allDone)}</p>` : ''}
+${state.unknown ? `<p class="muted">${esc(SETUP.unknown)}</p>` : ''}
+</section>
+<section class="card setup-p" id="setup-billing"><header><div><h2>${esc(SETUP.billingTitle)}</h2></div></header>${steps([{ ...b, title: SETUP.billingStep, detail: billingDetail }])}</section>
+${sections}`;
 }
 
 export const messagePage = ({ title, lead, links: pairs = [] }) => `

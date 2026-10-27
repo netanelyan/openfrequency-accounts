@@ -22,6 +22,8 @@ export const T = {
   emailLabel: 'כתובת מייל',
   loginButton: 'שלחו לי קישור',
   loginNoAccount: 'עוד אין לכם חשבון? אנחנו פותחים אותו ושולחים לכם הזמנה במייל.',
+  loginNoAccountOpen: 'עוד אין לכם חשבון?',
+  loginSignup: 'להרשמה',
   badEmail: 'הכתובת הזאת לא נראית כמו כתובת מייל. בדקו אותה ונסו שוב.',
   tooMany: (seconds) => `ביקשתם הרבה קישורים בזמן קצר. נסו שוב בעוד ${minutes(seconds)} דקות.`,
   signedOut: 'יצאתם. כדי לחזור, בקשו קישור כניסה חדש.',
@@ -51,6 +53,7 @@ export const T = {
   googleStaleLead: 'עברו יותר מ-10 דקות מאז שהתחלתם, או שהיא התחילה בדפדפן אחר. נסו שוב מכאן.',
   googleNoAccount: (email) => `לא מצאנו אצלנו חשבון פתוח עם ${email}`,
   googleNoAccountLead: 'אנחנו פותחים כל חשבון בעצמנו ושולחים הזמנה במייל. קיבלתם הזמנה? הצטרפו מהקישור שבה. יש לכם אצלנו חשבון עם כתובת אחרת? בחרו אותה ב-Google, או בקשו קישור כניסה למייל.',
+  googleNoAccountLeadOpen: 'אפשר להירשם ולפתוח חשבון חדש, או לבחור ב-Google את החשבון עם הכתובת שרשומה אצלנו. קיבלתם הזמנה? הצטרפו מהקישור שבה.',
   googleWrongInvite: (invited) => `ההזמנה נשלחה אל ${invited}`,
   googleWrongInviteLead: (invited, got) => `נכנסתם ל-Google בתור ${got}. כדי להצטרף, בחרו ב-Google את החשבון של ${invited}, או הצטרפו בלי Google מהדף של ההזמנה.`,
   googleErrors: {
@@ -323,6 +326,9 @@ export const AUDIT_NAMES = {
   phone_opt_in: 'עדכונים בוואטסאפ הופעלו',
   phone_opt_out: 'עדכונים בוואטסאפ כובו',
   ops_action: 'פעולה מהלוח של היום',
+  signup_requested: 'בקשה להרשמה מהאתר',
+  signup_refused: 'הרשמה לכתובת שכבר יש לה חשבון',
+  signed_up: 'נרשמו מהאתר',
 };
 
 // ---- emails
@@ -348,7 +354,128 @@ export const MAIL = {
     'אם עבר הזמן, ענו למייל הזה ונשלח הזמנה חדשה.',
   ],
   inviteButton: 'הצטרפות',
+
+  signupSubject: 'אישור החשבון שלכם ב-OpenFrequency',
+  signupLines: (business, link) => [
+    'שלום,',
+    `ביקשתם לפתוח ב-OpenFrequency חשבון עבור ${business}. כדי לאשר, לחצו על הקישור:`,
+    { link },
+    'הוא עובד פעם אחת, במשך 15 דקות.',
+    'לא ביקשתם? אפשר להתעלם מהמייל הזה. בלי הקישור לא נפתח שום חשבון.',
+  ],
+  signupButton: 'לאישור החשבון',
+
+  existingSubject: 'כבר יש לכם חשבון ב-OpenFrequency',
+  existingLines: (link) => [
+    'שלום,',
+    'ביקשו לפתוח חשבון חדש עם הכתובת הזאת, אבל כבר יש לכם חשבון אצלנו, אז לא פתחנו עוד אחד. כדי להיכנס לחשבון הקיים, לחצו על הקישור:',
+    { link },
+    'הוא עובד פעם אחת, במשך 15 דקות.',
+    'לא ביקשתם? אפשר להתעלם מהמייל הזה. בלי הקישור אף אחד לא נכנס לחשבון שלכם.',
+  ],
   signature: 'OpenFrequency',
+};
+
+// ---- public sign-up, /signup (src/accounts/signup.js)
+
+export const SIGNUP = {
+  title: 'הרשמה',
+  heading: 'פותחים חשבון',
+  lead: 'כמה פרטים, ונשלח לכם מייל עם קישור לאישור. אחרי האישור החשבון נפתח, ואפשר להתחיל להגדיר.',
+  nameLabel: 'השם המלא שלכם',
+  businessLabel: 'שם העסק',
+  businessHint: 'כמו שהלקוחות שלכם מכירים אותו. עד 80 תווים.',
+  emailLabel: 'כתובת מייל',
+  productsLegend: 'מה מתאים לכם',
+  productsHint: 'אפשר לבחור את שניהם.',
+  productWhat: { toran: 'עונה ללקוחות שלכם בוואטסאפ', teder: 'מצגות בעברית לטיקטוק ולאינסטגרם' },
+  termsPre: 'מסכימים ל',
+  termsLink: 'תנאי השימוש',
+  termsMid: ' ול',
+  privacyLink: 'מדיניות הפרטיות',
+  honeypot: 'לא למלא את השדה הזה',
+  submit: 'שלחו לי קישור לאישור',
+  or: 'או',
+  googleButton: 'המשך עם Google',
+  googleHint: 'עם Google לא מחכים למייל. החשבון ייפתח עם הכתובת של חשבון ה-Google שתבחרו.',
+  haveAccount: 'כבר יש לכם חשבון?',
+  toLogin: 'לכניסה',
+
+  errors: {
+    bad_name: 'צריך את השם המלא שלכם, בין 2 ל-80 תווים.',
+    bad_business: 'צריך את שם העסק, בין 2 ל-80 תווים.',
+    bad_email: 'הכתובת הזאת לא נראית כמו כתובת מייל. בדקו אותה ונסו שוב.',
+    no_products: 'צריך לבחור לפחות מוצר אחד.',
+    no_terms: 'כדי לפתוח חשבון צריך להסכים לתנאי השימוש ולמדיניות הפרטיות.',
+  },
+  tooMany: (seconds) => `נשלחו מכאן הרבה בקשות בזמן קצר. נסו שוב בעוד ${minutes(seconds)} דקות.`,
+
+  closedTitle: 'ההרשמה תיפתח בקרוב',
+  closedLead: 'בינתיים אנחנו פותחים כל חשבון בעצמנו. אפשר להשאיר לנו פרטים באתר, ונחזור אליכם.',
+  closedLink: 'להשארת פרטים',
+
+  sentTitle: 'בדקו את המייל',
+  sentLead: (email) => `תוך דקה יגיע ל-${email} מייל עם קישור להמשך. הקישור עובד פעם אחת, במשך 15 דקות.`,
+  sentSpam: 'לא הגיע? בדקו בתיקיית הספאם, או נסו להירשם שוב.',
+
+  confirmTitle: 'אישור החשבון',
+  confirmLead: (business, email) => `לחצו כדי לפתוח את החשבון של ${business}, עם הכתובת ${email}.`,
+  confirmProducts: (names) => `המוצרים שבחרתם: ${names}.`,
+  confirmButton: 'לפתוח את החשבון',
+  and: ' ו',
+
+  deadTitle: 'הקישור הזה כבר לא עובד',
+  deadLead: 'קישור לאישור עובד פעם אחת, במשך 15 דקות. אפשר להירשם שוב, זה לוקח דקה.',
+  again: 'להרשמה',
+
+  existsTitle: 'כבר יש לכם חשבון עם הכתובת הזאת',
+  existsLead: 'לא פתחנו חשבון נוסף. אפשר להיכנס לחשבון הקיים עם קישור למייל.',
+
+  signedInTitle: (email) => `אתם כבר מחוברים בתור ${email}`,
+  signedInLead: 'כדי לפתוח חשבון חדש עם כתובת אחרת, צאו קודם מהחשבון הזה.',
+  home: 'לדף הראשי',
+  signOut: 'יציאה',
+
+  googleExisting: (email) => `כבר יש לכם חשבון עם ${email}, אז נכנסתם אליו. לא פתחנו חשבון נוסף.`,
+  googleTaken: 'אי אפשר לפתוח חשבון עם הכתובת הזאת',
+  googleTakenLead: 'בחרו ב-Google חשבון אחר, או הירשמו עם כתובת מייל.',
+};
+
+// ---- the setup page, /setup (src/web/setup.js, docs/setup.md)
+
+export const SETUP = {
+  title: 'הגדרה',
+  heading: 'מגדירים את החשבון',
+  lead: 'מה שנשאר לעשות כדי שהמוצרים שלכם יעבדו. כל צעד מוביל למקום שבו עושים אותו.',
+  progress: (done, total) => `${done} מתוך ${total} צעדים`,
+  progressLabel: 'כמה צעדים כבר עשיתם',
+  allDone: 'כל הצעדים הושלמו.',
+  unknown: 'חלק מהמוצרים לא ענו לנו עכשיו, אז ייתכן שחסרים כאן צעדים.',
+  ready: 'מוכן',
+  notReady: 'עוד לא מוכן',
+  optional: 'אפשר גם',
+  status: { done: '✓ בוצע', working: 'בתהליך', attention: 'צריך תשומת לב', soon: 'בקרוב', todo: 'עוד לא' },
+  required: 'חובה',
+  start: 'להתחיל',
+  open: 'לפתוח',
+  actionLabel: (verb, title) => `${verb}, ${title}`,
+  failed: 'לא הצלחנו לבדוק כרגע.',
+  failedLink: (product) => `לפתוח את ${product}`,
+  noSteps: 'אין כאן צעדים כרגע.',
+  billingTitle: 'תשלום',
+  billingStep: 'התשלום על המנוי',
+  billingSoon: 'התשלום באתר יתחבר בקרוב. בינתיים אפשר להמשיך בשאר הצעדים.',
+  billingTodo: 'נשאר לסדר את התשלום על המנוי.',
+  billingDone: 'המנוי שולם.',
+  noProducts: 'עוד אין מוצר פעיל בחשבון הזה, אז אין מה להגדיר.',
+  back: 'לדף הראשי',
+
+  // On the home page, while setup is not finished
+  cardTitle: 'הגדרת החשבון',
+  cardLead: (done, total) => (total ? `${done} מתוך ${total} צעדים הושלמו.` : 'נשארו כמה צעדים עד שהכול יעבוד.'),
+  cardButton: 'להמשך ההגדרה',
+  nav: 'הגדרה',
+  navLabel: 'החשבון',
 };
 
 const DATE = new Intl.DateTimeFormat('he-IL', { timeZone: 'Asia/Jerusalem', day: 'numeric', month: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' });
