@@ -653,6 +653,10 @@ label.product-pick .mark { width: 36px; height: 36px; }
 label.product-pick b { display: block; font-weight: 600; }
 label.product-pick small { margin: 2px 0 0; }
 fieldset.products-pick > small { margin: 0; }
+/* A product sign-up does not offer yet: the same row, quieter, its box off and a "בקרוב" tag at the end. */
+label.product-pick.soon { cursor: default; color: var(--ink-2); }
+label.product-pick.soon .mark { filter: grayscale(1); opacity: 0.5; }
+label.product-pick.soon .tag { margin-inline-start: auto; flex: none; }
 label.check.terms { display: flex; align-items: flex-start; gap: 10px; margin: 20px 0 0; padding-top: 10px; line-height: 1.45; font-size: 15px; }
 label.check.terms input { flex: none; margin: 1px 0 0; }
 .card form > button.google { margin-top: 0; }

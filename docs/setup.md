@@ -9,6 +9,7 @@ for that page, and the settings that turn each part on.
 | Variable | Default | What it does |
 |---|---|---|
 | `OF_SIGNUP` | unset | `1` opens `/signup`. Anything else: `/signup` says "ההרשמה תיפתח בקרוב" with a link to `https://openfrequency.co.il/join`, and every POST to it is refused (403). |
+| `OF_SIGNUP_PRODUCTS` | `teder,toran` | The products `/signup` offers, comma-separated, unknown names ignored. One left out shows as "בקרוב" with its box off and is refused, by the form and through Google; with one product open, it starts chosen. The console opens any product either way. |
 | `OF_SIGNUP_NOTIFY` | unset | Comma-separated addresses that get a short email on each confirmed sign-up. Unset, no notice. |
 | `OF_TEDER_INTERNAL` | `http://127.0.0.1:4700` | Where `/setup` reaches Teder's internal routes. |
 | `OF_TORAN_INTERNAL` | `http://127.0.0.1:4710` | Where `/setup` reaches Toran's (the same address `/admin` uses). |

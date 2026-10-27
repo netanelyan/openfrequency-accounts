@@ -6,7 +6,8 @@ import { advance, setNow, MINUTE } from '../src/core/clock.js';
 import { createLimiter, LIMITS } from '../src/auth/limiter.js';
 import { acceptInvite, createInvite } from '../src/accounts/links.js';
 import { openFlow } from '../src/auth/google.js';
-import { checkSignup, SignupError, TERMS_VERSION } from '../src/accounts/signup.js';
+import { checkSignup, SignupError, signupProducts, TERMS_VERSION } from '../src/accounts/signup.js';
+import { createWorkspace } from '../src/accounts/workspaces.js';
 
 // Public sign-up end to end, over HTTP: closed and open, the form's checks, the honeypot, the limits, the email's
 // link that opens one user and one workspace with the products chosen and nothing else, an address that already
@@ -489,6 +490,67 @@ test('a sign-up confirmed by Google sends the notice too, once', async () => {
     assert.ok(sent[0].text.includes('מייל: noa@gmail.com'));
     assert.ok(sent[0].text.includes('מוצרים: תדר, תורן'));
     assert.ok(sent[0].text.includes('אישור: Google'));
+  } finally {
+    await t.done();
+  }
+});
+
+// ---- the products sign-up offers (OF_SIGNUP_PRODUCTS)
+
+test('OF_SIGNUP_PRODUCTS: both by default, unknown names left out', () => {
+  assert.deepEqual(signupProducts({}), ['teder', 'toran']);
+  assert.deepEqual(signupProducts({ OF_SIGNUP_PRODUCTS: ' ' }), ['teder', 'toran']);
+  assert.deepEqual(signupProducts({ OF_SIGNUP_PRODUCTS: 'Teder, other' }), ['teder']);
+  assert.deepEqual(signupProducts({ OF_SIGNUP_PRODUCTS: 'toran,teder' }), ['teder', 'toran']);
+  assert.throws(() => checkSignup({ ...FORM, products: ['toran'], terms: true }, { open: ['teder'] }), (e) => e.code === 'product_closed');
+});
+
+test('by default both products are open, neither chosen in advance, and neither says בקרוב', async () => {
+  const t = await setup();
+  try {
+    const page = await t.browser().get('/signup');
+    assert.ok(page.body.includes('name="products" value="toran">'));
+    assert.ok(page.body.includes('name="products" value="teder">'));
+    assert.doesNotMatch(page.body, /disabled|בקרוב|product-pick soon/);
+    assert.match(page.body, /אפשר לבחור את שניהם/);
+  } finally {
+    await t.done();
+  }
+});
+
+test('with OF_SIGNUP_PRODUCTS=teder: Toran shows as coming soon and is refused, by the form and by Google; Teder starts chosen', async () => {
+  const t = await setup({ env: { ...OPEN, ...CLIENT, OF_SIGNUP_PRODUCTS: 'teder' } });
+  try {
+    const b = t.browser();
+    const page = await b.get('/signup');
+    assert.ok(page.body.includes('name="products" value="teder" checked>'));
+    assert.match(page.body, /<label class="product-pick soon"><input type="checkbox" disabled aria-describedby="su-soon-toran">/);
+    assert.match(page.body, /<small id="su-soon-toran">ההרשמה אליו תיפתח בקרוב\.<\/small><\/span><span class="tag off">בקרוב<\/span>/);
+    assert.doesNotMatch(page.body, /name="products" value="toran"/);
+    assert.doesNotMatch(page.body, /אפשר לבחור את שניהם/);
+    // Teder comes first, Toran after it.
+    assert.ok(page.body.indexOf('value="teder"') < page.body.indexOf('su-soon-toran'));
+
+    for (const products of [['toran'], ['teder', 'toran']]) {
+      for (const via of ['email', 'google']) {
+        const r = await b.post('/signup', { ...FORM, products, via, ...(via === 'google' ? { email: '' } : {}) });
+        assert.equal(r.status, 400, `${products} ${via}`);
+        assert.match(r.body, /ההרשמה לאחד המוצרים שבחרתם עוד לא נפתחה/);
+      }
+    }
+    assert.equal(count(t.db, 'signups'), 0);
+    assert.equal(t.mails.length, 0);
+
+    // Teder alone goes through.
+    assert.equal((await b.post('/signup', { ...FORM, products: ['teder'] })).status, 200);
+    await b.post('/signup/confirm', { t: tokenOf(t.mails[0].link) });
+    const ws = t.db.get('SELECT * FROM workspaces');
+    assert.deepEqual(t.db.all('SELECT product FROM workspace_products WHERE workspace_id = ?', ws.id).map((r) => r.product), ['teder']);
+
+    // The superadmin's console still opens Toran.
+    const admin = makeUser(t.db, 'boss@example.com', { superadmin: true });
+    const { workspace } = createWorkspace(t.db, { name: 'Gal', slug: 'gal-shop', ownerEmail: 'gal@example.com', products: ['toran'] }, { by: admin });
+    assert.deepEqual(t.db.all('SELECT product FROM workspace_products WHERE workspace_id = ?', workspace.id).map((r) => r.product), ['toran']);
   } finally {
     await t.done();
   }

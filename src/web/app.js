@@ -14,7 +14,7 @@ import { chooseWorkspace, createSession, describeSession, enabledProducts, findS
 import { acceptInvite, consumeMagicLink, createInvite, InviteError, normEmail, peekInvite, peekMagicLink, requestMagicLink, revokeInvite, validEmail } from '../accounts/links.js';
 import { verifySuperadmin } from '../accounts/superadmin.js';
 import { createWorkspace, getWorkspace, listWorkspaces, recentAudit, setDisabled, setProduct, startViewAs, stopViewAs, WorkspaceError } from '../accounts/workspaces.js';
-import { checkSignup, completeSignup, CONTACT_URL, dropSignup, peekSignup, requestSignup, SignupError, signupNotify, signupOpen } from '../accounts/signup.js';
+import { checkSignup, completeSignup, CONTACT_URL, dropSignup, peekSignup, requestSignup, SignupError, signupNotify, signupOpen, signupProducts } from '../accounts/signup.js';
 import { allPaid, billingReady, checkoutUrl } from '../accounts/billing.js';
 import { existingAccountMail, inviteMail, magicLinkMail, signupMail, signupNoticeMail } from '../mail/messages.js';
 import { OPS, PRODUCT_NAMES, SETUP, SIGNUP, T, dayHe, phoneHe } from './copy.js';
@@ -159,6 +159,8 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
   // Any limiter the caller does not pass is the usual one.
   const limiters = { ...defaultLimiters(), ...given };
   const signupOn = signupOpen(env);
+  // The products sign-up offers now (OF_SIGNUP_PRODUCTS); the others show as coming soon and are refused.
+  const openProducts = signupProducts(env);
   // Each product's setup checklist (src/web/setup.js), for /setup, the home page and where a customer lands.
   const setup = setupClient({ env, log, productUrls: urls, fetchImpl: setupFetch, ...(setupMs ? { timeoutMs: setupMs } : {}) });
   /** A workspace's checklist: its products' answers, payment, and whether it is finished (setupState()). */
@@ -440,11 +442,12 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
           const links = found.user.is_superadmin ? [['/admin', T.adminTitle]] : [['/', SIGNUP.home], ['/logout', SIGNUP.signOut]];
           return page(200, SIGNUP.title, P.messagePage({ title: SIGNUP.signedInTitle(found.user.email), lead: found.user.is_superadmin ? '' : SIGNUP.signedInLead, links }));
         }
-        if (req.method !== 'POST') return page(200, SIGNUP.title, P.signupPage({ csrf, google: Boolean(google), signup: signupOn }));
+        // With one product open, it starts chosen.
+        if (req.method !== 'POST') return page(200, SIGNUP.title, P.signupPage({ csrf, google: Boolean(google), open: openProducts, form: { products: openProducts.length === 1 ? openProducts : [] } }));
 
         const via = f('via') === 'google' && google ? 'google' : 'email';
         const raw = { name: f('name').slice(0, 200), business: f('business').slice(0, 200), email: f('email').slice(0, 254), products: form.getAll('products'), terms: f('terms') === '1' };
-        const again = (status, error, extra) => send(status, P.layout({ title: SIGNUP.title, body: P.signupPage({ csrf, form: raw, error, google: Boolean(google) }), v: V }), extra);
+        const again = (status, error, extra) => send(status, P.layout({ title: SIGNUP.title, body: P.signupPage({ csrf, form: raw, error, google: Boolean(google), open: openProducts }), v: V }), extra);
         const sent = (email) => page(200, SIGNUP.sentTitle, P.signupSentPage({ email }));
         // The honeypot: a field people never see. Filled, it was not a person: the same page as a real sign-up, and
         // nothing kept or sent.
@@ -454,7 +457,7 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
         }
         let ok;
         try {
-          ok = checkSignup(raw, { needEmail: via === 'email' });
+          ok = checkSignup(raw, { needEmail: via === 'email', open: openProducts });
         } catch (e) {
           if (!(e instanceof SignupError)) throw e;
           return again(400, SIGNUP.errors[e.code]);

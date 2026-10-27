@@ -35,6 +35,8 @@ the terms and the privacy policy. An emailed link (15 minutes, one use, like the
 "continue with Google", opens the user, the workspace with only those products (each with its
 subscription at the list price and nothing paid yet) and makes them its owner, without an invite.
 An address that already has an account gets a sign-in link instead, never a second workspace.
+`OF_SIGNUP_PRODUCTS` (default `teder,toran`) says which products the form offers: one left out
+shows as coming soon and is refused (Toran waits for Meta's approval of WhatsApp: `teder`).
 Each confirmed sign-up sends a short email to every address in `OF_SIGNUP_NOTIFY` (unset: none),
 with who signed up, the business, the products, the time and a link to it on `/admin`.
 Payment is not taken yet: `src/accounts/billing.js` is the hook a card-clearing provider plugs into.

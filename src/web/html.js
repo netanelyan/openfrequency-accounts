@@ -312,10 +312,15 @@ ${teamCard({ csrf, user, team: team || { members: [], invites: [], taken: 0, lim
  * Google is set up, "continue with Google", a second submit button of the same form, so the choices go with it (kept
  * on our side, never in the URL). It skips the browser's checks, since Google brings the address; ours still run.
  */
-export function signupPage({ csrf, form = {}, error = '', google = false }) {
+export function signupPage({ csrf, form = {}, error = '', google = false, open = ['teder', 'toran'] }) {
   const chosen = [].concat(form.products || []);
+  // A product sign-up does not offer yet (OF_SIGNUP_PRODUCTS): shown after the open ones, its box disabled and outside
+  // the form's data, with a "בקרוב" tag and one line on why.
   const product = (p) =>
-    `<label class="product-pick"><input type="checkbox" name="products" value="${p}"${chosen.includes(p) ? ' checked' : ''}>${productMark(p)}<span><b>${esc(PRODUCT_NAMES[p])}</b><small>${esc(SIGNUP.productWhat[p])}</small></span></label>`;
+    open.includes(p)
+      ? `<label class="product-pick"><input type="checkbox" name="products" value="${p}"${chosen.includes(p) ? ' checked' : ''}>${productMark(p)}<span><b>${esc(PRODUCT_NAMES[p])}</b><small>${esc(SIGNUP.productWhat[p])}</small></span></label>`
+      : `<label class="product-pick soon"><input type="checkbox" disabled aria-describedby="su-soon-${p}">${productMark(p)}<span><b>${esc(PRODUCT_NAMES[p])}</b><small id="su-soon-${p}">${esc(SIGNUP.productSoon)}</small></span><span class="tag off">${esc(SIGNUP.soon)}</span></label>`;
+  const order = ['toran', 'teder'].sort((a, b) => Number(!open.includes(a)) - Number(!open.includes(b)));
   return `
 <section class="card signup">
 <h1>${esc(SIGNUP.heading)}</h1>
@@ -328,8 +333,8 @@ ${csrfField(csrf)}
 <input id="su-business" name="business" autocomplete="organization" required minlength="2" maxlength="80" value="${esc(form.business || '')}" aria-describedby="su-business-hint">
 <small id="su-business-hint">${esc(SIGNUP.businessHint)}</small>
 <fieldset class="products-pick"><legend>${esc(SIGNUP.productsLegend)}</legend>
-${['toran', 'teder'].map(product).join('\n')}
-<small>${esc(SIGNUP.productsHint)}</small>
+${order.map(product).join('\n')}
+${open.length > 1 ? `<small>${esc(SIGNUP.productsHint)}</small>` : ''}
 </fieldset>
 <label class="check terms"><input type="checkbox" name="terms" value="1" required${form.terms ? ' checked' : ''}> <span>${esc(SIGNUP.termsPre)}<a href="${esc(TERMS_URL)}" target="_blank" rel="noopener">${esc(SIGNUP.termsLink)}</a>${esc(SIGNUP.termsMid)}<a href="${esc(PRIVACY_URL)}" target="_blank" rel="noopener">${esc(SIGNUP.privacyLink)}</a></span></label>
 <div class="hp" aria-hidden="true"><label for="su-website">${esc(SIGNUP.honeypot)}</label><input id="su-website" name="website" tabindex="-1" autocomplete="off"></div>

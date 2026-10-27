@@ -55,16 +55,30 @@ const clean = (v) =>
     .trim();
 
 /**
- * The form, checked. Returns { name, business, email, products } or throws SignupError: bad_name, bad_business,
- * no_products, no_terms, bad_email (only when `needEmail`: Google brings its own).
+ * The products a business may sign up for on its own: OF_SIGNUP_PRODUCTS, comma-separated, unknown names left out;
+ * unset or blank, every product. (Toran waits for Meta's approval of WhatsApp: OF_SIGNUP_PRODUCTS=teder.) The others
+ * show on the form as coming soon and are refused. The superadmin's console opens any product, whatever this says.
  */
-export function checkSignup({ name, business, email, products = [], terms }, { needEmail = true } = {}) {
+export function signupProducts(env = process.env) {
+  const raw = String(env.OF_SIGNUP_PRODUCTS ?? '').trim();
+  if (!raw) return [...PRODUCTS];
+  const named = raw.split(',').map((s) => s.trim().toLowerCase());
+  return PRODUCTS.filter((p) => named.includes(p));
+}
+
+/**
+ * The form, checked. Returns { name, business, email, products } or throws SignupError: bad_name, bad_business,
+ * no_products, product_closed (one chosen that is not in `open`), no_terms, bad_email (only when `needEmail`: Google
+ * brings its own).
+ */
+export function checkSignup({ name, business, email, products = [], terms }, { needEmail = true, open = PRODUCTS } = {}) {
   const n = clean(name);
   const b = clean(business);
   if (n.length < NAME_LIMITS.min || n.length > NAME_LIMITS.max) throw new SignupError('bad_name');
   if (b.length < BUSINESS_LIMITS.min || b.length > BUSINESS_LIMITS.max) throw new SignupError('bad_business');
   const chosen = PRODUCTS.filter((p) => [].concat(products).includes(p));
   if (!chosen.length) throw new SignupError('no_products');
+  if (chosen.some((p) => !open.includes(p))) throw new SignupError('product_closed');
   if (!terms) throw new SignupError('no_terms');
   const e = normEmail(email);
   if (needEmail && !validEmail(e)) throw new SignupError('bad_email');
