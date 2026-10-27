@@ -9,6 +9,7 @@ for that page, and the settings that turn each part on.
 | Variable | Default | What it does |
 |---|---|---|
 | `OF_SIGNUP` | unset | `1` opens `/signup`. Anything else: `/signup` says "ההרשמה תיפתח בקרוב" with a link to `https://openfrequency.co.il/join`, and every POST to it is refused (403). |
+| `OF_SIGNUP_NOTIFY` | unset | Comma-separated addresses that get a short email on each confirmed sign-up. Unset, no notice. |
 | `OF_TEDER_INTERNAL` | `http://127.0.0.1:4700` | Where `/setup` reaches Teder's internal routes. |
 | `OF_TORAN_INTERNAL` | `http://127.0.0.1:4710` | Where `/setup` reaches Toran's (the same address `/admin` uses). |
 | `OF_INTERNAL_TOKEN` | unset | The bearer token for both. Unset or shorter than 32 characters, no product is asked and each says "לא הצלחנו לבדוק כרגע". |
@@ -42,7 +43,15 @@ Protections: the CSRF token and Origin check of every form; 3 sign-ups an addres
 (10 a day) and 5 an IP in an hour (20 a day), in memory like the other limits; a honeypot field
 that a person never sees (filled, the page looks the same and nothing is kept or sent); the
 address checked like the login's. Each sign-up is in the audit log (`signup_requested`,
-`signed_up`), which the console shows; there is no other notification to the superadmin.
+`signed_up`), which the console shows.
+
+**The owner's notice.** Each address in `OF_SIGNUP_NOTIFY` gets one email when a sign-up is
+confirmed (by the link or by Google), after its transaction has committed: subject "הרשמה חדשה:
+<business>", then the person's name and email, the business, the products, the time (Israel), how
+it was confirmed, and a link to the workspace on `/admin/accounts`. What the customer typed is
+put on one line (no control characters or bidi overrides) and escaped in the HTML part. Nothing
+is sent for the form alone, a closed sign-up, the honeypot, a form past the limits, or an address
+that already has an account. A notice that fails to send is logged and never holds up the sign-up.
 
 Payment is not taken here. The subscription starts in the state the console calls "open" (on,
 no payment recorded). `src/accounts/billing.js` has the hooks a card-clearing provider will plug

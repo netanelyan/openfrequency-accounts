@@ -37,6 +37,9 @@ export const BUSINESS_LIMITS = { min: 2, max: 80 };
 /** Is sign-up open? Only when OF_SIGNUP is exactly "1". */
 export const signupOpen = (env = process.env) => String(env.OF_SIGNUP ?? '').trim() === '1';
 
+/** Who hears of each confirmed sign-up: OF_SIGNUP_NOTIFY, comma-separated addresses (a bad one is left out). */
+export const signupNotify = (env = process.env) => [...new Set(String(env.OF_SIGNUP_NOTIFY || '').split(',').map(normEmail).filter(validEmail))];
+
 export class SignupError extends Error {
   constructor(code) {
     super(code);

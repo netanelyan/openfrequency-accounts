@@ -39,3 +39,28 @@ export const signupMail = (to, business, link) => ({ to, ...build(MAIL.signupSub
 
 /** Public sign-up, for an address that already has an account: a sign-in link to it instead of a second one. */
 export const existingAccountMail = (to, link) => ({ to, ...build(MAIL.existingSubject, MAIL.existingLines(link), MAIL.magicButton) });
+
+// What a customer typed, on one line: no control characters or bidi overrides (a subject header stays one line, and
+// nothing reorders the words around it), at most `max` characters. The HTML part escapes it as well.
+const plain = (v, max = 120) =>
+  String(v ?? '')
+    .replace(/[\u0000-\u001f\u007f‎‏‪-‮⁦-⁩]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, max);
+
+/**
+ * To the owner (OF_SIGNUP_NOTIFY), once a sign-up is confirmed: who, which business, which products, when, and a link
+ * to the workspace on /admin. `products` are names already (תורן, תדר).
+ */
+export const signupNoticeMail = (to, { name, email, business, products, at, method, link }) => {
+  const b = plain(business, 80);
+  return {
+    to,
+    ...build(
+      MAIL.noticeSubject(b),
+      MAIL.noticeLines(plain(name, 80), plain(email, 254), b, plain(products), when(at), method, link),
+      MAIL.noticeButton
+    ),
+  };
+};

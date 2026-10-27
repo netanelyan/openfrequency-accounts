@@ -365,6 +365,20 @@ export const MAIL = {
   ],
   signupButton: 'לאישור החשבון',
 
+  // To the owner (OF_SIGNUP_NOTIFY), on each confirmed sign-up.
+  noticeSubject: (business) => `הרשמה חדשה: ${business}`,
+  noticeLines: (name, email, business, products, at, method, link) => [
+    'נפתח חשבון חדש מההרשמה באתר.',
+    `שם: ${name}`,
+    `מייל: ${email}`,
+    `עסק: ${business}`,
+    `מוצרים: ${products}`,
+    `מתי: ${at}`,
+    `אישור: ${method === 'google' ? 'Google' : 'קישור במייל'}`,
+    { link },
+  ],
+  noticeButton: 'לחשבון בקונסולה',
+
   existingSubject: 'כבר יש לכם חשבון ב-OpenFrequency',
   existingLines: (link) => [
     'שלום,',

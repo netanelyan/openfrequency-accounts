@@ -27,11 +27,11 @@ function fakeGoogle() {
   return g;
 }
 
-async function setup({ env = OPEN, limiters } = {}) {
+async function setup({ env = OPEN, limiters, ...opts } = {}) {
   const h = tempHome();
   setNow('2026-10-22T10:00:00.000Z');
   const g = fakeGoogle();
-  const site = await startSite(h.db, { env, googleFetch: g.fetch, ...(limiters ? { limiters } : {}) });
+  const site = await startSite(h.db, { env, googleFetch: g.fetch, ...(limiters ? { limiters } : {}), ...opts });
   return { ...h, ...site, g, done: async () => (await site.close(), h.cleanup()) };
 }
 
@@ -373,6 +373,122 @@ test("Google with the superadmin's address, or one already taken, opens nothing"
     assert.match(done.body, /אי אפשר לפתוח חשבון עם הכתובת הזאת/);
     assert.equal(count(t.db, 'workspaces'), 0);
     assert.equal(b.cookie('__Secure-of_session'), undefined);
+  } finally {
+    await t.done();
+  }
+});
+
+// ---- the owner's notice (OF_SIGNUP_NOTIFY)
+
+const NOTIFY = { ...OPEN, OF_SIGNUP_NOTIFY: ' Owner@example.com, second@example.com,not-an-address,owner@example.com ' };
+const notices = (mails) => mails.filter((m) => m.subject.startsWith('הרשמה חדשה'));
+
+test('the owner hears of each confirmed sign-up: once per address, after the link is used, with who, what and a link to /admin', async () => {
+  const t = await setup({ env: NOTIFY });
+  try {
+    const b = t.browser();
+    await signUp(b, { name: 'Noa <i>Levi</i>', business: '<b>Noa</b> & Co' });
+    // The form alone tells nobody: only the customer's own link went out.
+    assert.equal(t.mails.length, 1);
+    assert.equal(notices(t.mails).length, 0);
+    const link = t.mails[0].link;
+    await b.get(pathOf(link));
+    assert.equal((await b.post('/signup/confirm', { t: tokenOf(link) })).headers.location, '/setup');
+    const sent = notices(t.mails);
+    assert.deepEqual(sent.map((m) => m.to), ['owner@example.com', 'second@example.com']);
+    const ws = t.db.get('SELECT * FROM workspaces');
+    const m = sent[0];
+    assert.equal(m.subject, 'הרשמה חדשה: <b>Noa</b> & Co');
+    for (const line of ['שם: Noa <i>Levi</i>', 'מייל: noa@example.com', 'עסק: <b>Noa</b> & Co', 'מוצרים: תדר', 'מתי: 22.10.2026, 13:00', 'אישור: קישור במייל'])
+      assert.ok(m.text.includes(line), line);
+    assert.equal(m.link, `https://accounts.openfrequency.co.il/admin/accounts#ws-${ws.id}`);
+    // The HTML part escapes what the customer typed.
+    assert.ok(m.html.includes('&lt;b&gt;Noa&lt;/b&gt; &amp; Co'));
+    assert.doesNotMatch(m.html, /<b>Noa<\/b>|<i>Levi<\/i>/);
+    // A used link again: no second notice.
+    const other = t.browser();
+    await other.get('/login');
+    assert.equal((await other.post('/signup/confirm', { t: tokenOf(link) })).status, 410);
+    assert.equal(notices(t.mails).length, 2);
+  } finally {
+    await t.done();
+  }
+});
+
+test('no notice when sign-up is closed, for the honeypot, past the limits, for an address that has an account, or with OF_SIGNUP_NOTIFY unset', async () => {
+  const closed = await setup({ env: { OF_SIGNUP_NOTIFY: 'owner@example.com' } });
+  try {
+    const b = closed.browser();
+    await b.get('/login');
+    assert.equal((await b.post('/signup', FORM)).status, 403);
+    assert.equal(closed.mails.length, 0);
+  } finally {
+    await closed.done();
+  }
+
+  const t = await setup({ env: { ...OPEN, OF_SIGNUP_NOTIFY: 'owner@example.com' } });
+  try {
+    await signUp(t.browser(), { website: 'https://spam.example' });
+    for (let i = 0; i < 4; i++) await signUp(t.browser({ ip: `198.51.100.${i + 1}` }), { email: 'same@example.com' });
+    makeWorkspace(t.db, 'dana-shop', { members: { 'dana@example.com': 'client_owner' } });
+    await signUp(t.browser(), { email: 'dana@example.com' });
+    assert.equal(notices(t.mails).length, 0);
+    // Three confirmation links (the fourth was over the limit) and Dana's sign-in link.
+    assert.equal(t.mails.length, 4);
+  } finally {
+    await t.done();
+  }
+
+  const off = await setup();
+  try {
+    const b = off.browser();
+    await signUp(b);
+    assert.equal((await b.post('/signup/confirm', { t: tokenOf(off.mails[0].link) })).status, 303);
+    assert.equal(off.mails.length, 1);
+    assert.equal(notices(off.mails).length, 0);
+  } finally {
+    await off.done();
+  }
+});
+
+test('a notice that fails to send is logged and never stands in the way of the sign-up', async () => {
+  const mails = [];
+  const logged = [];
+  const mailer = {
+    sending: 'test',
+    send: (m) => {
+      if (m.subject.startsWith('הרשמה חדשה')) throw new Error('mail is down');
+      mails.push(m);
+    },
+    flush: async () => {},
+  };
+  const t = await setup({ env: NOTIFY, mailer, log: (line) => logged.push(line) });
+  try {
+    const b = t.browser();
+    await signUp(b);
+    const r = await b.post('/signup/confirm', { t: tokenOf(mails[0].link) });
+    assert.equal(r.status, 303);
+    assert.equal(r.headers.location, '/setup');
+    assert.ok(b.cookie('__Secure-of_session'));
+    assert.equal(count(t.db, 'workspaces'), 1);
+    assert.ok(logged.some((l) => /sign-up notice .* failed: mail is down/.test(l)));
+  } finally {
+    await t.done();
+  }
+});
+
+test('a sign-up confirmed by Google sends the notice too, once', async () => {
+  const t = await setup({ env: { ...OPEN, ...CLIENT, OF_SIGNUP_NOTIFY: 'owner@example.com' } });
+  try {
+    const b = t.browser();
+    await b.get('/signup');
+    const r = await b.post('/signup', { ...FORM, email: '', via: 'google', products: ['toran', 'teder'] });
+    assert.equal((await back(t, b, new URL(r.headers.location), { sub: '4001', email: 'noa@gmail.com', name: 'Noa G' })).headers.location, '/setup');
+    const sent = notices(t.mails);
+    assert.equal(sent.length, 1);
+    assert.ok(sent[0].text.includes('מייל: noa@gmail.com'));
+    assert.ok(sent[0].text.includes('מוצרים: תדר, תורן'));
+    assert.ok(sent[0].text.includes('אישור: Google'));
   } finally {
     await t.done();
   }

@@ -14,9 +14,9 @@ import { chooseWorkspace, createSession, describeSession, enabledProducts, findS
 import { acceptInvite, consumeMagicLink, createInvite, InviteError, normEmail, peekInvite, peekMagicLink, requestMagicLink, revokeInvite, validEmail } from '../accounts/links.js';
 import { verifySuperadmin } from '../accounts/superadmin.js';
 import { createWorkspace, getWorkspace, listWorkspaces, recentAudit, setDisabled, setProduct, startViewAs, stopViewAs, WorkspaceError } from '../accounts/workspaces.js';
-import { checkSignup, completeSignup, CONTACT_URL, dropSignup, peekSignup, requestSignup, SignupError, signupOpen } from '../accounts/signup.js';
+import { checkSignup, completeSignup, CONTACT_URL, dropSignup, peekSignup, requestSignup, SignupError, signupNotify, signupOpen } from '../accounts/signup.js';
 import { allPaid, billingReady, checkoutUrl } from '../accounts/billing.js';
-import { existingAccountMail, inviteMail, magicLinkMail, signupMail } from '../mail/messages.js';
+import { existingAccountMail, inviteMail, magicLinkMail, signupMail, signupNoticeMail } from '../mail/messages.js';
 import { OPS, PRODUCT_NAMES, SETUP, SIGNUP, T, dayHe, phoneHe } from './copy.js';
 import { setupClient, setupState } from './setup.js';
 import { createLinkCode, openLinkCode, phoneIn, phonesFor, PHONE, removePhone, setConsent } from '../accounts/phones.js';
@@ -167,6 +167,26 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
     const ready = billingReady(env);
     const results = await setup.check(workspaceId, products);
     return setupState(results, products, { billingReady: ready, paid: allPaid(subscriptionsOf(db, workspaceId), products), checkout: ready ? checkoutUrl(workspaceId, env) : null });
+  };
+  // The owner hears of each confirmed sign-up (OF_SIGNUP_NOTIFY). Called once its transaction has committed; the
+  // mailer queues and never waits, and a failure here is logged and never stands in the customer's way.
+  const notifyTo = signupNotify(env);
+  const noticeSignup = ({ user, workspace }, method, base) => {
+    if (!notifyTo.length) return;
+    try {
+      const fields = {
+        name: user.name,
+        email: user.email,
+        business: workspace.name,
+        products: enabledProducts(db, workspace.id).map((p) => PRODUCT_NAMES[p]).join(', '),
+        at: workspace.created_at,
+        method,
+        link: `${base}/admin/accounts#ws-${workspace.id}`,
+      };
+      for (const to of notifyTo) mailer.send(signupNoticeMail(to, fields));
+    } catch (e) {
+      log(`[accounts] the sign-up notice for workspace ${workspace.id} failed: ${e.message}`);
+    }
   };
   const support = supportUrl(env);
   const waNumber = assistantWa(env);
@@ -409,6 +429,7 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
           const done = completeSignup(db, f('t'), { kind: 'email', ip });
           if (!done) return dead();
           if (done.exists) return page(409, SIGNUP.existsTitle, P.messagePage({ title: SIGNUP.existsTitle, lead: SIGNUP.existsLead, links: [['/login', SIGNUP.toLogin]] }));
+          noticeSignup(done, 'email', base);
           if (found) revokeSession(db, sid, { reason: 'replaced', ip });
           setSession(done.user, { workspaceId: done.workspace.id });
           return redirect('/setup');
@@ -646,6 +667,7 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
           if (!done) return signupDead();
           if (done.exists) return fail(403, SIGNUP.googleTaken, SIGNUP.googleTakenLead);
           bindGoogle(db, done.user, who);
+          noticeSignup(done, 'google', base);
           if (found) revokeSession(db, sid, { reason: 'replaced', ip });
           setSession(done.user, { workspaceId: done.workspace.id });
           return redirect('/setup');
