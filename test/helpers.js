@@ -75,3 +75,6 @@ export function tempHome() {
     },
   };
 }
+
+/** A page without our own loading script (layout() puts load.js on every page): what is left must hold no script at all. */
+export const withoutLoadJs = (html) => String(html).replace(/<script src="\/static\/load\.js\?v=[^"]+" defer><\/script>\n?/, '');

@@ -263,7 +263,9 @@ test('every page is Hebrew, right to left, escapes what it shows, and sends its 
     const r = await b.get('/login?next=%2F%22%3E%3Cscript%3Ealert(1)%3C%2Fscript%3E');
     assert.match(r.body, /<html lang="he" dir="rtl">/);
     assert.doesNotMatch(r.body, /<script>/);
-    assert.match(r.headers['content-security-policy'], /script-src 'none'/);
+    // Only our own files run (load.js), never anything written into a page.
+    assert.match(r.headers['content-security-policy'], /script-src 'self';/);
+    assert.doesNotMatch(r.headers['content-security-policy'], /unsafe-inline|unsafe-eval|nonce-/);
     assert.match(r.headers['content-security-policy'], /form-action 'self' https:\/\/\*\.openfrequency\.co\.il/);
     assert.equal(r.headers['referrer-policy'], 'same-origin');
     assert.equal(r.headers['x-frame-options'], 'DENY');

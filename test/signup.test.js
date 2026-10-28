@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { makeUser, makeWorkspace, tempHome } from './helpers.js';
+import { makeUser, makeWorkspace, tempHome, withoutLoadJs } from './helpers.js';
 import { pathOf, startSite, tokenOf } from './site.js';
 import { advance, setNow, MINUTE } from '../src/core/clock.js';
 import { createLimiter, LIMITS } from '../src/auth/limiter.js';
@@ -84,8 +84,10 @@ test('open: the form asks for the name, the business, the products with a line e
     assert.match(page.body, /href="https:\/\/openfrequency\.co\.il\/privacy"/);
     // No Google button while Google is not set up, and no script on the page.
     assert.doesNotMatch(page.body, /value="google"/);
-    assert.doesNotMatch(page.body, /<script/);
-    assert.match(page.headers['content-security-policy'], /script-src 'none'/);
+    assert.doesNotMatch(withoutLoadJs(page.body), /<script/);
+    // Only our own files run (load.js), never anything written into a page.
+    assert.match(page.headers['content-security-policy'], /script-src 'self';/);
+    assert.doesNotMatch(page.headers['content-security-policy'], /unsafe-inline|unsafe-eval|nonce-/);
     // The login page points to it.
     assert.match((await t.browser().get('/login')).body, /עוד אין לכם חשבון\? <a href="\/signup">להרשמה<\/a>/);
     // Nothing is chosen with both open, and the website's button (?p=) chooses its product; an unknown one, nothing.

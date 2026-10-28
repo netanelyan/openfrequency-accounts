@@ -49,10 +49,14 @@ test('the superadmin gets the whole dashboard: who to write to with the message,
     const r = await t.op.get('/admin');
     assert.equal(r.status, 200);
     const b = r.body;
-    // Our one script, allowed by this page's CSP only.
-    assert.match(r.headers['content-security-policy'], /script-src 'self'/);
+    // Our own script files only: admin.js here, and load.js (the loading state) on every page. Nothing inline.
+    assert.match(r.headers['content-security-policy'], /script-src 'self';/);
     assert.match(b, /<script src="\/static\/admin\.js\?v=[^"]+" defer><\/script>/);
-    assert.match((await t.op.get('/admin/accounts')).headers['content-security-policy'], /script-src 'none'/);
+    assert.match(b, /<script src="\/static\/load\.js\?v=[^"]+" defer><\/script>/);
+    const other = await t.op.get('/admin/accounts');
+    assert.match(other.headers['content-security-policy'], /script-src 'self';/);
+    assert.doesNotMatch(other.headers['content-security-policy'], /unsafe-inline|unsafe-eval|nonce-/);
+    assert.doesNotMatch(other.body, /admin\.js/);
     assert.equal(t.fake.calls[0].auth, 'Bearer internal-token-for-tests-only-0123456789');
     assert.equal(t.fake.calls[0].path, '/internal/ops');
 

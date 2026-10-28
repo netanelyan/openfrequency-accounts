@@ -48,6 +48,7 @@ export function layout({ title, body, banner = '', flash = '', wide = false, v =
 <link rel="stylesheet" href="/static/site.css?v=${esc(v)}">
 <link rel="icon" href="/static/icon.svg?v=${esc(v)}" type="image/svg+xml">
 <link rel="apple-touch-icon" href="/static/icon-180.png?v=${esc(v)}">
+<script src="/static/load.js?v=${esc(v)}" defer></script>
 ${script ? `<script src="/static/admin.js?v=${esc(v)}" defer></script>
 ` : ''}</head>
 <body>

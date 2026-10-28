@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { makeUser, makeWorkspace, tempHome } from './helpers.js';
+import { makeUser, makeWorkspace, tempHome, withoutLoadJs } from './helpers.js';
 import { signedIn, startSite, TOKEN, tokenOf } from './site.js';
 import { setNow, MINUTE } from '../src/core/clock.js';
 import { createLimiter } from '../src/auth/limiter.js';
@@ -77,7 +77,7 @@ test('a Teder-only workspace: only Teder is asked and shown, never Toran; its st
     // 2 of the 4 steps: payment and the first one done.
     assert.match(body, /2 מתוך 4 צעדים/);
     assert.match(body, /<progress max="4" value="2"/);
-    assert.doesNotMatch(body, /<script/);
+    assert.doesNotMatch(withoutLoadJs(body), /<script/);
   } finally {
     await t.done();
   }
@@ -124,7 +124,7 @@ test('hostile answers: HTML is escaped, a link that is not ours is dropped, and 
     assert.equal(r.status, 200);
     assert.ok(r.body.includes('&lt;script&gt;alert(1)&lt;/script&gt;'));
     assert.ok(r.body.includes('&lt;img src=x onerror=alert(1)&gt;'));
-    assert.doesNotMatch(r.body, /<script|<img|javascript:|evil\.example|data:text|user:pw|http:\/\/toran/);
+    assert.doesNotMatch(withoutLoadJs(r.body), /<script|<img|javascript:|evil\.example|data:text|user:pw|http:\/\/toran/);
     // The only link left: the path, on Toran's own address; attention and working say so.
     assert.match(r.body, /<a class="button primary" href="https:\/\/toran\.openfrequency\.co\.il\/settings\?tab=store" aria-label="לפתוח, a path">לפתוח<\/a>/);
     assert.match(r.body, /<span class="chip">צריך תשומת לב<\/span>/);

@@ -181,8 +181,8 @@ The full steps (DNS, Resend, Caddy, backups, checks) are in [docs/deploy.md](doc
 - `?next=` only to `https://<one label>.openfrequency.co.il` or a path here.
 - The superadmin: password and TOTP (one use per code), 5 tries per address in 15 minutes, 12-hour
   sessions, every action in the audit log, view-as read-only.
-- Every form: a CSRF token and an Origin check. Every page: CSP with no script (except `/admin`,
-  which allows its own `static/admin.js` and nothing inline), no framing. `/admin/toran/*` is
+- Every form: a CSRF token and an Origin check. Every page: CSP with our own script files only and nothing inline
+  (`static/load.js`, the loading state, on every page; `static/admin.js` on `/admin`), no framing. `/admin/toran/*` is
   Toran's: superadmin only, a foreign Origin refused here, and Toran's own CSRF and CSP on its pages.
 - `/internal/session`, `/internal/owner-phone*` and `/internal/ops/customers`: their own port, never proxied, loopback only,
   a bearer token.
