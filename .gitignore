@@ -22,3 +22,10 @@ Thumbs.db
 
 # The throwaway home `npm run demo` builds.
 /.demo/
+
+# A release folder's commit, written by deploy/deploy.sh (src/web/ready.js reads it).
+/REVISION
+# The release folders on the server (deploy/deploy.sh), inside the clone, and the link to the live one.
+/releases/
+/current
+/current.next

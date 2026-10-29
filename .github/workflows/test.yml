@@ -1,0 +1,27 @@
+# Every push and pull request to main: the whole suite on the production Node (24, as /opt/node24 on the server),
+# the browser tests in a real Chromium, and check:public (npm run release-check). Deploy only a commit that passed
+# here (docs/deploy.md). This workflow has no keys and no way to the server.
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npx playwright-core install --with-deps chromium
+      - run: npm run release-check

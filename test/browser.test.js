@@ -10,14 +10,16 @@ import { createSession } from '../src/auth/sessions.js';
 // sets Origin, Referer and cookies by its own rules, and an early version of the
 // site refused every form because of that (Referrer-Policy: no-referrer makes
 // Chromium send "Origin: null"). Skipped when no Chromium is installed
-// (npx playwright-core install chromium).
+// (npx playwright-core install chromium), except where OF_REQUIRE_BROWSER=1 (CI, npm run release-check): there a
+// missing Chromium fails the run, so the only tests in a real browser never pass by not running (PRA-QA-007).
 
 let chromium = null;
 try {
   ({ chromium } = await import('playwright-core'));
   const b = await chromium.launch();
   await b.close();
-} catch {
+} catch (e) {
+  if (process.env.OF_REQUIRE_BROWSER === '1') throw new Error(`OF_REQUIRE_BROWSER=1 and Chromium does not start (npx playwright-core install --with-deps chromium): ${e.message}`);
   chromium = null;
 }
 

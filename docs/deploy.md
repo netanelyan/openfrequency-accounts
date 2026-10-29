@@ -44,13 +44,29 @@ OF_INTERNAL_TOKEN=            # openssl rand -base64 48; the same value goes in 
 SESSION_SECRET=               # openssl rand -base64 48
 RESEND_API_KEY=
 MAIL_FROM=OpenFrequency <accounts@openfrequency.co.il>
-MAIL_REPLY_TO=                # where "reply to this email" lands; your own inbox
-OF_SUPPORT_WA=                # our WhatsApp for "write to us", digits only (972...); unset, the page says to reply to an email
+MAIL_REPLY_TO=                # where "reply to this email" lands; your own inbox (the billing emails ask customers to reply)
+OF_SUPPORT_WA=                # our WhatsApp for "write to us", digits only (972...); unset, "how to pay" opens an email to MAIL_REPLY_TO
 OF_ASSISTANT_WA=              # the owner line's WhatsApp number, digits only; the same as TORAN_ASSISTANT_WA in Toran's .env
 OF_TORAN_INTERNAL=            # Toran on this machine, for /admin and /admin/toran; empty means http://127.0.0.1:4710
 GOOGLE_CLIENT_ID=             # sign in with Google (below); unset, only the emailed link is offered
 GOOGLE_CLIENT_SECRET=
+
+# Public sign-up (docs/setup.md):
+OF_SIGNUP=                    # 1 opens /signup; anything else, it says it opens soon
+OF_SIGNUP_PRODUCTS=           # the products it offers, comma-separated; teder while Toran waits for Meta
+OF_SIGNUP_NOTIFY=             # who hears of each sign-up, cancellation, deletion, unpaid payment and ended grace (comma-separated)
+OF_SIGNUP_DAILY_EMAILS=       # the most sign-up emails a day, from everyone together; empty means 200
+OF_PAYMENT_METHOD=            # how to pay until a provider is connected, in Hebrew ("העברה בנקאית או ביט"); said on /setup and in the emails
+OF_BILLING_PROVIDER=          # set only once a payment provider is connected
 ```
+
+**What a stranger who signs up needs.** With `OF_SIGNUP=1`, the first lines of the log say which of
+these is missing, because each one leaves a customer with no way forward:
+`OF_SIGNUP_NOTIFY` (otherwise nobody hears of a new customer or an unpaid month), `OF_SUPPORT_WA`
+or `MAIL_REPLY_TO` (otherwise "how do I pay" leads to the website's contact form), and
+`OF_PAYMENT_METHOD` (otherwise the pages say only that we will send payment details). Whether they
+are set on the server today: UNVERIFIED (`grep -c '^OF_SIGNUP_NOTIFY=.' /opt/openfrequency-accounts/private/.env`, and the same
+for each name; the values are not printed).
 
 `/admin` is the operator's dashboard. It reads `GET /internal/ops` from Toran on this machine at
 each load, and forwards each of its buttons to `POST /internal/ops/<kind>/<id>/<action>`, with
@@ -111,19 +127,37 @@ reload Caddy.
 
 ### 6. Backups
 
-The database is `private/data/accounts.db`. A nightly copy, keeping 14:
+The database is `private/data/accounts.db`. On the server, `openfrequency-accounts-backup.service`
+runs `/opt/node24/bin/node scripts/backup.js --keep 14` in `/opt/openfrequency-accounts`, as root,
+nightly at 03:30 UTC (SERVER-FACTS.md). Each copy, `private/data/backups/accounts-<iso>.db`, is
+opened and checked before it counts (`PRAGMA integrity_check`, the live schema version, the main
+tables counted: `src/db/backup.js`); a bad one is renamed `.bad` and the run exits 1. A failed run
+calls `/usr/local/bin/of-alert "<title>" "<body>"` so a person hears of it. That script is not
+installed on the server yet (SERVER-FACTS.md): until it is, a failure is only in the unit's journal
+(`journalctl -u openfrequency-accounts-backup`). Node 20 at `/usr/bin/node` cannot run the backup
+(no `node:sqlite`); always `/opt/node24/bin/node`.
 
-```sh
-crontab -e
-30 3 * * * cd /opt/openfrequency-accounts && /usr/bin/node scripts/backup.js --keep 14
-```
+The copies stay on the same disk. The off-site copy is the server's job (the openfrequency-ops
+scripts), not this repo's.
 
-Copy `private/data/backups/` off the machine with the rest of your backups.
+### Restore
+
+1. `pm2 stop of-accounts` (that process alone: the same pm2 runs other apps).
+2. Move `private/data/accounts.db`, `accounts.db-wal` and `accounts.db-shm` aside (do not delete
+   them).
+3. Copy the backup in as `private/data/accounts.db`. `/opt/node24/bin/node scripts/schema-check.js private/data/accounts.db`
+   says whether this build can open it.
+4. `pm2 start of-accounts`, then `curl -s http://127.0.0.1:4740/readyz` (curl's own Host header:
+   `Host: accounts.openfrequency.co.il` is refused on that port with 403) answers `{"ok":true,...}`.
+
+No restore has been rehearsed yet (PRA-DB-003): do one into a scratch folder (`OF_HOME=/tmp/restore-test`,
+another port) and write the date and how long it took here.
 
 ### 7. Check it
 
 ```sh
 curl -s https://accounts.openfrequency.co.il/healthz                    # ok
+curl -s http://127.0.0.1:4740/readyz                                     # {"ok":true,"db":"ok","schema":{...},"commit":...}
 curl -s -o /dev/null -w '%{http_code}\n' https://accounts.openfrequency.co.il/internal/session   # 404: not exposed
 curl -s -H "Authorization: Bearer $OF_INTERNAL_TOKEN" -H 'X-OF-Session: x' http://127.0.0.1:4741/internal/session
 # {"error":"no_session"}
@@ -138,14 +172,69 @@ with your second address, and follow the invite from the email.
 
 ## Each update
 
+Deploy only a commit that passed CI (`.github/workflows/test.yml`: the whole suite on Node 24, the
+browser tests in a real Chromium, check:public), or run `npm run release-check` on a machine with
+Chromium first.
+
+**In release folders** (after the one-time move below), as root on the server:
+
+```sh
+/opt/openfrequency-accounts/current/deploy/deploy.sh            # origin/main; or name a commit
+```
+
+It checks the commit out in `releases/<commit>` beside the running one, installs it, runs the
+tests there, takes a checked backup (`accounts-pre-<commit>-<iso>.db`), points `current` at it,
+reloads `of-accounts` alone, and waits up to 60 seconds for `/readyz`. If it is not ready, it
+rolls back by itself (`deploy/rollback.sh`), restoring that backup when the new build migrated
+the database, and calls `of-alert`. `releases/HISTORY` keeps each deploy and its backup.
+`deploy/rollback.sh` goes back to the release before by hand; it asks that build first whether it
+can open the database (`scripts/schema-check.js`), and without `--restore <backup>` it refuses
+when it cannot. A build never starts on a database a newer build migrated, or one whose
+migrations differ from its own (src/db/index.js): it says so in the log and stops.
+
+**Until the move**, in place, as before (no rollback but a `git checkout` of the last commit and a
+restore):
+
 ```sh
 cd /opt/openfrequency-accounts
-git pull
-npm ci --omit=dev
+/opt/node24/bin/node scripts/backup.js --keep 14 --tag pre-$(git rev-parse --short=12 origin/main)
+git pull --ff-only
+PATH=/opt/node24/bin:$PATH npm ci --omit=dev
 pm2 reload of-accounts
+curl -s http://127.0.0.1:4740/readyz
 ```
 
 Migrations run on start. Sessions live in the database, so nobody is signed out by a restart.
+Deploy order: a product's internal route before the accounts change that calls it (Teder and
+Toran first when a contract in `docs/contracts/` changes on both sides).
+
+### Release folders, once
+
+Not done yet; it needs a quiet minute and the owner's go. As root:
+
+```sh
+cd /opt/openfrequency-accounts
+git status --short                                       # UNVERIFIED: the live folder must have no local changes
+diff ecosystem.config.cjs private/ecosystem.config.cjs   # UNVERIFIED: which of the two pm2 was started from
+/opt/node24/bin/node scripts/backup.js --keep 14 --tag pre-releases
+SHA=$(git rev-parse HEAD)
+git worktree add --detach releases/$SHA $SHA
+echo $SHA > releases/$SHA/REVISION
+(cd releases/$SHA && PATH=/opt/node24/bin:$PATH npm ci --omit=dev)
+ln -sfn releases/$SHA current
+pm2 delete of-accounts                                   # that process alone
+OF_APP_DIR=/opt/openfrequency-accounts/current OF_HOME=/opt/openfrequency-accounts/private \
+  pm2 start current/ecosystem.config.cjs --only of-accounts
+pm2 save                                                 # writes the list pm2 restores at boot; it stops nothing
+pm2 jlist | grep -o '"pm_exec_path":"[^"]*"'             # UNVERIFIED until run: should be .../current/scripts/web.js
+curl -s http://127.0.0.1:4740/readyz
+echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) $SHA -" >> releases/HISTORY
+```
+
+Then change `openfrequency-accounts-backup.service` to `WorkingDirectory=/opt/openfrequency-accounts/current`
+with `Environment=OF_HOME=/opt/openfrequency-accounts/private` (`systemctl daemon-reload`). The
+clone at `/opt/openfrequency-accounts` stays the git repository every release is checked out
+from; `private/` stays where it is, shared by every release.
 
 ## When something is wrong
 
