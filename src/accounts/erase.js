@@ -5,7 +5,7 @@ import { WorkspaceError, getWorkspace } from './workspaces.js';
 
 // Deleting a workspace and its data, as its owner asks on /account/delete or the superadmin on /admin. The products
 // are asked first (src/web/erase.js: Teder's and Toran's POST /internal/workspaces/<id>/delete); only once each has
-// deleted its part, or said it has nothing (404), does eraseWorkspace() below delete ours, in one transaction:
+// deleted its part (or said it had nothing, with a 2xx) does eraseWorkspace() below delete ours, in one transaction:
 //
 //   deleted   the people's memberships, the invites, the products and their subscriptions, the WhatsApp numbers and
 //             link codes, the notification choices and log, the sign-up that opened it, and every person who was in
@@ -35,7 +35,7 @@ export function eraseWorkspace(db, workspaceId, { by, ip = null, source = 'owner
     const t = nowIso();
     const people = db.all('SELECT u.id, u.email, u.is_superadmin FROM memberships m JOIN users u ON u.id = m.user_id WHERE m.workspace_id = ?', w.id);
     const invoicesKept = Number(db.run('UPDATE invoices SET customer_name = ?, detached_at = ? WHERE workspace_id = ?', w.name, t, w.id).changes);
-    for (const table of ['signups', 'tokens', 'phone_links', 'user_phones', 'notify_prefs', 'notify_log', 'subscriptions', 'workspace_products', 'memberships'])
+    for (const table of ['signups', 'tokens', 'phone_links', 'user_phones', 'notify_prefs', 'notify_log', 'billing_notices', 'retention_notices', 'subscriptions', 'workspace_products', 'memberships'])
       db.run(`DELETE FROM ${table} WHERE workspace_id = ?`, w.id);
     db.run('UPDATE sessions SET workspace_id = NULL WHERE workspace_id = ?', w.id);
     db.run('UPDATE sessions SET view_as_workspace_id = NULL, view_as_since = NULL WHERE view_as_workspace_id = ?', w.id);

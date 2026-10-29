@@ -1,10 +1,10 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { ROOT } from '../core/paths.js';
-import { addDays, addMonths, describe, israelToday, LIST_PRICES } from '../accounts/subscriptions.js';
+import { addDays, addMonths, describe, israelToday, LIST_PRICES, PLANS, plansOf } from '../accounts/subscriptions.js';
 import { total } from '../accounts/invoices.js';
 import { KINDS } from '../accounts/notify.js';
-import { AUDIT_NAMES, CANCEL, ERASE, NOTIFY, OPS, PRODUCT_NAMES, ROLE_NAMES, SETUP, SIGNUP, T, dayHe, hourHe, ils, phoneHe, when } from './copy.js';
+import { AUDIT_NAMES, CANCEL, ERASE, NOTIFY, OPS, PLAN_NAMES, PRODUCT_NAMES, ROLE_NAMES, SETUP, SIGNUP, T, dayHe, hourHe, ils, phoneHe, planGives, when } from './copy.js';
 import { PRIVACY_URL, TERMS_URL } from '../accounts/signup.js';
 
 // Server-rendered pages: Hebrew, right to left, one stylesheet. No script, except
@@ -33,6 +33,15 @@ const tile = (cls, inner) => `<span class="mark ${cls}" aria-hidden="true"><svg 
 export const ofMark = (large = false) => tile('of', large ? GLYPHS.of : GLYPHS.ofSmall);
 export const productMark = (p) => tile(p, GLYPHS[p]);
 
+/** The accessibility statement (openfrequency.co.il), linked from the foot of every page here, as IS 5568 asks. */
+export const ACCESSIBILITY_URL = 'https://openfrequency.co.il/accessibility';
+
+/** A product's label with its plan when it has one: "תדר, החבילה הקטנה". */
+export const productLabel = (p, plan) => (plan && PLAN_NAMES[plan] ? `${PRODUCT_NAMES[p]}, ${PLAN_NAMES[plan]}` : PRODUCT_NAMES[p]);
+
+/** A plan in one line: its name and what a month gives. */
+const planLine = (p, plan) => (plan && PLANS[p]?.[plan] ? T.subPlan(PLAN_NAMES[plan], planGives(PLANS[p][plan].slideshows, PLANS[p][plan].redos)) : '');
+
 export function layout({ title, body, banner = '', flash = '', wide = false, v = '', script = false }) {
   const hero = wide ? '' : `<div class="hero">${ofMark(true)}<b class="ltr">${esc(T.brand)}</b></div>`;
   return `<!doctype html>
@@ -58,6 +67,7 @@ ${hero}
 ${flash && !wide ? `<p class="flash" role="status">${esc(flash)}</p>` : ''}
 ${body}
 </main>
+<footer class="site-foot"><a href="${esc(ACCESSIBILITY_URL)}">${esc(T.accessibility)}</a></footer>
 </body>
 </html>`;
 }
@@ -166,7 +176,7 @@ function subCard(p, s, href, { access = null, csrf = '', owner = false, provider
     if (s.next && providerReady) lines.push(`<p>${esc(T.subNext(dayHe(s.next.on), ils(s.next.monthly), s.next.vat === 'excluded'))}</p>`);
     lines.push(`<p class="muted">${esc(T.subPaidUntil(dayHe(s.paid_until)))}</p>`);
   } else if (status === 'due') {
-    lines.push(`<p class="warn">${esc(T.subDue(dayHe(s.next.on)))}</p>`);
+    lines.push(`<p class="warn">${esc(access && !access.allowed ? T.subDueStopped(dayHe(s.next.on)) : T.subDue(dayHe(s.next.on), dayHe(s.graceUntil)))}</p>`);
   } else if (status === 'cancelled') {
     lines.push(`<p class="warn">${esc(access.allowed ? T.subCancelled(dayHe(s.ends_on)) : T.subCancelledNow)}</p>`);
     if (s.bar) lines.push(paidBar(s, { saysLeft: false }));
@@ -187,7 +197,7 @@ function subCard(p, s, href, { access = null, csrf = '', owner = false, provider
       ? ''
       : locked
         ? `<a class="button primary" href="/setup#setup-billing">${esc(T.subPay)}</a>`
-        : `<a class="button primary" href="${esc(href)}">${esc(T.homeOpen(name))}</a>`;
+        : `<a class="button primary" href="${esc(href)}">${esc(T.homeOpen(name))}</a>${status === 'due' ? `<a class="button quiet" href="/setup#setup-billing">${esc(T.subPay)}</a>` : ''}`;
   let change = '';
   if (owner && status === 'cancelled' && s?.ends_on && s.ends_on >= israelToday())
     change = button(`/subscription/${p}/resume`, T.subResume, csrf, { kind: 'quiet', label: T.subResumeLabel(name) });
@@ -196,6 +206,7 @@ function subCard(p, s, href, { access = null, csrf = '', owner = false, provider
   return `<article class="card sub s-${status}">
 <header>${productMark(p)}<h3>${esc(name)}</h3><span class="tag">${esc(T.subStatus[status])}</span></header>
 ${s?.monthly != null && !comp ? `<p class="price">${esc(T.subPrice(ils(s.monthly), vat))}</p>` : ''}
+${s?.plan ? `<p class="muted">${esc(planLine(p, s.plan))}</p>` : ''}
 ${lines.join('\n')}
 ${go || change ? `<p class="go">${go}${change}</p>` : ''}
 </article>`;
@@ -346,9 +357,21 @@ export function signupPage({ csrf, form = {}, error = '', google = false, open =
   const chosen = [].concat(form.products || []);
   // A product sign-up does not offer yet (OF_SIGNUP_PRODUCTS): shown after the open ones, its box disabled and outside
   // the form's data, with a "בקרוב" tag and one line on why.
+  // A product with plans (Teder) shows each plan, with what a month gives and its price, to choose under its box.
+  // ?plan=full or ?plan=small (the website's buttons) starts that one chosen; anything else, or none, the full one.
+  const picked = Object.hasOwn(PLANS.teder, form.plan ?? '') ? form.plan : plansOf('teder')[0];
+  const plans = (p) =>
+    PLANS[p]
+      ? `<fieldset class="plans-pick"><legend>${esc(SIGNUP.planLegend)}</legend>${plansOf(p)
+          .map(
+            (k) =>
+              `<label class="plan-pick"><input type="radio" name="plan" value="${k}"${k === picked ? ' checked' : ''}><span><b>${esc(PLAN_NAMES[k])}</b><small>${esc(planGives(PLANS[p][k].slideshows, PLANS[p][k].redos))}</small><small class="price">${esc(SIGNUP.price(ils(PLANS[p][k].monthly), ils(PLANS[p][k].setup)))}</small></span></label>`
+          )
+          .join('')}<small>${esc(SIGNUP.planHint)}</small></fieldset>`
+      : '';
   const product = (p) =>
     open.includes(p)
-      ? `<label class="product-pick"><input type="checkbox" name="products" value="${p}"${chosen.includes(p) ? ' checked' : ''}>${productMark(p)}<span><b>${esc(PRODUCT_NAMES[p])}</b><small>${esc(SIGNUP.productWhat[p])}</small><small class="price">${esc(SIGNUP.price(ils(LIST_PRICES[p].monthly), ils(LIST_PRICES[p].setup)))}</small></span></label>`
+      ? `<label class="product-pick"><input type="checkbox" name="products" value="${p}"${chosen.includes(p) ? ' checked' : ''}>${productMark(p)}<span><b>${esc(PRODUCT_NAMES[p])}</b><small>${esc(SIGNUP.productWhat[p])}</small>${PLANS[p] ? '' : `<small class="price">${esc(SIGNUP.price(ils(LIST_PRICES[p].monthly), ils(LIST_PRICES[p].setup)))}</small>`}</span></label>${plans(p)}`
       : `<label class="product-pick soon"><input type="checkbox" disabled aria-describedby="su-soon-${p}">${productMark(p)}<span><b>${esc(PRODUCT_NAMES[p])}</b><small id="su-soon-${p}">${esc(SIGNUP.productSoon)}</small></span><span class="tag off">${esc(SIGNUP.soon)}</span></label>`;
   const order = ['toran', 'teder'].sort((a, b) => Number(!open.includes(a)) - Number(!open.includes(b)));
   return `
@@ -394,7 +417,7 @@ export const signupConfirmPage = ({ csrf, token, row }) => `
 <section class="card">
 <h1>${esc(SIGNUP.confirmTitle)}</h1>
 <p class="lead">${esc(SIGNUP.confirmLead(row.business, row.email))}</p>
-<p class="muted">${esc(SIGNUP.confirmProducts(row.products.map((p) => PRODUCT_NAMES[p]).join(SIGNUP.and)))}</p>
+<p class="muted">${esc(SIGNUP.confirmProducts(row.products.map((p) => productLabel(p, p === 'teder' ? row.plan : null)).join(SIGNUP.and)))}</p>
 <form method="post" action="/signup/confirm">${csrfField(csrf)}<input type="hidden" name="t" value="${esc(token)}"><button class="primary">${esc(SIGNUP.confirmButton)}</button></form>
 </section>`;
 
@@ -420,7 +443,7 @@ function stepRow(s, { readOnly, first, locked = false }) {
  * list price before VAT, and the setup fee until the first payment), or until when it is paid. Without a payment
  * provider it says the online payment opens soon and leads to us; with one, to its checkout.
  */
-function billingCard(b, { readOnly, first, products, access, prices }) {
+function billingCard(b, { readOnly, first, products, access, prices, payHow = '' }) {
   const done = b.status === 'done';
   const detail = done ? (b.comp ? SETUP.billingComp : SETUP.billingDone) : b.checkout ? SETUP.billingTodo : SETUP.billingSoon;
   const label = b.checkout ? SETUP.billingPay : /^https:\/\/wa\.me\//.test(b.href || '') ? SETUP.billingWrite : SETUP.billingContact;
@@ -430,15 +453,17 @@ function billingCard(b, { readOnly, first, products, access, prices }) {
       const a = access[p];
       const s = prices[p] || {};
       if (a?.access === 'comp') return '';
-      if (a?.allowed && a.paidUntil) return `<li>${esc(SETUP.billingPaidUntil(PRODUCT_NAMES[p], dayHe(a.paidUntil)))}</li>`;
+      if (a?.access === 'due') return `<li>${esc(SETUP.billingDue(productLabel(p, s.plan), dayHe(a.graceUntil)))}</li>`;
+      if (a?.allowed && a.paidUntil) return `<li>${esc(SETUP.billingPaidUntil(productLabel(p, s.plan), dayHe(a.paidUntil)))}</li>`;
       if (s.monthly == null) return '';
       const vat = s.vat === 'included' ? T.vatIncluded : T.vatExcluded;
-      return `<li>${esc(SETUP.billingPrice(PRODUCT_NAMES[p], ils(s.monthly), vat, !s.paid_until && s.setup ? ils(s.setup) : ''))}</li>`;
+      return `<li>${esc(SETUP.billingPrice(productLabel(p, s.plan), ils(s.monthly), vat, !s.paid_until && s.setup ? ils(s.setup) : ''))}</li>`;
     })
     .join('');
   return `<section class="card setup-p" id="setup-billing"><header><div><h2>${esc(SETUP.billingTitle)}</h2></div><span class="tag${done ? '' : ' off'}">${esc(done ? SETUP.ready : SETUP.notReady)}</span></header>
 <ol class="steps"><li class="step st-${done ? 'done' : 'todo'}"><span class="chip">${esc(SETUP.status[done ? 'done' : 'todo'])}</span><span class="what"><b>${esc(SETUP.billingStep)}</b><small>${esc(detail)}</small></span>${btn}</li></ol>
 ${lines ? `<ul class="prices">${lines}</ul>` : ''}
+${!done && payHow ? `<p>${esc(SETUP.billingHow(payHow))}</p>` : ''}
 ${!done && !b.checkout ? `<p class="muted">${esc(SETUP.billingReply)}</p>` : ''}
 </section>`;
 }
@@ -448,11 +473,11 @@ ${!done && !b.checkout ? `<p class="muted">${esc(SETUP.billingReply)}</p>` : ''}
  * workspace has turned on, and nothing about one it has not. A product the paywall keeps closed shows its steps
  * locked, "נפתח אחרי התשלום".
  */
-export function setupPage({ state, productUrls, readOnly = false, flash = '', access = {}, prices = {} }) {
+export function setupPage({ state, productUrls, readOnly = false, flash = '', access = {}, prices = {}, payHow = '' }) {
   let used = false;
   const first = () => (used ? false : (used = true));
   const steps = (list, locked) => `<ol class="steps">${list.map((s) => stepRow(s, { readOnly, first, locked })).join('')}</ol>`;
-  const billing = state.billing ? billingCard(state.billing, { readOnly, first, products: state.sections.map((s) => s.product), access, prices }) : '';
+  const billing = state.billing ? billingCard(state.billing, { readOnly, first, products: state.sections.map((s) => s.product), access, prices, payHow }) : '';
   const sections = state.sections
     .map((sec) => {
       const p = sec.product;
@@ -636,7 +661,7 @@ function invoiceForm(base, p, s, csrf) {
  */
 function accessRow(base, p, a, on, csrf) {
   if (!a) return '';
-  const until = a.access === 'cancelled' ? a.lastDay : a.access === 'paid' ? a.paidUntil : null;
+  const until = a.access === 'cancelled' ? a.lastDay : a.access === 'paid' ? a.paidUntil : a.access === 'due' ? a.graceUntil : null;
   const toggle = on ? button(`${base}/comp`, a.comp ? T.compOff : T.compOn, csrf, { fields: { product: p, comp: a.comp ? '0' : '1' }, kind: 'quiet' }) : '';
   return `<p class="access a-${esc(a.access)}"><span class="muted">${esc(T.accessLine(T.accessNames[a.access], a.allowed, until ? dayHe(until) : ''))}</span>${toggle}</p>`;
 }
@@ -664,13 +689,14 @@ function workspaceTile(w, csrf) {
       const sel = (v) => (s.vat === v ? ' selected' : '');
       return `<li><form method="post" action="${base}/subscription" class="sub-form">${csrfField(csrf)}<input type="hidden" name="product" value="${p}">
 <span class="sub-name">${productMark(p)}<b>${esc(PRODUCT_NAMES[p])}</b>${d ? `<span class="muted">${esc(T.subStatus[d.status])}${d.status === 'active' ? `, ${esc(T.subLeft(d.bar.days - d.bar.day + 1))}` : ''}</span>` : `<span class="muted">${esc(T.subNone)}</span>`}</span>
+${PLANS[p] ? `<label>${esc(T.subPlanLabel)}<select name="plan">${plansOf(p).map((k) => `<option value="${k}"${(s.plan || plansOf(p)[0]) === k ? ' selected' : ''}>${esc(`${PLAN_NAMES[k]} (${PLANS[p][k].slideshows})`)}</option>`).join('')}</select></label>` : ''}
 <label>${esc(T.subMonthly)}<input name="monthly" inputmode="decimal" dir="ltr" value="${esc(s.monthly ?? '')}"></label>
 <label>${esc(T.subSetupLabel)}<input name="setup" inputmode="decimal" dir="ltr" value="${esc(s.setup ?? '')}"></label>
 <label>${esc(T.subVat)}<select name="vat"><option value=""></option><option value="excluded"${sel('excluded')}>${esc(T.vatExcluded)}</option><option value="included"${sel('included')}>${esc(T.vatIncluded)}</option></select></label>
 <label>${esc(T.subStarted)}<input name="started_on" type="date" value="${esc(s.started_on ?? '')}"></label>
 <label>${esc(T.subPaid)}<input name="paid_until" type="date" value="${esc(s.paid_until ?? '')}"></label>
 <label>${esc(T.subEnds)}<input name="ends_on" type="date" value="${esc(s.ends_on ?? '')}"></label>
-<button class="quiet">${esc(T.subSave)}</button></form>${button(`${base}/subscription/pay`, T.subPayMonth, csrf, { fields: { product: p }, kind: 'quiet' })}
+<button class="quiet">${esc(T.subSave)}</button></form>${button(`${base}/subscription/pay`, T.subPayMonth, csrf, { fields: { product: p, expect: s.paid_until ?? '' }, kind: 'quiet' })}
 ${accessRow(base, p, w.access?.[p], w.products[p], csrf)}
 ${invoiceForm(base, p, s, csrf)}</li>`;
     })

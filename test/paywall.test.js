@@ -86,7 +86,7 @@ test('the migration marks every workspace that exists before it complimentary, f
       const comp = db.all('SELECT workspace_id, product, comp FROM workspace_products ORDER BY workspace_id, product').map((r) => [r.workspace_id, r.product, r.comp]);
       assert.deepEqual(comp, [[1, 'teder', 1], [1, 'toran', 1], [2, 'teder', 1], [2, 'toran', 0]]);
       // Nothing that works today stops: unpaid, and still open.
-      assert.deepEqual(entitlement(db, 2, 'teder', '2026-10-22'), { workspace: 2, product: 'teder', enabled: true, access: 'comp', allowed: true, paidThrough: null, cancelAt: null });
+      assert.deepEqual(entitlement(db, 2, 'teder', '2026-10-22'), { workspace: 2, product: 'teder', enabled: true, access: 'comp', allowed: true, paidThrough: null, cancelAt: null, graceUntil: null, plan: { name: 'full', slideshows: 40, redos: 10 } });
       assert.equal(entitlement(db, 1, 'toran', '2026-10-22').allowed, true);
       assert.equal(entitlement(db, 2, 'toran', '2026-10-22').access, 'off');
       // A product turned on later, and a workspace opened later, are not complimentary.
@@ -104,17 +104,21 @@ test('the migration marks every workspace that exists before it complimentary, f
 
 test('access from the rows: every state, and the days at their edges', () => {
   const on = { enabled: true };
-  assert.deepEqual(accessOf({ enabled: false, comp: true }, '2026-10-22'), { access: 'off', allowed: false, paidUntil: null, lastDay: null });
-  assert.deepEqual(accessOf({ ...on, comp: true }, '2026-10-22'), { access: 'comp', allowed: true, paidUntil: null, lastDay: null });
-  assert.deepEqual(accessOf(on, '2026-10-22'), { access: 'unpaid', allowed: false, paidUntil: null, lastDay: null });
-  // Paid through its last day, and not a day more.
-  assert.deepEqual(accessOf({ ...on, paidUntil: '2026-11-21' }, '2026-11-21'), { access: 'paid', allowed: true, paidUntil: '2026-11-21', lastDay: null });
-  assert.deepEqual(accessOf({ ...on, paidUntil: '2026-11-21' }, '2026-11-22'), { access: 'unpaid', allowed: false, paidUntil: '2026-11-21', lastDay: null });
-  // Cancelled: open until the last day paid for, then closed; cancelled with nothing paid, closed.
+  const none = { lastDay: null, graceUntil: null };
+  assert.deepEqual(accessOf({ enabled: false, comp: true }, '2026-10-22'), { access: 'off', allowed: false, paidUntil: null, ...none });
+  assert.deepEqual(accessOf({ ...on, comp: true }, '2026-10-22'), { access: 'comp', allowed: true, paidUntil: null, ...none });
+  assert.deepEqual(accessOf(on, '2026-10-22'), { access: 'unpaid', allowed: false, paidUntil: null, ...none });
+  // Paid through its last day; then due, still open, for the 14 days of grace from the day it fell due (ACC-01); then
+  // unpaid and closed.
+  assert.deepEqual(accessOf({ ...on, paidUntil: '2026-11-21' }, '2026-11-21'), { access: 'paid', allowed: true, paidUntil: '2026-11-21', ...none });
+  assert.deepEqual(accessOf({ ...on, paidUntil: '2026-11-21' }, '2026-11-22'), { access: 'due', allowed: true, paidUntil: '2026-11-21', lastDay: null, graceUntil: '2026-12-06' });
+  assert.deepEqual(accessOf({ ...on, paidUntil: '2026-11-21' }, '2026-12-06').access, 'due');
+  assert.deepEqual(accessOf({ ...on, paidUntil: '2026-11-21' }, '2026-12-07'), { access: 'unpaid', allowed: false, paidUntil: '2026-11-21', ...none });
+  // Cancelled: open until the last day paid for, then closed, with no grace; cancelled with nothing paid, closed.
   const cancelled = { ...on, paidUntil: '2026-11-21', endsOn: '2026-11-21', cancelledAt: T0 };
-  assert.deepEqual(accessOf(cancelled, '2026-11-21'), { access: 'cancelled', allowed: true, paidUntil: '2026-11-21', lastDay: '2026-11-21' });
+  assert.deepEqual(accessOf(cancelled, '2026-11-21'), { access: 'cancelled', allowed: true, paidUntil: '2026-11-21', lastDay: '2026-11-21', graceUntil: null });
   assert.deepEqual(accessOf(cancelled, '2026-11-22').allowed, false);
-  assert.deepEqual(accessOf({ ...on, endsOn: '2026-10-22', cancelledAt: T0 }, '2026-10-22'), { access: 'cancelled', allowed: false, paidUntil: null, lastDay: '2026-10-22' });
+  assert.deepEqual(accessOf({ ...on, endsOn: '2026-10-22', cancelledAt: T0 }, '2026-10-22'), { access: 'cancelled', allowed: false, paidUntil: null, lastDay: '2026-10-22', graceUntil: null });
   // A last day the superadmin set before the paid one ends it first.
   assert.equal(accessOf({ ...on, paidUntil: '2026-11-21', endsOn: '2026-11-10' }, '2026-11-11').allowed, false);
   // Complimentary wins over everything but off.
@@ -133,15 +137,16 @@ test('GET /internal/entitlement: the documented shape, each state as the console
     let r = await t.ent();
     assert.equal(r.status, 200);
     assert.equal(r.headers['cache-control'], 'no-store');
-    assert.deepEqual(r.json, { workspace: t.ws.id, product: 'teder', enabled: true, access: 'unpaid', allowed: false, paidThrough: null, cancelAt: null });
-    assert.deepEqual((await t.ent('toran')).json, { workspace: t.ws.id, product: 'toran', enabled: false, access: 'off', allowed: false, paidThrough: null, cancelAt: null });
+    assert.deepEqual(r.json, { workspace: t.ws.id, product: 'teder', enabled: true, access: 'unpaid', allowed: false, paidThrough: null, cancelAt: null, graceUntil: null, plan: { name: 'full', slideshows: 40, redos: 10 } });
+    // Toran has no plans: no plan in its answer.
+    assert.deepEqual((await t.ent('toran')).json, { workspace: t.ws.id, product: 'toran', enabled: false, access: 'off', allowed: false, paidThrough: null, cancelAt: null, graceUntil: null });
 
     // The console: each product's access, and a month's payment recorded.
     let page = (await t.admin.get('/admin/accounts')).body;
     assert.match(page, /גישה: לא שולם, סגור/);
     await t.admin.post(`/admin/workspaces/${t.ws.id}/subscription/pay`, { product: 'teder' });
     r = await t.ent();
-    assert.deepEqual(r.json, { workspace: t.ws.id, product: 'teder', enabled: true, access: 'paid', allowed: true, paidThrough: END_21_11, cancelAt: null });
+    assert.deepEqual(r.json, { workspace: t.ws.id, product: 'teder', enabled: true, access: 'paid', allowed: true, paidThrough: END_21_11, cancelAt: null, graceUntil: null, plan: { name: 'full', slideshows: 40, redos: 10 } });
     page = (await t.admin.get('/admin/accounts')).body;
     assert.match(page, /גישה: שולם, פתוח, עד 21\.11\.2026/);
     // A second payment extends it by a month; the date can also be set by hand.
@@ -180,10 +185,13 @@ test('GET /internal/entitlement: the documented shape, each state as the console
     assert.equal((await t.owners('GET', `/internal/entitlement?workspace=${t.ws.id}&product=teder`, null, { authorization: 'Bearer nope' })).status, 401);
     assert.equal((await t.owners('POST', `/internal/entitlement?workspace=${t.ws.id}&product=teder`, {})).status, 405);
 
-    // Past the last day paid for: unpaid again.
+    // Past the last day paid for: due, and still allowed, until the grace is over; then unpaid.
     await t.admin.post(`/admin/workspaces/${t.ws.id}/comp`, { product: 'teder', comp: '0' });
     setNow('2026-11-22T10:00:00.000Z');
-    assert.deepEqual([(await t.ent()).json.access, (await t.ent()).json.allowed, (await t.ent()).json.paidThrough], ['unpaid', false, END_21_11]);
+    const due = (await t.ent()).json;
+    assert.deepEqual([due.access, due.allowed, due.paidThrough, due.graceUntil], ['due', true, END_21_11, endOfIsraelDay('2026-12-06')]);
+    setNow('2026-12-07T10:00:00.000Z');
+    assert.deepEqual([(await t.ent()).json.access, (await t.ent()).json.allowed, (await t.ent()).json.paidThrough, (await t.ent()).json.graceUntil], ['unpaid', false, END_21_11, null]);
   } finally {
     await t.done();
   }
@@ -202,7 +210,7 @@ test('the paywall on the pages: payment first and required, the steps locked, th
     assert.match(billing, /<li class="step st-todo"><span class="chip">עוד לא<\/span><span class="what"><b>התשלום על המנוי<\/b><small>התשלום באתר ייפתח בקרוב\. עד אז מסדרים אותו איתנו: כתבו לנו, ונשלח לכם פרטים לתשלום\.<\/small><\/span><a class="button primary" href="https:\/\/wa\.me\/972500000100\?text=[^"]+">כתבו לנו בוואטסאפ<\/a><\/li>/);
     assert.ok(billing.includes(encodeURIComponent('היי, כותבים מ״Noa Shop״. רוצים לשלם על המנוי.')));
     // The price: the subscription's, before VAT, with the setup fee until the first payment.
-    assert.match(billing, /<li>תדר: 790 ₪ לחודש, לא כולל מע״מ, ודמי הקמה של 1,490 ₪ פעם אחת<\/li>/);
+    assert.match(billing, /<li>תדר, החבילה המלאה: 790 ₪ לחודש, לא כולל מע״מ, ודמי הקמה של 1,490 ₪ פעם אחת<\/li>/);
     assert.match(billing, /אפשר גם לענות לאחד המיילים שקיבלתם מאיתנו\./);
     // Teder's steps are there, locked: no button into Teder, "אחרי התשלום", a done step still done.
     const teder = page.slice(page.indexOf('id="setup-teder"'));
@@ -222,7 +230,7 @@ test('the paywall on the pages: payment first and required, the steps locked, th
     payMonth(t.db, t.ws.id, 'teder', { by: null });
     page = (await b.get('/setup')).body;
     assert.match(page, /<li class="step st-done"><span class="chip">✓ בוצע<\/span><span class="what"><b>התשלום על המנוי<\/b><small>המנוי שולם\.<\/small>/);
-    assert.match(page, /<li>תדר: שולם עד 21\.11\.2026<\/li>/);
+    assert.match(page, /<li>תדר, החבילה המלאה: שולם עד 21\.11\.2026<\/li>/);
     assert.match(page, /<section class="card setup-p" id="setup-teder">/);
     assert.match(page, /<a class="button primary" href="https:\/\/teder\.openfrequency\.co\.il\/first"/);
     home = (await b.get('/')).body;
@@ -259,7 +267,11 @@ test('/signup shows each product with its price, VAT excluded, and its setup fee
   const t = await setup({ env: { OF_SIGNUP: '1' } });
   try {
     const page = (await t.browser().get('/signup')).body;
-    assert.match(page, /<b>תדר<\/b><small>[^<]+<\/small><small class="price">790 ₪ לחודש ועוד מע״מ, ודמי הקמה של 1,490 ₪ פעם אחת<\/small>/);
+    // Teder: its two plans, each with what a month gives and its price; the full one chosen to start with.
+    assert.match(page, /<input type="radio" name="plan" value="full" checked><span><b>החבילה המלאה<\/b><small>40 מצגות בחודש, ו-10 החלפות למצגות שדחיתם<\/small><small class="price">790 ₪ לחודש ועוד מע״מ, ודמי הקמה של 1,490 ₪ פעם אחת<\/small>/);
+    assert.match(page, /<input type="radio" name="plan" value="small"><span><b>החבילה הקטנה<\/b><small>15 מצגות בחודש, ו-4 החלפות למצגות שדחיתם<\/small><small class="price">490 ₪ לחודש ועוד מע״מ, ודמי הקמה של 990 ₪ פעם אחת<\/small>/);
+    // ?plan=small, from the website's button under that plan, starts it chosen.
+    assert.match((await t.browser().get('/signup?p=teder&plan=small')).body, /value="small" checked/);
     assert.match(page, /<b>תורן<\/b><small>[^<]+<\/small><small class="price">590 ₪ לחודש ועוד מע״מ, ודמי הקמה של 990 ₪ פעם אחת<\/small>/);
     assert.match(page, /משלמים אחרי שהחשבון נפתח, והמוצרים נפתחים אחרי התשלום\./);
   } finally {
@@ -295,7 +307,7 @@ test('cancelling online: owners only, a confirmation page, it works until the la
     assert.equal(done.headers.location, '/');
     const row = t.db.get("SELECT * FROM subscriptions WHERE workspace_id = ? AND product = 'teder'", t.ws.id);
     assert.deepEqual([row.cancelled_at, row.ends_on, row.paid_until], [T0, '2026-11-21', '2026-11-21']);
-    assert.deepEqual((await t.ent()).json, { workspace: t.ws.id, product: 'teder', enabled: true, access: 'cancelled', allowed: true, paidThrough: END_21_11, cancelAt: END_21_11 });
+    assert.deepEqual((await t.ent()).json, { workspace: t.ws.id, product: 'teder', enabled: true, access: 'cancelled', allowed: true, paidThrough: END_21_11, cancelAt: END_21_11, graceUntil: null, plan: { name: 'full', slideshows: 40, redos: 10 } });
     // A confirmation to each owner (not the member), and a notice to OF_SIGNUP_NOTIFY.
     const confirmations = t.mails.filter((m) => m.subject === 'ביטלתם את המנוי לתדר');
     assert.deepEqual(confirmations.map((m) => m.to).sort(), ['dana@example.com', 'noa@example.com']);
@@ -388,7 +400,7 @@ test('the welcome email, right after a sign-up is confirmed: pay, then set up, w
     assert.equal(w.subject, 'החשבון של Noa Ceramics נפתח');
     assert.equal(w.link, 'https://accounts.openfrequency.co.il/setup');
     assert.match(w.text, /קודם התשלום על המנוי\. התשלום באתר ייפתח בקרוב, ועד אז מסדרים אותו איתנו: ענו למייל הזה ונשלח לכם פרטים לתשלום\./);
-    assert.match(w.text, /תדר: 790 ₪ לחודש ועוד מע״מ, ודמי הקמה של 1,490 ₪ פעם אחת\./);
+    assert.match(w.text, /תדר, החבילה המלאה: 790 ₪ לחודש ועוד מע״מ, ודמי הקמה של 1,490 ₪ פעם אחת\./);
     assert.match(w.text, /תורן: 590 ₪ לחודש ועוד מע״מ, ודמי הקמה של 990 ₪ פעם אחת\./);
     assert.match(w.text, /אחר כך ההגדרה\./);
     assert.ok(w.text.indexOf('התשלום') < w.text.indexOf('ההגדרה'), 'pay first, then set up');

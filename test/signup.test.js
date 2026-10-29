@@ -143,7 +143,11 @@ test("the form's checks: each mistake is said, the answers are kept (escaped), a
 
 test('checkSignup trims, keeps only known products, and refuses control characters as spaces', () => {
   const ok = checkSignup({ name: '  Noa‮ Levi ', business: 'Noa\u0000Shop', email: ' NOA@Example.com ', products: ['teder', 'x', 'toran'], terms: true });
-  assert.deepEqual(ok, { name: 'Noa Levi', business: 'Noa Shop', email: 'noa@example.com', products: ['teder', 'toran'] });
+  // Teder's plan: the full one unless another is chosen; none without Teder; one that does not exist refused.
+  assert.deepEqual(ok, { name: 'Noa Levi', business: 'Noa Shop', email: 'noa@example.com', products: ['teder', 'toran'], plan: 'full' });
+  assert.equal(checkSignup({ ...ok, plan: 'small', terms: true }).plan, 'small');
+  assert.equal(checkSignup({ ...ok, products: ['toran'], plan: 'small', terms: true }).plan, null);
+  assert.throws(() => checkSignup({ ...ok, plan: 'huge', terms: true }), (e) => e instanceof SignupError && e.code === 'bad_plan');
   assert.equal(checkSignup({ ...ok, email: '', terms: true }, { needEmail: false }).email, null);
   assert.throws(() => checkSignup({ ...ok, terms: false }), (e) => e instanceof SignupError && e.code === 'no_terms');
 });
@@ -196,7 +200,8 @@ test('the link opens exactly one user and one workspace, with only the products 
     assert.equal(mail.to, 'noa@example.com');
     assert.equal(mail.subject, 'אישור החשבון שלכם ב-OpenFrequency');
     assert.match(mail.link, /^https:\/\/accounts\.openfrequency\.co\.il\/signup\/confirm\?t=[A-Za-z0-9_-]{43}$/);
-    assert.match(mail.text, /Noa Ceramics/);
+    // Nothing typed into the form is in the email (PRA-SEC-005): the business's name shows on the page the link opens.
+    assert.doesNotMatch(mail.text + mail.subject + mail.html, /Noa/);
     // Nothing is opened before the link is used.
     assert.equal(count(t.db, 'users'), users);
     assert.equal(count(t.db, 'workspaces'), 0);
@@ -208,7 +213,7 @@ test('the link opens exactly one user and one workspace, with only the products 
       const page = await b.get(pathOf(mail.link));
       assert.equal(page.status, 200);
       assert.match(page.body, /לחצו כדי לפתוח את החשבון של Noa Ceramics, עם הכתובת noa@example\.com\./);
-      assert.match(page.body, /המוצרים שבחרתם: תדר\./);
+      assert.match(page.body, /המוצרים שבחרתם: תדר, החבילה המלאה\./);
     }
     assert.equal(count(t.db, 'workspaces'), 0);
 
@@ -229,7 +234,7 @@ test('the link opens exactly one user and one workspace, with only the products 
     assert.deepEqual(t.db.all('SELECT product, enabled FROM workspace_products WHERE workspace_id = ?', ws.id).map((r) => ({ ...r })), [{ product: 'teder', enabled: 1 }]);
     // Its subscription at the list price, nothing paid yet (the "open" state).
     const subs = t.db.all('SELECT * FROM subscriptions WHERE workspace_id = ?', ws.id);
-    assert.deepEqual(subs.map((s) => [s.product, s.monthly, s.setup, s.paid_until]), [['teder', 790, 1490, null]]);
+    assert.deepEqual(subs.map((s) => [s.product, s.plan, s.monthly, s.setup, s.paid_until]), [['teder', 'full', 790, 1490, null]]);
     assert.deepEqual(t.db.all('SELECT user_id, role FROM memberships WHERE workspace_id = ?', ws.id).map((r) => ({ ...r })), [{ user_id: user.id, role: 'client_owner' }]);
     assert.equal(count(t.db, "tokens WHERE kind = 'invite'"), 0);
     // The confirmation link, then the welcome email (no notice: OF_SIGNUP_NOTIFY is unset here).
@@ -269,7 +274,7 @@ test('both products, a Hebrew name gets a made-up slug, and the link works for 1
     await signUp(t.browser(), { email: 'late@example.com' });
     advance(15 * MINUTE - 1000);
     const page = await b.get(pathOf(t.mails[0].link));
-    assert.match(page.body, /המוצרים שבחרתם: תדר ותורן\./);
+    assert.match(page.body, /המוצרים שבחרתם: תדר, החבילה המלאה ותורן\./);
     assert.equal((await b.post('/signup/confirm', { t: tokenOf(t.mails[0].link) })).status, 303);
     const ws = t.db.get('SELECT * FROM workspaces');
     assert.match(ws.slug, /^ws-[0-9a-f]{6}$/);

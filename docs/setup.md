@@ -12,17 +12,22 @@ deleted, and the settings that turn each part on.
 |---|---|---|
 | `OF_SIGNUP` | unset | `1` opens `/signup`. Anything else: `/signup` says "ההרשמה תיפתח בקרוב" with a link to `https://openfrequency.co.il/join`, and every POST to it is refused (403). |
 | `OF_SIGNUP_PRODUCTS` | `teder,toran` | The products `/signup` offers, comma-separated, unknown names ignored. One left out shows as "בקרוב" with its box off and is refused, by the form and through Google; with one product open, it starts chosen. The console opens any product either way. |
-| `OF_SIGNUP_NOTIFY` | unset | Comma-separated addresses that get a short email on each confirmed sign-up, each online cancellation (and its undo) and each deleted workspace. Unset, no notice. |
+| `OF_SIGNUP_NOTIFY` | unset | Comma-separated addresses that get a short email on each confirmed sign-up, each online cancellation (and its undo), each deleted workspace, each payment that did not come on its day and each grace that ended (src/web/daily.js), and the workspaces deleted for being unused. Unset, no notice: this is how the operator hears of a new customer. |
+| `OF_SIGNUP_DAILY_EMAILS` | `200` | The most sign-up emails `/signup` sends in a day, from every address together. Past it the form answers 429 ("עצרנו אותם עד מחר") and the log says so. |
+| `OF_PAYMENT_METHOD` | unset | How payment works until a provider is connected, in plain Hebrew ("העברה בנקאית או ביט"). Set, `/setup`, the welcome email and the billing emails say "איך משלמים: ...". |
 | `OF_TEDER_INTERNAL` | `http://127.0.0.1:4700` | Where `/setup` reaches Teder's internal routes, and where a deleted workspace's data is deleted. |
 | `OF_TORAN_INTERNAL` | `http://127.0.0.1:4710` | Where `/setup` reaches Toran's (the same address `/admin` uses), and the same for deleting. |
 | `OF_INTERNAL_TOKEN` | unset | The bearer token for both directions. Unset or shorter than 32 characters, no product is asked (each says "לא הצלחנו לבדוק כרגע", and deleting a workspace stops), and our internal routes answer 503. |
 | `OF_BILLING_PROVIDER` | unset | The payment hook. Unset, `billingReady()` is false: the payment step says the online payment opens soon and leads to us, and the home page shows no next charge. |
-| `OF_SUPPORT_WA` | unset | Our WhatsApp, where the payment step's button leads while there is no provider. Unset, it leads to `https://openfrequency.co.il/join`. |
+| `OF_SUPPORT_WA` | unset | Our WhatsApp, where the payment step's button leads while there is no provider. Unset, it leads to an email to `MAIL_REPLY_TO`, and without that to `https://openfrequency.co.il/join`. |
 
 ## Sign-up
 
 The form asks for the full name (2 to 80 characters), the business's name (2 to 80), the
-products (Toran, Teder or both, at least one), the terms and the privacy policy accepted
+products (Toran, Teder or both, at least one), Teder's plan (the full one, 790 ₪ a month and
+1,490 ₪ setup for 40 slideshows and 10 redos, or the small one, 490 ₪ and 990 ₪ for 15 and 4;
+`PLANS` in `src/accounts/subscriptions.js`; the website's `?plan=small` starts it chosen), the
+terms and the privacy policy accepted
 (`https://openfrequency.co.il/terms` and `/privacy`), and the email. The acceptance is kept on
 the user and on the workspace (`terms_version`, `terms_accepted_at`); the version is the date
 the website's legal pages were last updated, `TERMS_VERSION` in `src/accounts/signup.js`.
@@ -31,7 +36,7 @@ the website's legal pages were last updated, `TERMS_VERSION` in `src/accounts/si
    `/signup/confirm`: one use, 15 minutes, and a button before it does anything (mail scanners
    open links), like a magic link. The token exists only in the email; the row keeps its SHA-256.
 2. Pressing the button opens, in one transaction: the user, the workspace with only the products
-   chosen, each with its subscription at the list price and nothing paid yet (the console's own
+   chosen, each with its subscription at the list price (of the plan chosen) and nothing paid yet (the console's own
    path, `openWorkspace()`), and the user as its `client_owner`. No invite is sent. The browser
    is signed in and goes to `/setup`.
 3. **An address that already has an account** never gets a second workspace: the form sends it a
@@ -44,7 +49,10 @@ the website's legal pages were last updated, `TERMS_VERSION` in `src/accounts/si
    nothing; the superadmin's or a disabled account's opens nothing at all.
 
 Protections: the CSRF token and Origin check of every form; 3 sign-ups an address in 15 minutes
-(10 a day) and 5 an IP in an hour (20 a day), in memory like the other limits; a honeypot field
+(10 a day) and 5 an IP in an hour (20 a day), an IPv6 address counted by its /64, in memory like
+the other limits; at most `OF_SIGNUP_DAILY_EMAILS` (200) sign-up emails a day from every address
+together; nothing typed into the form in the confirmation email (the business's name shows on the
+page its link opens), so the form cannot carry anyone's words to a stranger; a honeypot field
 that a person never sees (filled, the page looks the same and nothing is kept or sent); the
 address checked like the login's. Each sign-up is in the audit log (`signup_requested`,
 `signed_up`), which the console shows.
@@ -151,6 +159,17 @@ site) is dropped and the step has no button.
   שולם, מחכה לתשלום, בוטל, ללא תשלום, מסתיים, הסתיים), the price, the setup fee until the first
   payment, the day it is paid until, and the next charge once a provider is connected.
 
+## The plans
+
+Teder has two plans (`PLANS` in `src/accounts/subscriptions.js`, migration 8): `full` (40 slideshows
+and 10 redos a month, 790 ₪ and 1,490 ₪ setup) and `small` (15 and 4, 490 ₪ and 990 ₪), before
+VAT. A subscription keeps its plan in `subscriptions.plan`; every Teder subscription before
+migration 8 is `full`. The entitlement tells Teder the plan's numbers, and Teder counts the month
+for the whole workspace. The home page and `/setup` name the plan ("תדר, החבילה הקטנה"), and so
+do the welcome email and the confirmation page. On `/admin/accounts` the superadmin changes the
+plan in the subscription's form: a price still at the old plan's list price moves to the new
+one's, a price agreed by hand stays. Toran has no plans here.
+
 ## The paywall
 
 The product is sold behind a paywall: a workspace uses a product only while it is **allowed**.
@@ -164,9 +183,10 @@ that marks it complimentary or takes that back (`comp_set`, `comp_cleared` in th
 |---|---|---|
 | `off` | The product is not on for the workspace, or the workspace is disabled or deleted. | false |
 | `comp` | The superadmin marked the product complimentary (free). | true |
-| `cancelled` | The customer cancelled online, or the superadmin set a last day. | until the last day paid for (and the last day, if that is earlier), then false |
+| `cancelled` | The customer cancelled online, or the superadmin set a last day. | until the last day paid for (and the last day, if that is earlier), then false. No grace. |
 | `paid` | A recorded payment covers today (`paid_until` is today or later). | true |
-| `unpaid` | Anything else: on, nothing paid for today. | false |
+| `due` | The last paid period is over and the next payment has not come: the 14 days of grace the terms give, from the day it fell due (the day after `paid_until`) to 14 days after it. The owners are emailed a week before, the day before and on that day, and when it ends (src/web/daily.js). | true |
+| `unpaid` | Anything else: on, nothing paid for today (never paid, or the grace is over). | false |
 
 They are checked in that order. Days are Israel calendar days.
 
@@ -189,8 +209,11 @@ Authorization: Bearer <OF_INTERNAL_TOKEN>
 
 ```json
 { "workspace": 7, "product": "teder", "enabled": true, "access": "paid", "allowed": true,
-  "paidThrough": "2026-11-21T21:59:59.999Z", "cancelAt": null }
+  "paidThrough": "2026-11-21T21:59:59.999Z", "cancelAt": null, "graceUntil": null,
+  "plan": { "name": "small", "slideshows": 15, "redos": 4 } }
 ```
+
+The same, field by field, with an example for every status, is `docs/contracts/entitlement.json`.
 
 | Field | Meaning |
 |---|---|
@@ -198,11 +221,40 @@ Authorization: Bearer <OF_INTERNAL_TOKEN>
 | `access`, `allowed` | The table above. Decide on `allowed`; `access` says why. |
 | `paidThrough` | The end of the last day paid for, Israel time, as an ISO instant in UTC (the last millisecond of that day), or `null` when nothing was ever paid. It is given whatever the access, so it can be in the past. |
 | `cancelAt` | Set only while `access` is `cancelled`: the end of the last day it works, the same way. Otherwise `null`. |
+| `graceUntil` | Set only while `access` is `due`: the end of the grace's last day, the same way. Otherwise `null`. |
+| `plan` | Teder only: its plan, `{ name: "full" \| "small", slideshows, redos }` (40 and 10, or 15 and 4), the month Teder counts for the whole workspace. The full plan when none is recorded. Toran's answer has no `plan`. |
 
 `400 {"error":"bad_workspace"}` for a workspace that is not a positive integer, `400
 {"error":"bad_product"}` for a missing or unknown product, `404 {"error":"no_workspace"}` for an
 id we never had (a deleted workspace is `200` with `off`), `401` without the token, `503` while
 the token is unset or short here, `405` for any other method.
+
+### The payment button
+
+"התקבל תשלום לחודש" sends the paid-until date the console showed with it. When the subscription
+has moved on since (the button pressed twice, or the page left open after a payment), nothing is
+recorded and the console says so ("התשלום הזה כבר נרשם"). Each owner gets "קיבלנו את התשלום על
+<product>" with the day it is now paid until.
+
+### The daily jobs
+
+`src/web/daily.js` runs once an Israel day from 09:00 (`npm run daily` by hand, `-- --again` to
+run today's again) and keeps each run in `daily_runs`:
+
+- **Billing** (each owner, once of each kind for each paid period, kept in `billing_notices`): a
+  week before the payment falls due, the day before, on the day (this is the notice the terms
+  speak of; the product works 14 more days), and when the grace ends. `OF_SIGNUP_NOTIFY` hears of
+  the last two. Not for a product that is complimentary, cancelled, off or never paid, nor in a
+  disabled workspace.
+- **Retention**, the periods the privacy policy states: a sign-up never confirmed, 30 days after
+  the form; magic links, invites and WhatsApp link codes, 30 days after they ended; sessions, 90
+  days after they expired or were signed out; the notification log, 90 days. A workspace never
+  paid for, not complimentary, with no invoice, that nobody in it has signed in to or used for six
+  months: its owners are emailed ("החשבון של <business> יימחק ב-14 הימים הקרובים"), and 14 days
+  later it is deleted the same way an owner deletes it (every product asked first; a product that
+  fails holds it to the next day), and `OF_SIGNUP_NOTIFY` gets the list. A sign-in, a payment or
+  comp before then takes it off the list (`retention_notices`). Kept on purpose: invoices (the tax
+  law) and the audit log.
 
 ## Cancelling online
 
@@ -235,12 +287,13 @@ The superadmin can do the same from each workspace on `/admin/accounts`. Then:
    {}
    ```
 
-   Any `2xx` means deleted. `404` means there was nothing to delete there (or the product has no
-   such route yet): it is logged and does not stop anything. Anything else (another status, no
-   answer, no token configured) stops everything: nothing is deleted here, the page says which
-   product did not answer and to try again, and the audit log has `workspace_delete_failed`. So a
-   product's route should be idempotent: asked again for a workspace it already deleted, it
-   answers `2xx` or `404`.
+   Any `2xx` means deleted, or nothing of the workspace was there. Anything else (`404` included,
+   another status, no answer, no token configured) stops everything: nothing is deleted here, the
+   page says which product did not answer and to try again, and the audit log has
+   `workspace_delete_failed`. A `404` is a product without the route, never "nothing there": taken
+   that way, that product's data would stay while ours is gone. So a product's route answers
+   `200` for a workspace it never saw, and again for one it already deleted
+   (`docs/contracts/workspaces-delete.json`).
 2. Then ours, in one transaction: the memberships, the invites, the products and subscriptions,
    the WhatsApp numbers and link codes, the notification choices and log, the sign-up that opened
    it, and every person who was in this workspace and no other (their email, name, sessions and

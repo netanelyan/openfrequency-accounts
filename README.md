@@ -110,13 +110,17 @@ came: the same method, path (with the `/admin/toran` prefix) and query, the body
 `?next=` back to the page) on a GET and a 403 on anything else, and nothing reaches Toran. A path
 with `/internal` under the prefix is 404 here and never asked of Toran.
 
-Toran gets only `cookie`, `content-type`, `accept`, `accept-language`, `accept-encoding`,
-`origin`, `referer`, `user-agent`, `x-tn-ajax` and `content-length` from the browser, and from
-us `host` (Toran's own host:port), `x-of-admin-prefix: /admin/toran`, `x-forwarded-proto` (https
-when the browser reached us over HTTPS through Caddy, as accounts itself decides) and
-`x-of-admin-origin` (`https://<PUBLIC_HOST>`, or this site's own address in development). Never
-the browser's `authorization`, `x-forwarded-for`, `forwarded`, `x-real-ip` or any `x-of-*`. Toran
-strips the prefix, keeps it in its links, forms and redirects, and does its own CSRF checks.
+Toran gets only `content-type`, `accept`, `accept-language`, `accept-encoding`, `origin`,
+`referer`, `user-agent`, `x-tn-ajax`, `content-length` and Toran's own cookies (`tn_*`) from the
+browser, and from us `host` (Toran's own host:port), `x-of-admin-prefix: /admin/toran`,
+`x-forwarded-proto` (https when the browser reached us over HTTPS through Caddy, as accounts
+itself decides), `x-of-admin-origin` (`https://<PUBLIC_HOST>`, or this site's own address in
+development) and `x-of-operator`: who the superadmin is, signed with `OF_INTERNAL_TOKEN` for that
+one request and good for 60 seconds (`docs/contracts/admin-toran-operator.json`). The
+superadmin's session cookie never reaches Toran (PRA-SEC-004). Never the browser's
+`authorization`, `x-forwarded-for`, `forwarded`, `x-real-ip` or any `x-of-*`. Toran strips the
+prefix, keeps it in its links, forms and redirects, and does its own CSRF checks (on the
+statement's `ses`).
 Toran's answer comes back as it is (status, cookies, location, compression, its own CSP), without
 the hop-by-hop headers and without ours. When Toran is down or does not answer in 30 seconds,
 the page is a 502 that says "תורן לא ענה כרגע" with a link back to `/admin`.
@@ -164,8 +168,10 @@ The full steps (DNS, Resend, Caddy, backups, checks) are in [docs/deploy.md](doc
 | `src/accounts` | magic links and invites, public sign-up, workspaces, the superadmin, subscriptions, the payment hook, the paywall (`entitlement.js`), deleting a workspace (`erase.js`), product emails (`notify.js`), invoices, WhatsApp numbers, the operator's list of customers |
 | `src/mail` | Resend (or the outbox folder without a key), and the emails |
 | `src/web` | `app.js` the public site, `internal.js` `/internal/session`, `/internal/owner-phone*`, `/internal/ops/customers`, `/internal/entitlement` and `/internal/notify`, `toran.js` the client for Toran's `/internal/ops`, `setup.js` the client for each product's `/internal/setup`, `erase.js` the client for each product's delete route, `dashboard.js` the operator's dashboard, `copy.js` every Hebrew word, `html.js` the pages |
-| `scripts` | start, demo, `admin:create`, backup, `check:public`, `init-private` |
-| `deploy` | the Caddy block |
+| `scripts` | start, demo, `admin:create`, backup (checked), `daily` (the billing emails and the deletions, by hand), `schema-check`, `release-check`, `check:public`, `init-private` |
+| `deploy` | the Caddy block, `deploy.sh` and `rollback.sh` (release folders) |
+| `docs/contracts` | each internal API between accounts, Teder and Toran: the request, every status, an example of each |
+| `.github/workflows` | CI: `npm run release-check` on every push to main |
 | `ecosystem.config.cjs` | the pm2 job, `of-accounts` |
 
 ## Security, in short

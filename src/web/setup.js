@@ -141,7 +141,8 @@ export function setupClient({ env = process.env, fetchImpl = globalThis.fetch, l
  * The page's model, from the products' answers (in the order of `products`), each product's access (the paywall,
  * src/accounts/entitlement.js accessFor()) and the payment hook. Pure.
  *   billing     the payment step, first and required, or null with no product on. "done" once every product is
- *               allowed (paid for, or complimentary); until then "todo", leading to the provider's checkout once one
+ *               allowed (paid for, or complimentary) and none is in its grace (due); until then "todo", leading to the
+ *               provider's checkout once one
  *               is connected (billingReady) and, before that, to us (`contact`: our WhatsApp or the contact page)
  *   sections    one per product: { product, ok, locked, ready, done, required: [...], optional: [...] }. A product
  *               that is not allowed yet is locked: its steps are shown, closed, until the payment is in
@@ -152,7 +153,8 @@ export function setupClient({ env = process.env, fetchImpl = globalThis.fetch, l
  */
 export function setupState(results, products, { billingReady = false, access = {}, checkout = null, contact = null } = {}) {
   const allowed = (p) => Boolean(access[p]?.allowed);
-  const paidAll = products.length > 0 && products.every(allowed);
+  // A product in its grace (due) still works, but its payment is owed: the payment step is not done.
+  const paidAll = products.length > 0 && products.every((p) => allowed(p) && access[p]?.access !== 'due');
   const billing = products.length
     ? {
         key: 'billing',

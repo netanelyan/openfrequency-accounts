@@ -7,6 +7,12 @@
 //                         setup page's payment step says the online payment opens soon and leads to us (our WhatsApp,
 //                         OF_SUPPORT_WA, or the website's contact page), and the account page shows no next charge.
 
+/**
+ * How payment works until a provider is connected, in the owner's words (OF_PAYMENT_METHOD, for example "העברה בנקאית
+ * או ביט"): said on /setup, in the welcome email and in the billing emails. Empty while unset.
+ */
+export const payHow = (env = process.env) => String(env.OF_PAYMENT_METHOD || '').trim().slice(0, 200);
+
 /** Is a payment provider connected? False until OF_BILLING_PROVIDER is set. */
 export const billingReady = (env = process.env) => Boolean(String(env.OF_BILLING_PROVIDER || '').trim());
 

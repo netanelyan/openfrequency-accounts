@@ -42,8 +42,12 @@ export const inviteMail = (to, workspaceName, link, expiresAt) => ({
   ...build(MAIL.inviteSubject(workspaceName), MAIL.inviteLines(workspaceName, link, when(expiresAt)), MAIL.inviteButton),
 });
 
-/** Public sign-up: the link that confirms the address and opens the account (src/accounts/signup.js). */
-export const signupMail = (to, business, link) => ({ to, ...build(MAIL.signupSubject, MAIL.signupLines(business, link), MAIL.signupButton) });
+/**
+ * Public sign-up: the link that confirms the address and opens the account (src/accounts/signup.js). Nothing the form
+ * was given is in it: anyone can type any address into the form, so the email carries no words of theirs. The business's
+ * name shows on the page the link opens.
+ */
+export const signupMail = (to, link) => ({ to, ...build(MAIL.signupSubject, MAIL.signupLines(link), MAIL.signupButton) });
 
 /** Public sign-up, for an address that already has an account: a sign-in link to it instead of a second one. */
 export const existingAccountMail = (to, link) => ({ to, ...build(MAIL.existingSubject, MAIL.existingLines(link), MAIL.magicButton) });
@@ -73,10 +77,53 @@ export const signupNoticeMail = (to, { name, email, business, products, at, meth
   };
 };
 
-/** Right after a sign-up is confirmed: the account is open, what happens next (pay, then set up), and /setup. */
-export const welcomeMail = (to, { business, link, providerReady = false, prices = [] }) => {
+/**
+ * Right after a sign-up is confirmed: the account is open, what happens next (pay, then set up), and /setup. `payHow`
+ * is how payment works today (OF_PAYMENT_METHOD), said when it is set.
+ */
+export const welcomeMail = (to, { business, link, providerReady = false, prices = [], payHow = '' }) => {
   const b = plain(business, 80);
-  return { to, ...build(MAIL.welcomeSubject(b), MAIL.welcomeLines(b, link, providerReady, prices), MAIL.welcomeButton) };
+  const how = plain(payHow, 200);
+  return { to, ...build(MAIL.welcomeSubject(b), MAIL.welcomeLines(b, link, providerReady, [...[].concat(prices), ...(how ? [MAIL.welcomePayHow(how)] : [])]), MAIL.welcomeButton) };
+};
+
+/** To each owner, when a month's payment is recorded on /admin: until when it is paid. */
+export const paidMail = (to, { business, product, until, link }) => ({
+  to,
+  ...build(MAIL.paidSubject(PRODUCT_NAMES[product]), MAIL.paidLines(plain(business, 80), PRODUCT_NAMES[product], dayHe(until), link), MAIL.paidButton),
+});
+
+/**
+ * The billing emails to each owner (src/web/daily.js): `kind` soon7 or soon1 (before the payment falls due), due (the
+ * day it does, which starts the grace), stopped (the grace is over). `pay` says how to pay; `amount` is said as written.
+ */
+export const billingMail = (to, { kind, business, product, dueOn, graceUntil = null, amount, pay, link }) => {
+  const b = plain(business, 80);
+  const p = PRODUCT_NAMES[product];
+  if (kind === 'due') return { to, ...build(MAIL.dueSubject(p), MAIL.dueLines(b, p, dayHe(dueOn), dayHe(graceUntil), amount, pay, link), MAIL.payButton) };
+  if (kind === 'stopped') return { to, ...build(MAIL.stoppedSubject(p), MAIL.stoppedLines(b, p, link), MAIL.payButton) };
+  return { to, ...build(MAIL.soonSubject(p, dayHe(dueOn)), MAIL.soonLines(b, p, dayHe(dueOn), amount, pay, link), MAIL.payButton) };
+};
+
+/** To the owner (OF_SIGNUP_NOTIFY): a customer's payment fell due (`kind` due), or its grace ended (stopped). */
+export const billingNoticeMail = (to, { kind, business, product, dueOn, graceUntil = null, link }) => {
+  const b = plain(business, 80);
+  const p = PRODUCT_NAMES[product];
+  return kind === 'stopped'
+    ? { to, ...build(MAIL.stoppedNoticeSubject(b, p), MAIL.stoppedNoticeLines(b, p, link), MAIL.noticeButton) }
+    : { to, ...build(MAIL.dueNoticeSubject(b, p), MAIL.dueNoticeLines(b, p, dayHe(dueOn), dayHe(graceUntil), link), MAIL.noticeButton) };
+};
+
+/** To each owner of a workspace nobody used and nothing was paid for, 14 days before it is deleted (src/web/daily.js). */
+export const idleMail = (to, { business, deleteOn, link }) => {
+  const b = plain(business, 80);
+  return { to, ...build(MAIL.idleSubject(b), MAIL.idleLines(b, dayHe(deleteOn), link), MAIL.idleButton) };
+};
+
+/** To the owner (OF_SIGNUP_NOTIFY): the workspaces deleted today for nobody using them. */
+export const idleNoticeMail = (to, { names }) => {
+  const list = names.map((n) => plain(n, 80) || '-');
+  return { to, ...build(MAIL.idleNoticeSubject(list.length), MAIL.idleNoticeLines(list), '') };
 };
 
 /** To each owner, when a product's subscription is cancelled online: until when it works, and how to take it back. */

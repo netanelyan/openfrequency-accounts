@@ -58,6 +58,26 @@ export function createLimiter({ rules, global = null, maxKeys = 50_000 }) {
   };
 }
 
+/**
+ * The key an address is counted under: an IPv4 address as it is (an IPv4-mapped IPv6 one too), an IPv6 address by its
+ * /64. One home or phone connection is handed a whole /64 and can use a new address in it for every request, so a
+ * limit per IPv6 address would limit nothing. Anything that is not an address is its own key.
+ */
+export function ipKey(ip) {
+  const s = String(ip ?? '').trim().toLowerCase().replace(/^\[|\]$/g, '').replace(/%.*$/, '');
+  const v4 = /^(?:::ffff:)?(\d{1,3}(?:\.\d{1,3}){3})$/.exec(s);
+  if (v4) return v4[1];
+  if (!s.includes(':')) return s;
+  const parts = s.split('::');
+  if (parts.length > 2) return s;
+  const head = parts[0] ? parts[0].split(':') : [];
+  const tail = parts.length === 2 && parts[1] ? parts[1].split(':') : [];
+  const groups = parts.length === 2 ? [...head, ...Array(Math.max(0, 8 - head.length - tail.length)).fill('0'), ...tail] : head;
+  const net = groups.slice(0, 4);
+  if (net.length < 4 || net.some((g) => !/^[0-9a-f]{1,4}$/.test(g))) return s;
+  return `${net.map((g) => g.replace(/^0+(?=.)/, '')).join(':')}::/64`;
+}
+
 /** The limits this service uses. */
 export const LIMITS = {
   // Superadmin password + TOTP failures, per address (Teder's numbers).
@@ -69,3 +89,9 @@ export const LIMITS = {
   signupPerEmail: { rules: [{ max: 3, windowMs: 15 * MINUTE }, { max: 10, windowMs: DAY }] },
   signupPerIp: { rules: [{ max: 5, windowMs: HOUR }, { max: 20, windowMs: DAY }] },
 };
+
+/**
+ * Every sign-up email sent in a day, from every address together (OF_SIGNUP_DAILY_EMAILS, 200 by default): the form
+ * sends an email to any address typed into it, so many addresses at once must not turn it into a mailer for anyone.
+ */
+export const signupMailDaily = (env = process.env) => ({ rules: [{ max: Math.max(1, Number(env.OF_SIGNUP_DAILY_EMAILS) || 200), windowMs: DAY }] });

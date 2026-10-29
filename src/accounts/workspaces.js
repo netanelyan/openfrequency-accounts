@@ -43,17 +43,18 @@ function checkWorkspace(db, { name, slug }) {
 
 /**
  * The part of opening a workspace that the superadmin's console and the public sign-up share: the workspace, each
- * chosen product turned on, and its subscription at the list price with nothing paid yet (ensureSubscription). No
+ * chosen product turned on, and its subscription at the list price (of the plan chosen in `plans`, for a product with
+ * plans) with nothing paid yet (ensureSubscription). No
  * owner and no invite: the caller adds whoever owns it. Throws WorkspaceError. Returns the workspace's row.
  */
-export function openWorkspace(db, { name, slug, products = [], terms = null }, { by, ip = null, source = 'admin' }) {
+export function openWorkspace(db, { name, slug, products = [], plans = {}, terms = null }, { by, ip = null, source = 'admin' }) {
   ({ name, slug } = checkWorkspace(db, { name, slug }));
   const chosen = PRODUCTS.filter((p) => products.includes(p));
   return db.tx(() => {
     const id = db.insert('workspaces', { slug, name, created_at: nowIso(), ...(terms ? { terms_version: terms.version, terms_accepted_at: terms.at } : {}) });
     for (const p of chosen) {
       db.insert('workspace_products', { workspace_id: id, product: p, enabled: 1, updated_at: nowIso() });
-      ensureSubscription(db, id, p);
+      ensureSubscription(db, id, p, undefined, plans[p] ?? null);
     }
     audit(db, { actor: by, action: 'workspace_created', workspaceId: id, ip, detail: { slug, name, products: chosen, ...(source !== 'admin' ? { source } : {}) } });
     return db.get('SELECT * FROM workspaces WHERE id = ?', id);

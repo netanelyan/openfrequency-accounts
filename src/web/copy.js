@@ -9,11 +9,16 @@ import { TEAM_LIMIT } from '../accounts/team.js';
 
 export const PRODUCT_NAMES = { teder: 'תדר', toran: 'תורן' };
 export const ROLE_NAMES = { client_owner: 'בעלים', client_member: 'צוות', superadmin: 'מנהל' };
+/** Teder's plans (src/accounts/subscriptions.js PLANS), as the site and the emails name them. */
+export const PLAN_NAMES = { full: 'החבילה המלאה', small: 'החבילה הקטנה' };
+/** What a plan gives in a month, after its name. */
+export const planGives = (slideshows, redos) => `${slideshows} מצגות בחודש, ו-${redos} החלפות למצגות שדחיתם`;
 
 const minutes = (seconds) => Math.max(1, Math.ceil(seconds / 60));
 
 export const T = {
   brand: 'OpenFrequency',
+  accessibility: 'הצהרת נגישות',
 
   // ---- sign in with an emailed link
   loginTitle: 'כניסה',
@@ -96,7 +101,9 @@ export const T = {
   subDay: (day, days) => `יום ${day} מתוך ${days}`,
   subBarLabel: (from, to) => `החודש ששולם, מ-${from} עד ${to}`,
   subNext: (d, amount, plusVat) => `החיוב הבא: ${amount}${plusVat ? ' ועוד מע״מ' : ''}, ב-${d}`,
-  subDue: (d) => `התשלום לחודש שהתחיל ב-${d} עוד לא הגיע אלינו. כשיגיע, נעדכן כאן.`,
+  subDue: (d, until) => `התשלום לחודש שהתחיל ב-${d} עוד לא הגיע אלינו. המנוי ממשיך לעבוד עד ${until}, ואם התשלום לא יגיע עד אז הוא ייעצר עד שישולם.`,
+  subDueStopped: (d) => `התשלום לחודש שהתחיל ב-${d} לא הגיע, אז המנוי נעצר. הוא ייפתח שוב כשהתשלום יגיע.`,
+  subPlan: (name, gives) => `${name}: ${gives}`,
   subEnding: (d, n) => `המנוי מסתיים ב-${d}. ${n === 1 ? 'זה היום האחרון שלו.' : `נשארו ${n} ימים.`}`,
   subEnded: (d) => `המנוי הסתיים ב-${d}.`,
   subOpen: (product) => `${product} נפתח אחרי התשלום על המנוי.`,
@@ -270,7 +277,8 @@ export const T = {
   invSave: 'שמירה',
   invRemove: 'הסרה',
   invAdminLine: (number, d, total) => `חשבונית ${number}, ${d}, ${total}`,
-  accessNames: { paid: 'שולם', comp: 'ללא תשלום', unpaid: 'לא שולם', cancelled: 'בוטל', off: 'כבוי' },
+  accessNames: { paid: 'שולם', comp: 'ללא תשלום', due: 'מחכה לתשלום, בתקופת החסד', unpaid: 'לא שולם', cancelled: 'בוטל', off: 'כבוי' },
+  subPlanLabel: 'חבילה',
   accessLine: (name, open, until) => `גישה: ${name}, ${open ? 'פתוח' : 'סגור'}${until ? `, עד ${until}` : ''}`,
   compOn: 'לסמן ללא תשלום',
   compOff: 'לבטל את הפטור מתשלום',
@@ -314,6 +322,8 @@ export const T = {
     pdf_too_large: 'הקובץ גדול מ-5MB. חשבונית רגילה קטנה בהרבה, אז כדאי לבדוק שזה הקובץ הנכון.',
     product_off: 'המוצר הזה לא פעיל בחשבון.',
     name_mismatch: 'השם לא תואם את שם העסק, אז לא מחקנו כלום.',
+    bad_plan: 'החבילה הזאת לא קיימת.',
+    already_paid: 'התשלום הזה כבר נרשם (הכפתור נלחץ פעמיים, או שהדף היה פתוח מקודם). בדקו את התאריך ב"שולם עד" לפני שרושמים עוד חודש.',
   },
 };
 
@@ -360,6 +370,11 @@ export const AUDIT_NAMES = {
   workspace_delete_failed: 'מחיקה שלא הושלמה',
   notify_sent: 'התראה נשלחה במייל',
   notify_prefs_saved: 'הגדרות התראות נשמרו',
+  billing_soon7: 'תזכורת תשלום, שבוע לפני',
+  billing_soon1: 'תזכורת תשלום, יום לפני',
+  billing_due: 'תשלום לא הגיע, תקופת החסד התחילה',
+  billing_stopped: 'נעצר אחרי תקופת החסד',
+  idle_warned: 'נשלחה הודעה על מחיקה של חשבון בלי שימוש',
 };
 
 // ---- emails
@@ -387,9 +402,9 @@ export const MAIL = {
   inviteButton: 'הצטרפות',
 
   signupSubject: 'אישור החשבון שלכם ב-OpenFrequency',
-  signupLines: (business, link) => [
+  signupLines: (link) => [
     'שלום,',
-    `ביקשתם לפתוח ב-OpenFrequency חשבון עבור ${business}. כדי לאשר, לחצו על הקישור:`,
+    'ביקשתם לפתוח חשבון ב-OpenFrequency. כדי לאשר, לחצו על הקישור:',
     { link },
     'הוא עובד פעם אחת, במשך 15 דקות.',
     'לא ביקשתם? אפשר להתעלם מהמייל הזה. בלי הקישור לא נפתח שום חשבון.',
@@ -433,6 +448,67 @@ export const MAIL = {
   ],
   welcomeButton: 'לדף ההגדרה',
   welcomePrice: (product, monthly, setup) => `${product}: ${monthly} לחודש ועוד מע״מ, ודמי הקמה של ${setup} פעם אחת.`,
+  welcomePayHow: (how) => `איך משלמים: ${how}`,
+
+  // To each owner, when a payment is recorded (/admin).
+  paidSubject: (product) => `קיבלנו את התשלום על ${product}`,
+  paidLines: (business, product, until, link) => [
+    'שלום,',
+    `קיבלנו את התשלום על ${product} בחשבון של ${business}. המנוי שולם עד ${until}.`,
+    'החשבונית תופיע בדף הראשי של החשבון, ואפשר להוריד אותה משם.',
+    { link },
+  ],
+  paidButton: 'לדף הראשי',
+
+  // To each owner, before and when a payment falls due (src/web/daily.js). `pay` is how to pay (a sentence).
+  soonSubject: (product, d) => `התשלום הבא על ${product}: ${d}`,
+  soonLines: (business, product, d, amount, pay, link) => [
+    'שלום,',
+    `החודש הבא של ${product} בחשבון של ${business} מתחיל ב-${d}. הסכום: ${amount}.`,
+    pay,
+    { link },
+    'כבר שילמתם? אפשר להתעלם מהמייל הזה. ביטלתם, או רוצים לבטל? אפשר לעשות את זה מהדף הראשי.',
+  ],
+  dueSubject: (product) => `התשלום על ${product} עוד לא הגיע`,
+  dueLines: (business, product, d, until, amount, pay, link) => [
+    'שלום,',
+    `החודש של ${product} בחשבון של ${business} התחיל ב-${d}, והתשלום עליו (${amount}) עוד לא הגיע אלינו.`,
+    `${product} ממשיך לעבוד עד ${until}. אם התשלום לא יגיע עד אז, ${product} ייעצר עד שישולם. שום דבר לא נמחק.`,
+    pay,
+    { link },
+  ],
+  stoppedSubject: (product) => `${product} נעצר עד שהתשלום יגיע`,
+  stoppedLines: (business, product, link) => [
+    'שלום,',
+    `התשלום על ${product} בחשבון של ${business} לא הגיע עד סוף תקופת החסד, אז ${product} נעצר. הנתונים נשמרים, ו${product} ייפתח שוב כשהתשלום יגיע.`,
+    { link },
+  ],
+  payButton: 'לחשבון',
+  amount: (sum, plusVat) => (plusVat ? `${sum} ועוד מע״מ` : sum),
+  payByProvider: 'משלמים בדף ההגדרה, בכפתור "לתשלום".',
+  payByUs: 'התשלום באתר עוד לא פתוח. ענו למייל הזה, או כתבו לנו בוואטסאפ, ונשלח לכם פרטים לתשלום.',
+
+  // To the owner (OF_SIGNUP_NOTIFY): a payment fell due, or a grace ended.
+  dueNoticeSubject: (business, product) => `תשלום לא הגיע: ${business}, ${product}`,
+  dueNoticeLines: (business, product, d, until, link) => [
+    `התשלום של ${business} על ${product} היה צריך להגיע ב-${d}. שלחנו לבעלים מייל, והמנוי ממשיך לעבוד עד ${until}.`,
+    'כשהתשלום מגיע, רושמים אותו בקונסולה ("התקבל תשלום לחודש").',
+    { link },
+  ],
+  stoppedNoticeSubject: (business, product) => `נעצר על תשלום: ${business}, ${product}`,
+  stoppedNoticeLines: (business, product, link) => [`תקופת החסד של ${business} ב${product} נגמרה בלי תשלום, אז ${product} נעצר אצלם. שלחנו להם מייל.`, { link }],
+
+  // To each owner of a workspace nobody used and nothing was ever paid for, 14 days before it is deleted.
+  idleSubject: (business) => `החשבון של ${business} יימחק ב-14 הימים הקרובים`,
+  idleLines: (business, d, link) => [
+    'שלום,',
+    `החשבון של ${business} ב-OpenFrequency נפתח, אבל אף אחד לא נכנס אליו כבר חצי שנה, ולא שולם בו מנוי. לפי מדיניות הפרטיות שלנו, ב-${d} נמחק אותו ואת המידע שבו.`,
+    'רוצים לשמור אותו? מספיק להיכנס לחשבון לפני התאריך הזה:',
+    { link },
+  ],
+  idleButton: 'כניסה לחשבון',
+  idleNoticeSubject: (n) => (n === 1 ? 'חשבון אחד נמחק כי לא היה בו שימוש' : `${n} חשבונות נמחקו כי לא היה בהם שימוש`),
+  idleNoticeLines: (names) => ['החשבונות האלה נמחקו היום, אחרי חצי שנה בלי כניסה ובלי תשלום, ו-14 יום אחרי שהבעלים קיבלו מייל:', ...names],
 
   // To each owner, when a subscription is cancelled online.
   cancelSubject: (product) => `ביטלתם את המנוי ל${product}`,
@@ -467,7 +543,7 @@ export const MAIL = {
     ...[].concat(lines),
     `חשבוניות שנשמרו: ${invoices}`,
   ],
-  deleteResults: { deleted: 'הנתונים נמחקו', not_found: 'לא היה שם מה למחוק (404)' },
+  deleteResults: { deleted: 'הנתונים נמחקו' },
 
   signature: 'OpenFrequency',
 };
@@ -488,6 +564,8 @@ export const SIGNUP = {
   soon: 'בקרוב',
   productSoon: 'ההרשמה אליו תיפתח בקרוב.',
   price: (monthly, setup) => `${monthly} לחודש ועוד מע״מ, ודמי הקמה של ${setup} פעם אחת`,
+  planLegend: 'איזו חבילה של תדר',
+  planHint: 'חל רק כשבוחרים בתדר. אפשר לעבור חבילה אחר כך, בכתיבה אלינו.',
   pricesNote: 'משלמים אחרי שהחשבון נפתח, והמוצרים נפתחים אחרי התשלום. אפשר לבטל את המנוי מהדף הראשי, והוא עובד עד סוף התקופה ששולמה.',
   termsPre: 'מסכימים ל',
   termsLink: 'תנאי השימוש',
@@ -508,7 +586,9 @@ export const SIGNUP = {
     no_products: 'צריך לבחור לפחות מוצר אחד.',
     product_closed: 'ההרשמה לאחד המוצרים שבחרתם עוד לא נפתחה. אפשר להירשם עכשיו למוצרים שפתוחים.',
     no_terms: 'כדי לפתוח חשבון צריך להסכים לתנאי השימוש ולמדיניות הפרטיות.',
+    bad_plan: 'צריך לבחור אחת מהחבילות של תדר.',
   },
+  busy: 'היום נשלחו מכאן הרבה מיילים של הרשמה, אז עצרנו אותם עד מחר. אפשר לנסות שוב מחר, או לכתוב לנו.',
   tooMany: (seconds) => `נשלחו מכאן הרבה בקשות בזמן קצר. נסו שוב בעוד ${minutes(seconds)} דקות.`,
 
   closedTitle: 'ההרשמה תיפתח בקרוב',
@@ -575,6 +655,8 @@ export const SETUP = {
   billingReply: 'אפשר גם לענות לאחד המיילים שקיבלתם מאיתנו.',
   billingPrice: (product, monthly, vat, setup) => `${product}: ${monthly} לחודש, ${vat}${setup ? `, ודמי הקמה של ${setup} פעם אחת` : ''}`,
   billingPaidUntil: (product, d) => `${product}: שולם עד ${d}`,
+  billingDue: (product, d) => `${product}: התשלום על החודש הנוכחי עוד לא הגיע. המנוי עובד עד ${d}, ואחרי זה נעצר עד שישולם.`,
+  billingHow: (how) => `איך משלמים: ${how}`,
   billingSupportText: (business) => `היי, כותבים מ״${business}״. רוצים לשלם על המנוי.`,
   locked: 'נפתח אחרי התשלום',
   lockedChip: 'אחרי התשלום',

@@ -270,4 +270,41 @@ export const MIGRATIONS = [
   );
   CREATE INDEX notify_log_at ON notify_log(workspace_id, product, kind, at);
   `,
+  `
+  -- Teder's two plans (src/accounts/subscriptions.js PLANS): full (40 slideshows a month, 10 redos) and small (15, 4),
+  -- each at its own price. NULL for a product without plans (Toran). Every Teder subscription until now is full.
+  ALTER TABLE subscriptions ADD COLUMN plan TEXT CHECK (plan IS NULL OR plan IN ('full', 'small'));
+  UPDATE subscriptions SET plan = 'full' WHERE product = 'teder';
+  -- The plan a sign-up chose for Teder, kept with its answers until the address is confirmed.
+  ALTER TABLE signups ADD COLUMN plan TEXT CHECK (plan IS NULL OR plan IN ('full', 'small'));
+
+  -- The billing emails sent (src/web/daily.js): each kind once for each end of a paid period, never twice. due_on is
+  -- the first day not paid for. kind: soon7 and soon1 (a week and a day before), due (the day it is due, which starts
+  -- the 14 days of grace), stopped (the grace is over).
+  CREATE TABLE billing_notices (
+    workspace_id    INTEGER NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+    product         TEXT NOT NULL,
+    kind            TEXT NOT NULL,
+    due_on          TEXT NOT NULL,
+    sent_at         TEXT NOT NULL,
+    recipients      INTEGER NOT NULL,
+    PRIMARY KEY (workspace_id, product, kind, due_on)
+  );
+
+  -- A workspace that will be deleted because nobody used it and nothing was ever paid (src/web/daily.js): when its
+  -- owners were told, and the day it goes. Someone signing in before then takes it off the list.
+  CREATE TABLE retention_notices (
+    workspace_id    INTEGER PRIMARY KEY REFERENCES workspaces(id) ON DELETE CASCADE,
+    notified_at     TEXT NOT NULL,
+    delete_on       TEXT NOT NULL
+  );
+
+  -- The daily jobs (src/web/daily.js) run once an Israel day: when, and what they did.
+  CREATE TABLE daily_runs (
+    day             TEXT PRIMARY KEY,
+    started_at      TEXT NOT NULL,
+    finished_at     TEXT,
+    detail_json     TEXT
+  );
+  `,
 ];

@@ -16,6 +16,8 @@
     "web": "node scripts/web.js",
     "start": "node scripts/web.js",
     "backup": "node scripts/backup.js",
+    "daily": "node scripts/daily.js",
+    "release-check": "node scripts/release-check.js",
     "admin:create": "node scripts/admin-create.js",
     "demo": "node scripts/demo.js"
   },

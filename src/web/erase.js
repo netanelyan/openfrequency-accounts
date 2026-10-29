@@ -5,11 +5,12 @@ import { setupBases } from './setup.js';
 //   POST <OF_TEDER_INTERNAL or OF_TORAN_INTERNAL>/internal/workspaces/<id>/delete
 //   Authorization: Bearer OF_INTERNAL_TOKEN       body {}
 //
-//   2xx        deleted
-//   404        nothing there to delete (or the product has no such route yet): logged, and it does not hold us up
-//   anything   else (another status, no answer in 10 seconds, no token configured): failed, and accounts deletes
-//              nothing, so the customer can try again; a product that already deleted its part answers again (2xx or
-//              404) the next time.
+//   2xx        deleted, or there was nothing of this workspace there (a product answers 200 for a workspace it never
+//              saw, and again for one it already deleted: docs/contracts/workspaces-delete.json)
+//   anything   else (404 included, another status, no answer in 10 seconds, no token configured): failed, and accounts
+//              deletes nothing, so the customer can try again. A 404 is a product without the route (or a wrong
+//              address): taking it for "nothing there" would leave that product's data behind while ours is gone
+//              (ACC-06, PRA-BE-004).
 
 export const ERASE_MS = 10_000;
 const MIN_TOKEN = 32;
@@ -34,11 +35,7 @@ export function eraseClient({ env = process.env, fetchImpl = globalThis.fetch, l
       });
       await r.text().catch(() => '');
       if (r.status >= 200 && r.status < 300) return 'deleted';
-      if (r.status === 404) {
-        log(`[accounts] ${product} POST ${path}: 404, nothing to delete there (or no such route yet)`);
-        return 'not_found';
-      }
-      log(`[accounts] ${product} POST ${path}: ${r.status}`);
+      log(`[accounts] ${product} POST ${path}: ${r.status}${r.status === 404 ? ' (no such route there: nothing was deleted anywhere)' : ''}`);
       return 'failed';
     } catch (e) {
       log(`[accounts] ${product} POST ${path}: ${e?.name === 'TimeoutError' ? 'timed out' : e?.cause?.code || e?.message}`);
@@ -47,7 +44,7 @@ export function eraseClient({ env = process.env, fetchImpl = globalThis.fetch, l
   }
 
   return {
-    /** Ask each product, in parallel: { results: { [product]: 'deleted' | 'not_found' | 'failed' }, ok, failed: [...] }. */
+    /** Ask each product, in parallel: { results: { [product]: 'deleted' | 'failed' }, ok, failed: [...] }. */
     async erase(workspaceId, products) {
       const answers = await Promise.all(products.map((p) => (bases[p] ? one(p, workspaceId) : 'failed')));
       const results = Object.fromEntries(products.map((p, i) => [p, answers[i]]));

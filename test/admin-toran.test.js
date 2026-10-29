@@ -2,8 +2,9 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer, request } from 'node:http';
 import { gunzipSync, gzipSync } from 'node:zlib';
+import { createHmac } from 'node:crypto';
 import { makeUser, makeWorkspace, tempHome } from './helpers.js';
-import { PUBLIC, signedIn, startSite } from './site.js';
+import { PUBLIC, signedIn, startSite, TOKEN } from './site.js';
 import { now, setNow } from '../src/core/clock.js';
 import { setSuperadmin } from '../src/accounts/superadmin.js';
 import { newTotpSecret, stepAt, totpCode } from '../src/auth/totp.js';
@@ -89,8 +90,16 @@ const SPOOFED = {
   'x-of-admin-prefix': '/',
   'x-of-admin-origin': 'https://evil.example',
   'x-of-session': 'nope',
+  'x-of-operator': 'forged.statement',
   'x-something-else': 'no',
 };
+
+/** X-OF-Operator, checked as Toran checks it (docs/contracts/admin-toran-operator.json): its payload, or null. */
+function readOperator(value) {
+  const [payload, sig] = String(value || '').split('.');
+  if (!payload || sig !== createHmac('sha256', TOKEN).update(payload).digest('base64url')) return null;
+  return JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'));
+}
 const PASSED = {
   accept: 'text/html',
   'accept-language': 'he-IL,he;q=0.9',
@@ -100,6 +109,26 @@ const PASSED = {
   'x-tn-ajax': '1',
 };
 
+test('the session never reaches Toran: only its own tn_* cookies do; without OF_INTERNAL_TOKEN there is no statement', async () => {
+  const t = await setup();
+  try {
+    const cookie = `__Secure-of_session=${t.op.cookie('__Secure-of_session')}; tn_side=mini; __Host-of_csrf=abc; tn_flash=saved`;
+    await t.op.get('/admin/toran/leads', { cookie });
+    assert.equal(t.fake.calls.at(-1).headers.cookie, 'tn_side=mini; tn_flash=saved');
+    assert.ok(readOperator(t.fake.calls.at(-1).headers['x-of-operator']));
+  } finally {
+    await t.done();
+  }
+  const u = await setup({ env: { OF_INTERNAL_TOKEN: '' } });
+  try {
+    await u.op.get('/admin/toran/leads');
+    assert.equal(u.fake.calls.at(-1).headers['x-of-operator'], undefined);
+    assert.equal(u.fake.calls.at(-1).headers.cookie, undefined);
+  } finally {
+    await u.done();
+  }
+});
+
 test('the superadmin\'s GET and POST reach Toran with the prefix, our proto and origin, Toran\'s host, and only the allowed headers', async () => {
   const t = await setup();
   try {
@@ -107,15 +136,21 @@ test('the superadmin\'s GET and POST reach Toran with the prefix, our proto and 
     assert.equal(r.status, 200);
     assert.deepEqual(JSON.parse(r.body), { method: 'GET', path: '/admin/toran/settings?tab=hours&x=%D7%90' });
     const get = t.fake.calls.at(-1);
+    // Not the superadmin's session (PRA-SEC-004): a statement of who it is, signed for this request.
     assert.deepEqual(get.headers, {
       host: t.fake.host,
-      cookie: `__Secure-of_session=${t.op.cookie('__Secure-of_session')}`,
+      'x-of-operator': get.headers['x-of-operator'],
       ...PASSED,
       'x-of-admin-prefix': '/admin/toran',
       'x-forwarded-proto': 'https',
       'x-of-admin-origin': `https://${PUBLIC}`,
       connection: get.headers.connection,
     });
+    const who = readOperator(get.headers['x-of-operator']);
+    assert.deepEqual([who.id, who.email, who.name], [t.admin.id, 'admin@example.com', 'נתנאל']);
+    assert.equal(who.exp, now() + 60_000, 'good for 60 seconds');
+    assert.match(who.ses, /^[A-Za-z0-9_-]{32}$/);
+    assert.ok(!get.headers['x-of-operator'].includes(t.op.cookie('__Secure-of_session')), 'the session id is not in it');
 
     // A form from one of Toran's pages, with Toran's own fields, its body as it was sent.
     const p = await t.op.post('/admin/toran/lead/12/note', { text: 'דיברנו, לחזור ביום ראשון' }, { ...SPOOFED, ...PASSED });
@@ -124,13 +159,16 @@ test('the superadmin\'s GET and POST reach Toran with the prefix, our proto and 
     assert.equal(post.method, 'POST');
     assert.equal(post.path, '/admin/toran/lead/12/note');
     assert.equal(new URLSearchParams(post.body).get('text'), 'דיברנו, לחזור ביום ראשון');
-    assert.deepEqual(Object.keys(post.headers).sort(), ['accept', 'accept-encoding', 'accept-language', 'connection', 'content-length', 'content-type', 'cookie', 'host', 'origin', 'referer', 'user-agent', 'x-forwarded-proto', 'x-of-admin-origin', 'x-of-admin-prefix', 'x-tn-ajax']);
+    assert.deepEqual(Object.keys(post.headers).sort(), ['accept', 'accept-encoding', 'accept-language', 'connection', 'content-length', 'content-type', 'host', 'origin', 'referer', 'user-agent', 'x-forwarded-proto', 'x-of-admin-origin', 'x-of-admin-prefix', 'x-of-operator', 'x-tn-ajax']);
     assert.equal(post.headers['content-type'], 'application/x-www-form-urlencoded');
     assert.equal(post.headers['content-length'], String(Buffer.byteLength(post.body)));
     assert.equal(post.headers.origin, `https://${PUBLIC}`);
     assert.equal(post.headers['x-of-admin-prefix'], '/admin/toran');
     assert.equal(post.headers['x-of-admin-origin'], `https://${PUBLIC}`);
-    for (const c of [get, post]) for (const k of Object.keys(SPOOFED)) if (!k.startsWith('x-of-admin')) assert.equal(c.headers[k], undefined, k);
+    // The same session says the same `ses`, for Toran's CSRF tokens; the browser's forged statement is never passed on.
+    assert.equal(readOperator(post.headers['x-of-operator']).ses, who.ses);
+    for (const c of [get, post]) for (const k of Object.keys(SPOOFED)) if (!k.startsWith('x-of-admin') && k !== 'x-of-operator') assert.equal(c.headers[k], undefined, k);
+    for (const c of [get, post]) assert.notEqual(c.headers['x-of-operator'], SPOOFED['x-of-operator']);
 
     // /admin/toran itself, and any other method.
     await t.op.get('/admin/toran');

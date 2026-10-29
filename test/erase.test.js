@@ -11,7 +11,7 @@ import { newTotpSecret, stepAt, totpCode } from '../src/auth/totp.js';
 import { startProduct } from './setup-fake.js';
 
 // Deleting a workspace and its data: owners only, the business's name typed to confirm, Teder and Toran asked first
-// (played by fakes: a 404 is "nothing there" and does not stop it; any other failure stops everything), then ours
+// (played by fakes: a 2xx is done or nothing there; anything else, a 404 included, stops everything), then ours
 // deleted with the invoices kept and detached, everyone signed out of it, the owner told. The console can do it too.
 
 const T0 = '2026-10-22T10:00:00.000Z';
@@ -22,7 +22,7 @@ async function setup() {
   const h = tempHome();
   setNow(T0);
   const teder = await startProduct('teder', { erase: () => 200 });
-  const toran = await startProduct('toran'); // no such route yet: 404
+  const toran = await startProduct('toran', { erase: () => 200 });
   const secret = newTotpSecret();
   setSuperadmin(h.db, { email: ADMIN, password: 'a long enough password', totpSecret: secret });
   const ws = makeWorkspace(h.db, 'noa-shop', { name: 'Noa Shop', products: ['teder', 'toran'], members: { 'noa@example.com': 'client_owner', 'ron@example.com': 'client_member' } });
@@ -98,8 +98,16 @@ test('an owner deletes the workspace: the products first, then ours; invoices ke
     assert.equal(t.db.get('SELECT COUNT(*) AS n FROM memberships WHERE workspace_id = ?', t.ws.id).n, 2);
     assert.ok(t.db.get("SELECT 1 FROM audit WHERE action = 'workspace_delete_failed'"));
 
-    // Teder deletes, Toran has no such route (404): logged, and it goes on. The name with other spaces and case.
+    // A product without the route (404) is a failure too, never "nothing there" (ACC-06): Toran's data would stay.
     t.teder.state.erase = () => 200;
+    t.toran.state.erase = () => 404;
+    const missing = await b.post('/account/delete', { name: 'Noa Shop' });
+    assert.equal(missing.status, 502);
+    assert.match(missing.body, /לא הצלחנו לסיים את המחיקה, כי תורן לא ענה לנו\. החשבון עדיין קיים\./);
+    assert.equal(t.db.get('SELECT deleted_at FROM workspaces WHERE id = ?', t.ws.id).deleted_at, null);
+
+    // Both delete. The name with other spaces and case.
+    t.toran.state.erase = () => 200;
     const sid = b.cookie('__Secure-of_session');
     const r = await b.post('/account/delete', { name: '  noa   SHOP ' });
     assert.equal(r.status, 200);
@@ -131,7 +139,7 @@ test('an owner deletes the workspace: the products first, then ours; invoices ke
     // The owner's notice.
     const notice = t.mails.find((m) => m.to === 'boss@example.com');
     assert.equal(notice.subject, 'חשבון נמחק: Noa Shop');
-    assert.match(notice.text, /הלקוח מחק את החשבון של Noa Shop מהדף שלו\.[^]*מי מחק: noa@example\.com[^]*תדר: הנתונים נמחקו[^]*תורן: לא היה שם מה למחוק \(404\)[^]*חשבוניות שנשמרו: 1/);
+    assert.match(notice.text, /הלקוח מחק את החשבון של Noa Shop מהדף שלו\.[^]*מי מחק: noa@example\.com[^]*תדר: הנתונים נמחקו[^]*תורן: הנתונים נמחקו[^]*חשבוניות שנשמרו: 1/);
     assert.ok(t.db.get("SELECT 1 FROM audit WHERE action = 'workspace_deleted' AND workspace_id = ?", t.ws.id));
     // The next workspace gets a new id.
     assert.ok(makeWorkspace(t.db, 'next-shop').id > t.ws.id);

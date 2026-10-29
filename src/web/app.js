@@ -6,7 +6,7 @@ import { audit } from '../core/audit.js';
 import { ROOT } from '../core/paths.js';
 import { PRODUCTS } from '../db/schema.js';
 import { clientIp, cookies, csrfFor, csrfOk, isHttps, sessionSecret } from '../auth/http.js';
-import { createLimiter, LIMITS } from '../auth/limiter.js';
+import { createLimiter, ipKey, LIMITS, signupMailDaily } from '../auth/limiter.js';
 import { safeNext } from '../auth/next.js';
 import { finishGoogle, GoogleError, googleConfig, openFlow, sameState, sealFlow, startGoogle, FLOW_TTL } from '../auth/google.js';
 import { bindGoogle, googleMatch, mailbox, userForGoogle } from '../accounts/google.js';
@@ -15,23 +15,24 @@ import { acceptInvite, consumeMagicLink, createInvite, InviteError, normEmail, p
 import { verifySuperadmin } from '../accounts/superadmin.js';
 import { createWorkspace, getWorkspace, listWorkspaces, recentAudit, setDisabled, setProduct, startViewAs, stopViewAs, WorkspaceError } from '../accounts/workspaces.js';
 import { checkSignup, completeSignup, CONTACT_URL, dropSignup, peekSignup, requestSignup, SignupError, signupNotify, signupOpen, signupProducts } from '../accounts/signup.js';
-import { billingReady, checkoutUrl } from '../accounts/billing.js';
+import { billingReady, checkoutUrl, payHow } from '../accounts/billing.js';
 import { accessAll, accessFor, BillingError, cancelSubscription, resumeSubscription, setComp } from '../accounts/entitlement.js';
 import { eraseWorkspace, productsEver, sameName } from '../accounts/erase.js';
 import { prefsOf, savePrefs } from '../accounts/notify.js';
-import { cancelMail, cancelNoticeMail, deleteNoticeMail, existingAccountMail, inviteMail, magicLinkMail, signupMail, signupNoticeMail, welcomeMail } from '../mail/messages.js';
+import { cancelMail, cancelNoticeMail, deleteNoticeMail, existingAccountMail, inviteMail, magicLinkMail, paidMail, signupMail, signupNoticeMail, welcomeMail } from '../mail/messages.js';
 import { CANCEL, ERASE, MAIL, NOTIFY, OPS, PRODUCT_NAMES, SETUP, SIGNUP, T, dayHe, ils, phoneHe } from './copy.js';
 import { setupClient, setupState } from './setup.js';
 import { eraseClient } from './erase.js';
 import { createLinkCode, openLinkCode, phoneIn, phonesFor, PHONE, removePhone, setConsent } from '../accounts/phones.js';
-import { describe, LIST_PRICES, payMonth, setSubscription, subscriptionsOf } from '../accounts/subscriptions.js';
+import { describe, listPrice, payMonth, setSubscription, subscriptionsOf } from '../accounts/subscriptions.js';
 import { addInvoice, invoiceIn, invoicesOf, PDF_MAX, removeInvoice } from '../accounts/invoices.js';
 import { cancelTeamInvite, inviteToTeam, removeMember, TEAM_LIMIT, TeamError, teamOf } from '../accounts/team.js';
 import { opsCustomers } from '../accounts/ops.js';
 import { now } from '../core/clock.js';
 import { dashboardPage } from './dashboard.js';
 import { ACTIONS, ID, LOST_REASONS, toranClient } from './toran.js';
-import { isAdminToran, proxyToToran, toranBase, touchesInternal } from './admin-toran.js';
+import { isAdminToran, operatorAssertion, proxyToToran, toranBase, touchesInternal } from './admin-toran.js';
+import { readiness } from './ready.js';
 import * as P from './html.js';
 
 // The public site, accounts.openfrequency.co.il, behind Caddy.
@@ -70,6 +71,7 @@ export function defaultLimiters() {
     adminLogin: createLimiter(LIMITS.adminLogin),
     signupEmail: createLimiter(LIMITS.signupPerEmail),
     signupIp: createLimiter(LIMITS.signupPerIp),
+    signupMail: createLimiter(signupMailDaily()),
   };
 }
 
@@ -86,6 +88,18 @@ export function supportUrl(env = process.env, text = '') {
   const digits = String(env.OF_SUPPORT_WA || '').replace(/[\s+-]/g, '');
   if (!PHONE.test(digits)) return null;
   return `https://wa.me/${digits}${text ? `?text=${encodeURIComponent(text)}` : ''}`;
+}
+
+/**
+ * Where a customer asks how to pay, while no payment provider is connected (ACC-02): our WhatsApp (OF_SUPPORT_WA), else
+ * an email to the address our emails' replies go to (MAIL_REPLY_TO), else the website's contact page.
+ */
+export function payContact(env = process.env, text = '') {
+  const wa = supportUrl(env, text);
+  if (wa) return wa;
+  const reply = String(env.MAIL_REPLY_TO || '').trim().replace(/^.*<([^>]+)>\s*$/, '$1');
+  if (validEmail(reply)) return `mailto:${reply}?subject=${encodeURIComponent(text || SETUP.billingStep)}`;
+  return CONTACT_URL;
 }
 
 /** The owner line's WhatsApp number in international digits (OF_ASSISTANT_WA), or null while it is unset. */
@@ -182,7 +196,7 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
       billingReady: ready,
       access: accessAll(db, workspaceId),
       checkout: ready ? checkoutUrl(workspaceId, env) : null,
-      contact: supportUrl(env, SETUP.billingSupportText(name)) || CONTACT_URL,
+      contact: payContact(env, SETUP.billingSupportText(name)),
     });
   };
   // Deleting a workspace: the products' parts first (src/web/erase.js), then ours (src/accounts/erase.js).
@@ -216,21 +230,23 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
       log(`[accounts] the ${what} notice failed: ${e.message}`);
     }
   };
-  // Right after a sign-up is confirmed: the welcome email, what happens next (pay, then set up), with the prices.
+  // Right after a sign-up is confirmed: the welcome email, what happens next (pay, then set up), with each product's
+  // plan and price, and how payment works today when the owner has said (OF_PAYMENT_METHOD).
   const welcome = ({ user, workspace }, base) => {
     try {
       const subs = subscriptionsOf(db, workspace.id);
-      const prices = enabledProducts(db, workspace.id).map((p) =>
-        MAIL.welcomePrice(PRODUCT_NAMES[p], ils(subs[p]?.monthly ?? LIST_PRICES[p].monthly), ils(subs[p]?.setup ?? LIST_PRICES[p].setup))
-      );
-      mailer.send(welcomeMail(user.email, { business: workspace.name, link: `${base}/setup`, providerReady: billingReady(env), prices }));
+      const prices = enabledProducts(db, workspace.id).map((p) => {
+        const list = listPrice(p, subs[p]?.plan);
+        return MAIL.welcomePrice(P.productLabel(p, subs[p]?.plan), ils(subs[p]?.monthly ?? list.monthly), ils(subs[p]?.setup ?? list.setup));
+      });
+      mailer.send(welcomeMail(user.email, { business: workspace.name, link: `${base}/setup`, providerReady: billingReady(env), prices, payHow: payHow(env) }));
     } catch (e) {
       log(`[accounts] the welcome email for workspace ${workspace.id} failed: ${e.message}`);
     }
   };
   /**
-   * Delete a workspace: each product it has ever had deletes its part first; only when none failed (a 404 is "nothing
-   * there") is ours deleted. Returns { ok: true, name, invoicesKept, results } or { ok: false, error } (nothing here
+   * Delete a workspace: each product it has ever had deletes its part first; only when none failed (a 404 is a
+   * failure: src/web/erase.js) is ours deleted. Returns { ok: true, name, invoicesKept, results } or { ok: false, error } (nothing here
    * was deleted). The owner hears of it.
    */
   const eraseAll = async (w, { by, ip: from, source }) => {
@@ -297,6 +313,13 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
       const url = new URL(req.url, 'http://x');
       const p = url.pathname;
       if (req.method === 'GET' && p === '/healthz') return text(200, 'ok');
+      // Ready: the database answers and is at this build's schema (src/web/ready.js). The deploy waits for it, and the
+      // uptime monitor watches it. The details only to this machine.
+      if (req.method === 'GET' && p === '/readyz') {
+        const r = readiness(db);
+        const local = host === `127.0.0.1:${port}` || host === `localhost:${port}`;
+        return json(r.ok ? 200 : 503, local ? r : { ok: r.ok });
+      }
       if (req.method === 'GET' && Object.hasOwn(FILES, p)) {
         const [body, type] = FILES[p];
         res.writeHead(200, { 'content-type': type, 'cache-control': 'public, max-age=86400', 'x-content-type-options': 'nosniff' });
@@ -328,6 +351,7 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
           path: p + url.search,
           secure,
           origin: base,
+          operator: operatorAssertion(found.user, sid, env.OF_INTERNAL_TOKEN),
           timeoutMs: toranProxyMs,
           log,
           failed: (status) =>
@@ -468,7 +492,7 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
         else if (d.status !== 200) return redirect('/');
         const wsId = d.body.workspace.id;
         const state = await setupFor(wsId);
-        return page(200, SETUP.title, P.setupPage({ state, productUrls: urls, readOnly: d.body.readOnly, flash, access: accessAll(db, wsId), prices: subscriptionsOf(db, wsId) }), { wide: true, banner });
+        return page(200, SETUP.title, P.setupPage({ state, productUrls: urls, readOnly: d.body.readOnly, flash, access: accessAll(db, wsId), prices: subscriptionsOf(db, wsId), payHow: payHow(env) }), { wide: true, banner });
       }
 
       // The account, for a customer in their own workspace: cancelling a product's subscription (a confirmation page,
@@ -526,7 +550,7 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
         if (go) return redirect(go);
         if (d.body.role !== 'client_owner') return page(403, ERASE.title, P.messagePage({ title: ERASE.ownersOnly, lead: '', links: [['/', ERASE.back]] }));
         const ws = getWorkspace(db, d.body.workspace.id);
-        const canCancel = enabledProducts(db, ws.id).some((pr) => ['paid', 'unpaid'].includes(accessFor(db, ws.id, pr).access));
+        const canCancel = enabledProducts(db, ws.id).some((pr) => ['paid', 'due', 'unpaid'].includes(accessFor(db, ws.id, pr).access));
         const again = (status, error = '', typed = '') => page(status, ERASE.title, P.deletePage({ csrf, workspace: ws, error, typed, canCancel }));
         if (req.method !== 'POST') return again(200);
         const typed = f('name').slice(0, 200);
@@ -593,17 +617,18 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
         if (req.method !== 'POST') {
           const asked = url.searchParams.get('p');
           const start = openProducts.includes(asked) ? [asked] : openProducts.length === 1 ? openProducts : [];
-          return page(200, SIGNUP.title, P.signupPage({ csrf, google: Boolean(google), open: openProducts, form: { products: start } }));
+          // ?plan= (the website's button under each of Teder's plans) starts that plan chosen.
+          return page(200, SIGNUP.title, P.signupPage({ csrf, google: Boolean(google), open: openProducts, form: { products: start, plan: url.searchParams.get('plan') || '' } }));
         }
 
         const via = f('via') === 'google' && google ? 'google' : 'email';
-        const raw = { name: f('name').slice(0, 200), business: f('business').slice(0, 200), email: f('email').slice(0, 254), products: form.getAll('products'), terms: f('terms') === '1' };
+        const raw = { name: f('name').slice(0, 200), business: f('business').slice(0, 200), email: f('email').slice(0, 254), products: form.getAll('products'), plan: f('plan').slice(0, 20), terms: f('terms') === '1' };
         const again = (status, error, extra) => send(status, P.layout({ title: SIGNUP.title, body: P.signupPage({ csrf, form: raw, error, google: Boolean(google), open: openProducts }), v: V }), extra);
         const sent = (email) => page(200, SIGNUP.sentTitle, P.signupSentPage({ email }));
         // The honeypot: a field people never see. Filled, it was not a person: the same page as a real sign-up, and
         // nothing kept or sent.
         if (f('website')) {
-          limiters.signupIp.hit(ip);
+          limiters.signupIp.hit(ipKey(ip));
           return sent(normEmail(raw.email));
         }
         let ok;
@@ -613,9 +638,9 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
           if (!(e instanceof SignupError)) throw e;
           return again(400, SIGNUP.errors[e.code]);
         }
-        const wait = Math.max(limiters.signupIp.check(ip) || 0, via === 'email' ? limiters.signupEmail.check(ok.email) || 0 : 0);
+        const wait = Math.max(limiters.signupIp.check(ipKey(ip)) || 0, via === 'email' ? limiters.signupEmail.check(ok.email) || 0 : 0);
         if (wait) return again(429, SIGNUP.tooMany(wait), { 'retry-after': String(wait) });
-        limiters.signupIp.hit(ip);
+        limiters.signupIp.hit(ipKey(ip));
 
         if (via === 'google') {
           // The choices wait here, under a token that rides in the signed Google flow cookie, not in any URL.
@@ -625,6 +650,13 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
           return redirect(to);
         }
 
+        // Every email the form sends, from every address together, has a daily ceiling (PRA-SEC-005).
+        const full = limiters.signupMail.check('all');
+        if (full) {
+          log(`[accounts] sign-up: the daily ceiling of sign-up emails is reached (OF_SIGNUP_DAILY_EMAILS); a form was refused`);
+          return again(429, SIGNUP.busy, { 'retry-after': String(full) });
+        }
+        limiters.signupMail.hit('all');
         limiters.signupEmail.hit(ok.email);
         const r = requestSignup(db, ok, { kind: 'email', ip });
         if (r.exists) {
@@ -632,7 +664,7 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
           const link = requestMagicLink(db, ok.email, { ip });
           if (link) mailer.send(existingAccountMail(link.user.email, `${base}/auth/link?t=${link.token}`));
         } else {
-          mailer.send(signupMail(ok.email, ok.business, `${base}/signup/confirm?t=${r.token}`));
+          mailer.send(signupMail(ok.email, `${base}/signup/confirm?t=${r.token}`));
         }
         return sent(ok.email);
       }
@@ -719,11 +751,11 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
         const email = normEmail(f('email'));
         const to = next(f('next'));
         if (!validEmail(email)) return page(400, T.loginTitle, P.loginPage({ csrf, next: to || '', email: f('email').slice(0, 254), error: T.badEmail, google: Boolean(google), signup: signupOn }));
-        const wait = Math.max(limiters.magicIp.check(ip) || 0, limiters.magicEmail.check(email) || 0);
+        const wait = Math.max(limiters.magicIp.check(ipKey(ip)) || 0, limiters.magicEmail.check(email) || 0);
         if (wait) {
           return send(429, P.layout({ title: T.loginTitle, body: P.loginPage({ csrf, next: to || '', email, error: T.tooMany(wait), google: Boolean(google), signup: signupOn }), v: V }), { 'retry-after': String(wait) });
         }
-        limiters.magicIp.hit(ip);
+        limiters.magicIp.hit(ipKey(ip));
         limiters.magicEmail.hit(email);
         const link = requestMagicLink(db, email, { next: to, ip });
         if (link) {
@@ -897,16 +929,16 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
           return page(200, T.adminLoginTitle, P.adminLoginPage({ csrf, next: adminNext(url.searchParams.get('next')) }));
         }
         const back = adminNext(f('next'));
-        const wait = limiters.adminLogin.check(ip);
+        const wait = limiters.adminLogin.check(ipKey(ip));
         if (wait) return send(429, P.layout({ title: T.adminLoginTitle, body: P.adminLoginPage({ csrf, next: back, email: f('email'), error: T.adminTooMany(wait) }), v: V }), { 'retry-after': String(wait) });
         const ok = verifySuperadmin(db, { email: f('email'), password: f('password'), code: f('code') });
         if (!ok) {
-          limiters.adminLogin.hit(ip);
+          limiters.adminLogin.hit(ipKey(ip));
           audit(db, { action: 'admin_login_failed', ip, detail: { email: f('email').slice(0, 254) } });
           await sleep(failDelayMs);
           return page(401, T.adminLoginTitle, P.adminLoginPage({ csrf, next: back, email: f('email'), error: T.adminLoginFailed }));
         }
-        limiters.adminLogin.clear(ip);
+        limiters.adminLogin.clear(ipKey(ip));
         audit(db, { actor: ok.user, action: 'sign_in', ip, detail: { method: ok.method } });
         if (found) revokeSession(db, sid, { reason: 'replaced', ip });
         setSession(ok.user);
@@ -1021,10 +1053,14 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
             const w = getWorkspace(db, m[1]);
             const product = f('product');
             if (m[2]) {
-              const until = payMonth(db, w.id, product, by);
+              // The paid-until date the console showed: a second press of the same button records nothing (ACC-03).
+              const until = payMonth(db, w.id, product, { ...by, expect: form.has('expect') ? f('expect') : undefined });
+              // Each owner hears that the payment is in.
+              const owners = db.all("SELECT u.email FROM memberships m JOIN users u ON u.id = m.user_id WHERE m.workspace_id = ? AND m.role = 'client_owner' AND u.disabled_at IS NULL", w.id);
+              for (const o of owners) mailer.send(paidMail(o.email, { business: w.name, product, until, link: `${base}/` }));
               setFlash(T.flashSubPaid(PRODUCT_NAMES[product], w.name, dayHe(until)));
             } else {
-              setSubscription(db, w.id, product, { monthly: f('monthly'), setup: f('setup'), vat: f('vat'), started_on: f('started_on'), paid_until: f('paid_until'), ends_on: f('ends_on') }, by);
+              setSubscription(db, w.id, product, { plan: f('plan'), monthly: f('monthly'), setup: f('setup'), vat: f('vat'), started_on: f('started_on'), paid_until: f('paid_until'), ends_on: f('ends_on') }, by);
               setFlash(T.flashSubSaved(PRODUCT_NAMES[product], w.name));
             }
             return toConsole();

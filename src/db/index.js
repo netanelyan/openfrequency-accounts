@@ -1,7 +1,20 @@
+import { createHash } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
 import path from 'node:path';
 import { dbPath, ensureDir } from '../core/paths.js';
 import { MIGRATIONS } from './schema.js';
+
+/** A migration's fingerprint: SHA-256 of its text. */
+export const checksum = (sql) => createHash('sha256').update(sql).digest('hex');
+
+/** The database cannot be used by this build: `code` 'ahead' (a newer build migrated it) or 'changed' (see migrate()). */
+export class SchemaError extends Error {
+  constructor(code, message) {
+    super(message);
+    this.name = 'SchemaError';
+    this.code = code;
+  }
+}
 
 // One SQLite file holds all state: users, workspaces, sessions, tokens, the
 // audit log. node:sqlite is built into Node (22.13+), so there is no native
@@ -16,14 +29,39 @@ export class Db {
     this.migrate();
   }
 
+  /**
+   * Run the migrations this database has not had, after two checks that stop the process instead of starting it
+   * wrong (PRA-OPS-005):
+   *   - the database is ahead of this build (an older build started after a newer one migrated it): SchemaError
+   *     'ahead'. Go forward again, or restore the backup taken before the newer build (deploy/rollback.sh).
+   *   - a migration this database already ran is not the one at the same place in this build (edited, or moved by a
+   *     merge): SchemaError 'changed'. Each migration's SHA-256 is kept by its place, in schema_checksums; one this
+   *     database ran before the table existed is taken as it is now, the first time this check sees it.
+   */
   migrate() {
     const have = this.raw.prepare('PRAGMA user_version').get().user_version;
+    if (have > MIGRATIONS.length) throw new SchemaError('ahead', `the database is at migration ${have} and this build knows ${MIGRATIONS.length}: deploy the newer build, or restore the backup taken before it (deploy/rollback.sh)`);
+    this.raw.exec('CREATE TABLE IF NOT EXISTS schema_checksums (position INTEGER PRIMARY KEY, sha256 TEXT NOT NULL, recorded_at TEXT NOT NULL)');
+    const kept = new Map(this.raw.prepare('SELECT position, sha256 FROM schema_checksums').all().map((r) => [r.position, r.sha256]));
+    const record = this.raw.prepare('INSERT OR IGNORE INTO schema_checksums (position, sha256, recorded_at) VALUES (?, ?, ?)');
+    for (let v = 0; v < have; v++) {
+      const sum = checksum(MIGRATIONS[v]);
+      if (!kept.has(v + 1)) record.run(v + 1, sum, new Date().toISOString());
+      else if (kept.get(v + 1) !== sum) throw new SchemaError('changed', `migration ${v + 1} is not the one this database ran: a shipped migration was edited or moved (src/db/schema.js is append-only)`);
+    }
     for (let v = have; v < MIGRATIONS.length; v++) {
       this.tx(() => {
         this.raw.exec(MIGRATIONS[v]);
         this.raw.exec(`PRAGMA user_version = ${v + 1}`);
+        record.run(v + 1, checksum(MIGRATIONS[v]), new Date().toISOString());
       });
     }
+  }
+
+  /** Where the schema stands: { have (migrations run), want (this build's), ok }. */
+  schemaState() {
+    const have = this.raw.prepare('PRAGMA user_version').get().user_version;
+    return { have, want: MIGRATIONS.length, ok: have === MIGRATIONS.length };
   }
 
   run(sql, ...params) {
