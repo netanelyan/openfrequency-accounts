@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 
 // Every JavaScript file of the repository parses, the entry scripts included. The suite imports the modules it tests,
 // but never scripts/web.js, which only the service runs: on 2026-10-30 a quote inside one of its strings stopped the
-// service from starting at all, sign-in down for twenty minutes, with every test passing. node --check reads each file
+// service from starting at all, sign-in down for three minutes, with every test passing. node --check reads each file
 // without running it.
 
 const root = fileURLToPath(new URL('..', import.meta.url));
