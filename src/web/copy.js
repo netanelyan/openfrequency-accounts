@@ -874,6 +874,17 @@ export const OPS = {
   tederDemosTitle: 'הדמואים של תדר שעוד לא עלו',
   tederDemosHint: 'מי שביקשו באתר דמו של תדר, והעמוד שלו עוד לא באוויר. כל שם פותח את הדמו בתדר.',
 
+  // The website's leads that reached only the email (Toran's leads, from the website's GET /internal/leads)
+  leadsTitle: 'לידים מהאתר',
+  leadsLead: 'עד עכשיו הם הגיעו רק במייל. כאן 30 הימים האחרונים.',
+  leadsDown: 'לא הצלחנו לקרוא עכשיו את הלידים מהאתר (GET /internal/leads). שאר הדף עובד בלעדיהם.',
+  waitlistTitle: (n) => (n === 1 ? 'נרשם אחד לרשימת ההמתנה של תורן' : `${n} נרשמו לרשימת ההמתנה של תורן`),
+  waitlistHint: 'תורן עוד לא פתוח, אז אין מה לשלוח להם עכשיו.',
+  waitlistAt: (ago) => `נרשמו ${ago}`,
+  handoffTitle: 'לא הגיעו לתורן או לתדר',
+  handoffHint: 'האתר ניסה להעביר אותם ולא הצליח. הם שמורים באתר (node server/lead.mjs list).',
+  handoffNoNumber: 'בלי מספר, ביקשו עם קוד',
+
   talkingTitle: 'בשיחה',
   talkingEmpty: 'אף אחד עוד לא בשיחה',
   talkingEmptyLead: 'מי שעונים לכם עוברים לכאן כשמסמנים "ענו לי".',

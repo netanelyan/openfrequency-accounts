@@ -158,6 +158,40 @@ function numberLine(line) {
   return `<p class="number-line ok" role="note">${esc(OPS.numberLive({ meta: 'Meta', twilio: 'Twilio' }[line.via]))}${line.number ? ` <bdi class="ltr">+${esc(line.number)}</bdi>` : ''}</p>`;
 }
 
+/** A website lead's phone or email as a link to its chat or mail (no message: nothing is ready to send them). */
+function contactLink(contact) {
+  if (!contact) return '';
+  const phone = /^\d+$/.test(contact);
+  return ext(phone ? `https://wa.me/${contact}` : `mailto:${contact}`, `<bdi class="ltr">${esc(phone ? `+${contact}` : contact)}</bdi>`);
+}
+
+/**
+ * The website's leads that reached the owner only by email: Toran's waitlist (a list: Toran is not open yet, so there is
+ * nothing to send them), and leads whose hand-off to Toran or Teder never went through. Nothing when there are none;
+ * a line when Toran could not read them.
+ */
+function leadsSection(leads, at) {
+  if (!leads) return '';
+  if (!leads.ok) return `<section id="site-leads"><div class="list-h"><h2>${esc(OPS.leadsTitle)}</h2></div><p class="muted note">${esc(OPS.leadsDown)}</p></section>`;
+  if (!leads.waitlist.length && !leads.failed.length) return '';
+  const when = (fn, x) => (x.at ? `<span class="muted end">${esc(fn(agoHe(x.at, at)))}</span>` : '');
+  const store = (x) => (x.store ? `<bdi class="ltr who">${esc(x.store)}</bdi>` : '');
+  const waitlist = leads.waitlist.length
+    ? `<details class="card site-leads"><summary>${esc(OPS.waitlistTitle(leads.waitlist.length))}</summary><ul class="people">${leads.waitlist
+        .map((x) => `<li>${contactLink(x.contact)}${store(x)}${when(OPS.waitlistAt, x)}</li>`)
+        .join('')}</ul><p class="muted">${esc(OPS.waitlistHint)}</p></details>`
+    : '';
+  const failed = leads.failed.length
+    ? `<div class="card site-leads"><h3>${esc(OPS.handoffTitle)}</h3><ul class="people">${leads.failed
+        .map((x) => `<li>${x.product ? productTag(x.product) : ''}${store(x)}${x.contact ? contactLink(x.contact) : `<span class="muted">${esc(OPS.handoffNoNumber)}</span>`}${when(OPS.stuckAsked, x)}</li>`)
+        .join('')}</ul><p class="muted">${esc(OPS.handoffHint)}</p></div>`
+    : '';
+  return `<section id="site-leads"><div class="list-h"><h2>${esc(OPS.leadsTitle)}</h2><p class="muted">${esc(OPS.leadsLead)}</p></div>
+${failed}
+${waitlist}
+</section>`;
+}
+
 const down = (toran) =>
   `<div class="card empty" role="note"><b>${esc(OPS.toranDown)}</b><p>${esc(toran.why === 'not_configured' ? OPS.toranNotConfigured : OPS.toranDownLead(toran.base))}</p></div>`;
 const empty = (title, lead) => `<div class="card empty"><b>${esc(title)}</b><p>${esc(lead)}</p></div>`;
@@ -222,6 +256,7 @@ ${d.noContact.length ? `<details class="card no-contact"><summary>${esc(OPS.noCo
     : '';
 
   const teder = d ? tederSection(d.tederDemos, at) : '';
+  const site = d ? leadsSection(d.leads, at) : '';
   const talking = !d ? down(toran) : d.conversations.length ? `<div class="ops-cards">${d.conversations.map((c) => conversation(csrf, c, at)).join('')}</div>` : empty(OPS.talkingEmpty, OPS.talkingEmptyLead);
   const funnel = funnels ? `<div class="funnels">${funnelTable('toran', funnels.toran)}${funnelTable('teder', funnels.teder)}</div><p class="muted">${esc(OPS.funnelNote)}</p>` : down(toran);
 
@@ -234,6 +269,7 @@ ${contact}
 </section>
 ${stuck}
 ${teder}
+${site}
 <section id="talking"><div class="list-h"><h2>${esc(OPS.talkingTitle)}</h2></div>
 ${talking}
 </section>

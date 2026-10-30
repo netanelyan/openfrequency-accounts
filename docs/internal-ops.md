@@ -142,6 +142,13 @@ request, not a lead. Under them, "הדמואים של תדר שעוד לא על�
 failed one is such a card, with Teder's reason under its name; the others (building, waiting for
 the check in Teder) are a line each. Every name opens the demo in Teder (`leadUrl`).
 
+"לידים מהאתר" shows Toran's `leads`, the website's leads that until now reached the owner only
+by email: those no product took ("לא הגיעו לתורן או לתדר", with the product, the store, the
+number and when), then Toran's waitlist, folded ("<n> נרשמו לרשימת ההמתנה של תורן"): the
+number or email as a link to the chat or the mail, with no message, since Toran is not open
+yet. Neither has a button. With both empty there is no section; when Toran could not read the
+website, the section says so in one line.
+
 Above the numbers, one line says how our number sends, from Toran's `demoLine` (`live`, `via`:
 `meta`, `twilio` or `sim`, and `number`): "המספר שלנו מחובר דרך Meta." with the number, or, when
 it is not live (on the VPS, Toran's demo number on the simulator), "המספר שלנו עוד לא מחובר, אז

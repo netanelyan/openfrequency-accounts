@@ -46,6 +46,14 @@ export function sampleOps(at = Date.now()) {
       { id: '14', domain: 'kelim.example', name: 'חנות הכלים', status: 'failed', why: 'לא נבנה', error: 'לא הצלחנו לקרוא את החנות', whatsapp: '972500000208', at: ago(at, 20), message: broken, target: wa('972500000208', broken), leadUrl: 'https://teder.openfrequency.co.il/demos/14' },
       { id: '15', domain: 'new-teder.example', name: 'new-teder.example', status: 'building', why: 'בבנייה', error: null, whatsapp: null, at: ago(at, 1), message: null, target: { kind: null, href: null, label: 'להעתיק' }, leadUrl: 'https://teder.openfrequency.co.il/demos/15' },
     ],
+    leads: {
+      ok: true,
+      waitlist: [
+        { id: 31, store: 'soon-shop.example', contact: '972500000209', page: '/toran', at: ago(at, 30) },
+        { id: 33, store: null, contact: 'soon@shop.example', page: '/join', at: ago(at, 50) },
+      ],
+      failed: [{ id: 32, store: 'lost-lead.example', contact: '972500000210', page: '/teder', at: ago(at, 4), product: 'teder', source: 'teder' }],
+    },
     conversations: [
       { key: 'toran:9', product: 'toran', id: '9', name: 'מאפיית השכונה', domain: 'bakery.example', replied_at: ago(at, 48), next_step: 'לקבוע שיחה', next_step_at: ago(at, -20), target: wa('972500000205'), page: 'https://toran.openfrequency.co.il/p/bakery', status: 'pilot', leadUrl: lead(9) },
       { key: 'teder:7', product: 'teder', id: '7', name: 'סטודיו כרמל', domain: 'carmel-studio.example', replied_at: ago(at, 72), next_step: 'לשלוח הצעת מחיר', next_step_at: ago(at, 2), target: wa('972500000202'), page: 'https://teder.openfrequency.co.il/s/carmel-x1', status: 'approved', leadUrl: null },
