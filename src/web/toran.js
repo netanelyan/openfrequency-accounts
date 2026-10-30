@@ -76,7 +76,8 @@ export function readOps(b) {
     teder: { ok: b.teder?.ok !== false },
     items,
     noContact: list(b.noContact).map((x) => ({ id: idOf(x.id), name: str(x.name, 200) || str(x.domain, 200) || '', domain: str(x.domain, 200) || '', score: num(x.score), leadUrl: safeHref(x.leadUrl) })),
-    stuck: list(b.stuck).map((x) => ({ domain: str(x.domain, 200) || '', phone: String(x.phone ?? '').replace(/\D/g, '').slice(0, 15), at: str(x.at, 40), why: str(x.why, 300) || '', storeId: num(x.storeId), leadUrl: safeHref(x.leadUrl) })),
+    // A request with nothing to send yet, with Toran's message for its reason (null when there is nothing to say).
+    stuck: list(b.stuck).map((x) => ({ product: kindOf(x.product), domain: str(x.domain, 200) || '', phone: String(x.phone ?? '').replace(/\D/g, '').slice(0, 15), at: str(x.at, 40), why: str(x.why, 300) || '', storeId: num(x.storeId), message: str(x.message), target: target(x.target), leadUrl: safeHref(x.leadUrl) })),
     conversations,
     funnels: { toran: stages(b.funnels?.toran), teder: stages(b.funnels?.teder) },
     // Our one WhatsApp number, once our company store connected it (null before), and the demo number as it sends now:

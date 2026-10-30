@@ -72,6 +72,30 @@ ${buttons}
 </article>`;
 }
 
+/**
+ * A demo asked for on the website with nothing to send yet: why, since when, and Toran's message for the reason, to copy
+ * and send to the number that asked. No "sent" here: it is a request, not a lead with an outreach.
+ */
+function stuckCard(x, at, i) {
+  const msgId = `stuck-${i}`;
+  const name = `<bdi class="ltr">${esc(x.domain)}</bdi>`;
+  const sub = [esc(x.why), x.at ? esc(OPS.stuckAsked(agoHe(x.at, at))) : '', x.phone ? `<bdi class="ltr">+${esc(x.phone)}</bdi>` : ''].filter(Boolean).join(' · ');
+  const head = `<header class="op-who">${x.product ? productMark(x.product) : ''}<div><h3>${x.leadUrl ? ext(x.leadUrl, name) : name}${x.product ? ` ${productTag(x.product)}` : ''}</h3><small>${sub}</small></div></header>`;
+  const chat = x.target.href || (x.phone ? `https://wa.me/${x.phone}` : null);
+  const button = x.message
+    ? chat
+      ? `<a class="button primary" href="${esc(chat)}" target="_blank" rel="noopener" data-copy="#${msgId}" data-done="${esc(OPS.copied)}" data-fail="${esc(OPS.copyFailed)}">${esc(x.target.label || OPS.copyOpen)}</a>`
+      : `<button type="button" class="js-only primary" data-copy="#${msgId}" data-done="${esc(OPS.copied)}" data-fail="${esc(OPS.copyFailed)}">${esc(OPS.copy)}</button>`
+    : chat
+      ? ext(chat, esc(OPS.openChat), 'button')
+      : '';
+  return `<article class="op" data-item>
+${head}
+${x.message ? `<textarea id="${msgId}" rows="4" dir="rtl" aria-label="${esc(OPS.message)}">${esc(x.message)}</textarea>` : ''}
+<div class="op-acts">${button}</div>
+</article>`;
+}
+
 function conversation(csrf, c, at) {
   const due = c.next_step_at && Date.parse(c.next_step_at) <= at;
   const step = c.next_step_at ? `${due ? '<b>' : ''}${esc(OPS.nextAt(stampHe(c.next_step_at), c.next_step))}${due ? '</b>' : ''}` : c.next_step ? esc(c.next_step) : '';
@@ -175,13 +199,7 @@ ${d.noContact.length ? `<details class="card no-contact"><summary>${esc(OPS.noCo
           .join('')}</ul><p class="muted">${esc(OPS.noContactHint)}</p></details>` : ''}`;
 
   const stuck = d?.stuck.length
-    ? `<section id="stuck"><div class="list-h"><h2>${esc(OPS.stuckTitle)}</h2></div><div class="card"><ul class="people stuck">${d.stuck
-        .map((x) => {
-          const href = x.leadUrl || (x.phone ? `https://wa.me/${x.phone}` : null);
-          const name = `<bdi class="ltr">${esc(x.domain)}</bdi>`;
-          return `<li>${href ? ext(href, `<b>${name}</b>`, 'who') : `<b class="who">${name}</b>`}<span class="muted">${esc(x.why)}${x.at ? ` · ${esc(OPS.stuckAsked(agoHe(x.at, at)))}` : ''}</span></li>`;
-        })
-        .join('')}</ul><p class="muted">${esc(OPS.stuckHint)}</p></div></section>`
+    ? `<section id="stuck"><div class="list-h"><h2>${esc(OPS.stuckTitle)}</h2><p class="muted">${esc(OPS.stuckHint)}</p></div><div class="ops-cards">${d.stuck.map((x, i) => stuckCard(x, at, i)).join('')}</div></section>`
     : '';
 
   const talking = !d ? down(toran) : d.conversations.length ? `<div class="ops-cards">${d.conversations.map((c) => conversation(csrf, c, at)).join('')}</div>` : empty(OPS.talkingEmpty, OPS.talkingEmptyLead);

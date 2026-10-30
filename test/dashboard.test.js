@@ -94,7 +94,13 @@ test('the superadmin gets the whole dashboard: who to write to with the message,
 
     // No contact, and the requests with nothing to send.
     assert.match(b, /<summary>דף אחד מוכן, ואין לנו איך לפנות לחנות<\/summary>[^]*?href="https:\/\/toran\.openfrequency\.co\.il\/lead\/31"[^]*?צמחים בבית[^]*?ציון 64/);
-    assert.match(b, /<h2>ביקשו דמו באתר, ועוד אין מה לשלוח<\/h2>[^]*?wix-store\.example[^]*?האתר על Wix, ותורן בונה דמו רק לחנויות Shopify · ביקשו לפני 6 שעות/);
+    assert.match(b, /<h2>ביקשו דמו באתר, ועוד אין מה לשלוח<\/h2>[^]*?wix-store\.example[^]*?האתר על Wix, ותורן בונה דמו רק לחנויות Shopify · ביקשו לפני 6 שעות · <bdi class="ltr">\+972500000204<\/bdi>/);
+    // Each with Toran's message for its reason, to copy and send to the number that asked; no "sent", it is no lead.
+    const stuck = b.slice(b.indexOf('<section id="stuck">'), b.indexOf('<section id="talking">'));
+    assert.match(stuck, /<textarea id="stuck-0" rows="4" dir="rtl" aria-label="ההודעה">היי, כאן OpenFrequency\. ביקשתם באתר דמו של תורן ל־wix-store\. תורן בונה דמו רק לחנויות Shopify, והחנות על Wix, אז לא יכולנו לבנות אותו\. אם יש שאלה, אפשר לענות כאן\.<\/textarea>/);
+    assert.match(stuck, /<a class="button primary" href="https:\/\/wa\.me\/972500000204\?text=%D7%94%D7%99%D7%99[^"]*" target="_blank" rel="noopener" data-copy="#stuck-0" data-done="ההודעה הועתקה"[^>]*>להעתיק ולפתוח וואטסאפ<\/a>/);
+    assert.match(stuck, /<a href="https:\/\/toran\.openfrequency\.co\.il\/lead\/40" target="_blank" rel="noopener"><bdi class="ltr">wix-store\.example<\/bdi><\/a> <span class="tag p-toran">תורן<\/span>/);
+    assert.doesNotMatch(stuck, /<form|שלחתי/);
 
     // In a conversation: Toran's pilot (already a pilot: only "paying"), Teder's customer, the next step's form.
     const talking = b.slice(b.indexOf('<section id="talking">'), b.indexOf('<section id="funnel">'));
@@ -286,6 +292,28 @@ test('with OF_INTERNAL_TOKEN unset, /admin does not call Toran and says why', as
     const b = (await t.op.get('/admin')).body;
     assert.match(b, /OF_INTERNAL_TOKEN לא מוגדר כאן, או שהוא קצר מ-32 תווים, אז לא פנינו לתורן\./);
     assert.equal(t.fake.calls.length, 0);
+  } finally {
+    await t.done();
+  }
+});
+
+test('a request with nothing to say (a Teder demo taken down), or from a Toran before the messages, opens the chat alone', async () => {
+  const t = await setup();
+  try {
+    const at = new Date(now() - 3_600_000).toISOString();
+    t.fake.state.data = {
+      ...sampleOps(now()),
+      stuck: [
+        { product: 'teder', domain: 'gone.example', phone: '972500000211', at, why: 'הדמו של תדר הוסר', storeId: null, message: null, target: { kind: 'whatsapp', href: 'https://wa.me/972500000211', label: 'להעתיק ולפתוח וואטסאפ' }, leadUrl: null },
+        { domain: 'old.example', phone: '972500000212', at, why: 'הדף לא נבנה', storeId: 41, leadUrl: null },
+      ],
+    };
+    const b = (await t.op.get('/admin')).body;
+    const stuck = b.slice(b.indexOf('<section id="stuck">'), b.indexOf('<section id="talking">'));
+    assert.equal((stuck.match(/<article class="op" data-item>/g) || []).length, 2);
+    assert.match(stuck, /<span class="tag p-teder">תדר<\/span><\/h3><small>הדמו של תדר הוסר · ביקשו לפני שעה[^]*?<a class="button" href="https:\/\/wa\.me\/972500000211" target="_blank" rel="noopener">לפתוח שיחה<\/a>/);
+    assert.match(stuck, /<bdi class="ltr">old\.example<\/bdi><\/h3><small>הדף לא נבנה[^]*?<a class="button" href="https:\/\/wa\.me\/972500000212" target="_blank" rel="noopener">לפתוח שיחה<\/a>/);
+    assert.doesNotMatch(stuck, /<textarea/);
   } finally {
     await t.done();
   }

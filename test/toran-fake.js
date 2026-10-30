@@ -30,6 +30,7 @@ export function sampleOps(at = Date.now()) {
   const tried = 'היי, ראינו שניסיתם את הדמו של תורן לנעלי הגליל. איך היה?';
   const asked = 'הדמו של תורן לתבלינים מהשוק מוכן.\nhttps://toran.openfrequency.co.il/p/spice-market';
   const first = 'היי, כאן OpenFrequency. הכנו לקרמיקה בעמק דף שמראה את תורן עונה ללקוחות של החנות.';
+  const wixed = 'היי, כאן OpenFrequency. ביקשתם באתר דמו של תורן ל־wix-store. תורן בונה דמו רק לחנויות Shopify, והחנות על Wix, אז לא יכולנו לבנות אותו. אם יש שאלה, אפשר לענות כאן.';
   return {
     teder: { ok: true },
     items: [
@@ -39,7 +40,7 @@ export function sampleOps(at = Date.now()) {
       { key: 'toran:21', product: 'toran', id: '21', reason: 'first_send', rank: 47, name: 'קרמיקה בעמק', domain: 'emek-ceramics.example', why: 'מוכן לשליחה, ציון 71', message: first, target: { kind: 'email', href: `mailto:hello@emek-ceramics.example?subject=${encodeURIComponent('תורן לקרמיקה בעמק')}&body=${encodeURIComponent(first)}`, label: 'להעתיק ולפתוח מייל' }, direct: false, mark: 'sent', page: 'https://toran.openfrequency.co.il/p/emek-ceramics', at: ago(at, 26), leadUrl: lead(21) },
     ],
     noContact: [{ id: 31, name: 'צמחים בבית', domain: 'plants-home.example', score: 64, leadUrl: lead(31) }],
-    stuck: [{ domain: 'wix-store.example', phone: '972500000204', at: ago(at, 6), why: 'האתר על Wix, ותורן בונה דמו רק לחנויות Shopify', storeId: 40, leadUrl: lead(40) }],
+    stuck: [{ product: 'toran', domain: 'wix-store.example', phone: '972500000204', at: ago(at, 6), why: 'האתר על Wix, ותורן בונה דמו רק לחנויות Shopify', storeId: 40, message: wixed, target: wa('972500000204', wixed), leadUrl: lead(40) }],
     conversations: [
       { key: 'toran:9', product: 'toran', id: '9', name: 'מאפיית השכונה', domain: 'bakery.example', replied_at: ago(at, 48), next_step: 'לקבוע שיחה', next_step_at: ago(at, -20), target: wa('972500000205'), page: 'https://toran.openfrequency.co.il/p/bakery', status: 'pilot', leadUrl: lead(9) },
       { key: 'teder:7', product: 'teder', id: '7', name: 'סטודיו כרמל', domain: 'carmel-studio.example', replied_at: ago(at, 72), next_step: 'לשלוח הצעת מחיר', next_step_at: ago(at, 2), target: wa('972500000202'), page: 'https://teder.openfrequency.co.il/s/carmel-x1', status: 'approved', leadUrl: null },

@@ -133,7 +133,9 @@ Toran's links (`target.href`, `page`, `leadUrl`) reach the page only when they a
 `http:` or `mailto:` addresses. A card's `target.href` has its message written in it (wa.me's
 `?text=`, mailto's `&body=`), so "copy and open" opens the chat with it even without script; with
 script (`static/admin.js`) the link takes the message as it is in the card's box when pressed,
-edited or not, and the message is copied too.
+edited or not, and the message is copied too. A request with nothing to send yet (`stuck`) is a
+card too, with Toran's message for its reason and the same button, and no "שלחתי": it is a
+request, not a lead.
 
 Above the numbers, one line says how our number sends, from Toran's `demoLine` (`live`, `via`:
 `meta`, `twilio` or `sim`, and `number`): "המספר שלנו מחובר דרך Meta." with the number, or, when
