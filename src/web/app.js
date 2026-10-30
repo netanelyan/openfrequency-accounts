@@ -15,12 +15,12 @@ import { acceptInvite, consumeMagicLink, createInvite, InviteError, normEmail, p
 import { verifySuperadmin } from '../accounts/superadmin.js';
 import { createWorkspace, getWorkspace, listWorkspaces, recentAudit, setDisabled, setProduct, startViewAs, stopViewAs, WorkspaceError } from '../accounts/workspaces.js';
 import { checkSignup, completeSignup, CONTACT_URL, dropSignup, peekSignup, requestSignup, SignupError, signupNotify, signupOpen, signupProducts } from '../accounts/signup.js';
-import { billingReady, checkoutUrl, payHow } from '../accounts/billing.js';
+import { billingReady, checkoutUrl, payHow, paymentMode, supportWa } from '../accounts/billing.js';
 import { accessAll, accessFor, BillingError, cancelSubscription, resumeSubscription, setComp } from '../accounts/entitlement.js';
 import { eraseWorkspace, productsEver, sameName } from '../accounts/erase.js';
 import { prefsOf, savePrefs } from '../accounts/notify.js';
 import { cancelMail, cancelNoticeMail, deleteNoticeMail, existingAccountMail, inviteMail, magicLinkMail, paidMail, signupMail, signupNoticeMail, welcomeMail } from '../mail/messages.js';
-import { CANCEL, ERASE, MAIL, NOTIFY, OPS, PRODUCT_NAMES, SETUP, SIGNUP, T, dayHe, ils, phoneHe } from './copy.js';
+import { CANCEL, ERASE, MAIL, NOTIFY, OPS, PRODUCT_NAMES, SETUP, SIGNUP, T, dayHe, ils, opensAfter, phoneHe } from './copy.js';
 import { setupClient, setupState } from './setup.js';
 import { eraseClient } from './erase.js';
 import { createLinkCode, openLinkCode, phoneIn, phonesFor, PHONE, removePhone, setConsent } from '../accounts/phones.js';
@@ -85,14 +85,14 @@ export function productUrls(env = process.env) {
  * emails.
  */
 export function supportUrl(env = process.env, text = '') {
-  const digits = String(env.OF_SUPPORT_WA || '').replace(/[\s+-]/g, '');
-  if (!PHONE.test(digits)) return null;
+  const digits = supportWa(env);
+  if (!digits) return null;
   return `https://wa.me/${digits}${text ? `?text=${encodeURIComponent(text)}` : ''}`;
 }
 
 /**
- * Where a customer asks how to pay, while no payment provider is connected (ACC-02): our WhatsApp (OF_SUPPORT_WA), else
- * an email to the address our emails' replies go to (MAIL_REPLY_TO), else the website's contact page.
+ * Where a customer asks about paying in manual mode (OF_PAYMENT, ACC-02): our WhatsApp (OF_SUPPORT_WA), else an email to
+ * the address our emails' replies go to (MAIL_REPLY_TO), else the website's contact page.
  */
 export function payContact(env = process.env, text = '') {
   const wa = supportUrl(env, text);
@@ -178,14 +178,16 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
   // Any limiter the caller does not pass is the usual one.
   const limiters = { ...defaultLimiters(), ...given };
   const signupOn = signupOpen(env);
+  // How customers pay (OF_PAYMENT, src/accounts/billing.js): what /signup, its confirmation page, /setup and the emails say.
+  const payment = paymentMode(env);
   // The products sign-up offers now (OF_SIGNUP_PRODUCTS); the others show as coming soon and are refused.
   const openProducts = signupProducts(env);
   // Each product's setup checklist (src/web/setup.js), for /setup, the home page and where a customer lands.
   const setup = setupClient({ env, log, productUrls: urls, fetchImpl: setupFetch, ...(setupMs ? { timeoutMs: setupMs } : {}) });
   /**
    * A workspace's checklist: payment (the paywall: each product's access today), its products' answers, and whether
-   * it is finished (setupState()). Without a provider, payment leads to us: our WhatsApp with the words written, or
-   * the website's contact page.
+   * it is finished (setupState()). With a provider, payment leads to its payment page; in manual mode, questions about
+   * it lead to us: our WhatsApp with the words written, an email, or the website's contact page.
    */
   const setupFor = async (workspaceId) => {
     const products = enabledProducts(db, workspaceId);
@@ -202,16 +204,29 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
   // Deleting a workspace: the products' parts first (src/web/erase.js), then ours (src/accounts/erase.js).
   const eraser = eraseClient({ env, log, fetchImpl: eraseFetch, ...(eraseMs ? { timeoutMs: eraseMs } : {}) });
   // The owner hears of each confirmed sign-up (OF_SIGNUP_NOTIFY). Called once its transaction has committed; the
-  // mailer queues and never waits, and a failure here is logged and never stands in the customer's way.
+  // mailer queues and never waits, and a failure here is logged and never stands in the customer's way. It has each
+  // product's plan and price as its subscription has them, and what to do next: in manual mode, email the customer
+  // the payment details.
   const notifyTo = signupNotify(env);
   const noticeSignup = ({ user, workspace }, method, base) => {
     if (!notifyTo.length) return;
     try {
+      const products = enabledProducts(db, workspace.id);
+      const subs = subscriptionsOf(db, workspace.id);
       const fields = {
         name: user.name,
         email: user.email,
         business: workspace.name,
-        products: enabledProducts(db, workspace.id).map((p) => PRODUCT_NAMES[p]).join(', '),
+        products: products.map((p) => PRODUCT_NAMES[p]).join(', '),
+        prices: products.map((p) => {
+          const s = subs[p] || {};
+          const list = listPrice(p, s.plan);
+          const setupFee = s.setup ?? list.setup;
+          return MAIL.noticePrice(P.productLabel(p, s.plan), ils(s.monthly ?? list.monthly), setupFee ? ils(setupFee) : '', (s.vat ?? list.vat) === 'included' ? T.vatIncluded : T.vatExcluded);
+        }),
+        payment,
+        names: products.map((p) => PRODUCT_NAMES[p]).join(SIGNUP.and),
+        many: products.length > 1,
         at: workspace.created_at,
         method,
         link: `${base}/admin/accounts#ws-${workspace.id}`,
@@ -231,15 +246,20 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
     }
   };
   // Right after a sign-up is confirmed: the welcome email, what happens next (pay, then set up), with each product's
-  // plan and price, and how payment works today when the owner has said (OF_PAYMENT_METHOD).
+  // plan and price (Teder's setup fee not refunded, as its terms say), and how paying works in this mode (OF_PAYMENT):
+  // manual, we email the details, with how they pay (OF_PAYMENT_METHOD) when the owner has said, and questions come
+  // to us; provider, they pay on the setup page.
   const welcome = ({ user, workspace }, base) => {
     try {
       const subs = subscriptionsOf(db, workspace.id);
-      const prices = enabledProducts(db, workspace.id).map((p) => {
+      const products = enabledProducts(db, workspace.id);
+      const prices = products.map((p) => {
         const list = listPrice(p, subs[p]?.plan);
-        return MAIL.welcomePrice(P.productLabel(p, subs[p]?.plan), ils(subs[p]?.monthly ?? list.monthly), ils(subs[p]?.setup ?? list.setup));
+        const setupFee = subs[p]?.setup ?? list.setup;
+        return MAIL.welcomePrice(P.productLabel(p, subs[p]?.plan), ils(subs[p]?.monthly ?? list.monthly), ils(setupFee), p === 'teder' && setupFee > 0);
       });
-      mailer.send(welcomeMail(user.email, { business: workspace.name, link: `${base}/setup`, providerReady: billingReady(env), prices, payHow: payHow(env) }));
+      const opens = opensAfter(payment, products.map((p) => PRODUCT_NAMES[p]).join(SIGNUP.and), products.length > 1);
+      mailer.send(welcomeMail(user.email, { business: workspace.name, link: `${base}/setup`, payment, opens, prices, payHow: payHow(env), wa: supportWa(env) }));
     } catch (e) {
       log(`[accounts] the welcome email for workspace ${workspace.id} failed: ${e.message}`);
     }
@@ -595,7 +615,7 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
           if (req.method !== 'POST') {
             const t = url.searchParams.get('t') || '';
             const row = peekSignup(db, t, 'email');
-            return row ? page(200, SIGNUP.confirmTitle, P.signupConfirmPage({ csrf, token: t, row })) : dead();
+            return row ? page(200, SIGNUP.confirmTitle, P.signupConfirmPage({ csrf, token: t, row, payment })) : dead();
           }
           const done = completeSignup(db, f('t'), { kind: 'email', ip });
           if (!done) return dead();
@@ -618,12 +638,12 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
           const asked = url.searchParams.get('p');
           const start = openProducts.includes(asked) ? [asked] : openProducts.length === 1 ? openProducts : [];
           // ?plan= (the website's button under each of Teder's plans) starts that plan chosen.
-          return page(200, SIGNUP.title, P.signupPage({ csrf, google: Boolean(google), open: openProducts, form: { products: start, plan: url.searchParams.get('plan') || '' } }));
+          return page(200, SIGNUP.title, P.signupPage({ csrf, google: Boolean(google), open: openProducts, payment, form: { products: start, plan: url.searchParams.get('plan') || '' } }));
         }
 
         const via = f('via') === 'google' && google ? 'google' : 'email';
         const raw = { name: f('name').slice(0, 200), business: f('business').slice(0, 200), email: f('email').slice(0, 254), products: form.getAll('products'), plan: f('plan').slice(0, 20), terms: f('terms') === '1' };
-        const again = (status, error, extra) => send(status, P.layout({ title: SIGNUP.title, body: P.signupPage({ csrf, form: raw, error, google: Boolean(google), open: openProducts }), v: V }), extra);
+        const again = (status, error, extra) => send(status, P.layout({ title: SIGNUP.title, body: P.signupPage({ csrf, form: raw, error, google: Boolean(google), open: openProducts, payment }), v: V }), extra);
         const sent = (email) => page(200, SIGNUP.sentTitle, P.signupSentPage({ email }));
         // The honeypot: a field people never see. Filled, it was not a person: the same page as a real sign-up, and
         // nothing kept or sent.

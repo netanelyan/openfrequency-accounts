@@ -3,7 +3,7 @@ import { audit } from '../core/audit.js';
 import { j } from '../db/index.js';
 import { addDays, addMonths, graceLast, israelToday } from '../accounts/subscriptions.js';
 import { eraseWorkspace, productsEver } from '../accounts/erase.js';
-import { billingReady, payHow } from '../accounts/billing.js';
+import { checkoutUrl, payHow, paymentMode, supportWa } from '../accounts/billing.js';
 import { signupNotify } from '../accounts/signup.js';
 import { billingMail, billingNoticeMail, idleMail, idleNoticeMail } from '../mail/messages.js';
 import { MAIL, ils } from './copy.js';
@@ -21,7 +21,9 @@ import { accountsBase } from './internal.js';
 //               it stops until paid (entitlement.js 'due'). This email is the notice the terms speak of
 //      stopped  the grace is over
 //    The operator (OF_SIGNUP_NOTIFY) hears of each due and stopped. A recorded payment moves paid_until on, and the
-//    next period's emails follow it.
+//    next period's emails follow it. How to pay follows the payment mode (OF_PAYMENT, src/accounts/billing.js): with a
+//    provider, soon and due lead to its payment page ("לתשלום"); in manual mode, they say to pay by the details we
+//    emailed (and how, OF_PAYMENT_METHOD, when set) and whom to ask, and lead to the account.
 //
 // 2. Retention (ACC-07, PRA-DB-005), the periods the privacy policy states:
 //      sign-ups never confirmed                       deleted 30 days after the form was sent
@@ -62,7 +64,8 @@ function billing(db, { mailer, env, base, notifyTo, today }) {
       WHERE wp.enabled = 1 AND wp.comp = 0 AND w.disabled_at IS NULL AND w.deleted_at IS NULL
         AND s.paid_until IS NOT NULL AND s.cancelled_at IS NULL AND s.ends_on IS NULL`
   );
-  const pay = billingReady(env) ? MAIL.payByProvider : [MAIL.payByUs, payHow(env) ? MAIL.welcomePayHow(payHow(env)) : ''].filter(Boolean).join(' ');
+  const provider = paymentMode(env) === 'provider';
+  const pay = provider ? MAIL.payByProvider : [MAIL.payByUs, ...(payHow(env) ? [MAIL.welcomePayHow(payHow(env))] : []), MAIL.payAsk(supportWa(env))];
   const sent = { soon7: 0, soon1: 0, due: 0, stopped: 0 };
   for (const s of rows) {
     const kind = billingKind(s.paid_until, today);
@@ -72,7 +75,8 @@ function billing(db, { mailer, env, base, notifyTo, today }) {
     if (Number(fresh.changes) !== 1) continue;
     const to = ownersOf(db, s.workspace_id);
     const fields = { kind, business: s.business, product: s.product, dueOn, graceUntil: graceLast(s.paid_until), amount: MAIL.amount(ils(s.monthly ?? 0), s.vat !== 'included'), pay, link: `${base}/setup` };
-    for (const email of to) mailer.send(billingMail(email, fields));
+    const online = provider ? { payLink: checkoutUrl(s.workspace_id, env), payButton: MAIL.payOnlineButton } : {};
+    for (const email of to) mailer.send(billingMail(email, { ...fields, ...online }));
     db.run('UPDATE billing_notices SET recipients = ? WHERE workspace_id = ? AND product = ? AND kind = ? AND due_on = ?', to.length, s.workspace_id, s.product, kind, dueOn);
     if (kind === 'due' || kind === 'stopped') for (const op of notifyTo) mailer.send(billingNoticeMail(op, { ...fields, link: `${base}/admin/accounts#ws-${s.workspace_id}` }));
     audit(db, { action: `billing_${kind}`, workspaceId: s.workspace_id, detail: { product: s.product, due_on: dueOn, recipients: to.length } });

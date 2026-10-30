@@ -199,14 +199,14 @@ test('a customer lands on /setup after signing in while a required step is left;
   }
 });
 
-test('payment, once a provider is connected: a step to do until the payment is in, then done and the products open', async () => {
-  const t = await setup({ products: ['toran'], comp: false, toran: { answer: () => sampleSetup('toran', { done: true }) }, env: { OF_BILLING_PROVIDER: 'test-provider' } });
+test('payment with OF_PAYMENT=provider: a step to do until the payment is in, then done and the products open', async () => {
+  const t = await setup({ products: ['toran'], comp: false, toran: { answer: () => sampleSetup('toran', { done: true }) }, env: { OF_PAYMENT: 'provider', OF_PAYMENT_URL: 'https://pay.example.com/of' } });
   try {
     const { b, to } = await signIn(t);
     assert.equal(to, '/setup');
     let page = await b.get('/setup');
-    // No checkout page yet (checkoutUrl() is a placeholder): the step still leads to us, never a dead end.
-    assert.match(page.body, /<li class="step st-todo"><span class="chip">עוד לא<\/span><span class="what"><b>התשלום על המנוי<\/b><small>התשלום באתר ייפתח בקרוב\.[^<]*<\/small><\/span><a class="button primary" href="https:\/\/openfrequency\.co\.il\/join">ליצירת קשר<\/a><\/li>/);
+    // The provider's payment page (OF_PAYMENT_URL), the same for every workspace.
+    assert.match(page.body, /<li class="step st-todo"><span class="chip">עוד לא<\/span><span class="what"><b>התשלום על המנוי<\/b><small>משלמים בכרטיס אשראי בדף התשלום\. תורן נפתח אחרי שהתשלום מאושר\.<\/small><\/span><a class="button primary" href="https:\/\/pay\.example\.com\/of">לתשלום<\/a><\/li>/);
     assert.match(page.body, /<section class="card setup-p locked" id="setup-toran">/);
     payMonth(t.db, t.ws.id, 'toran', { by: null });
     assert.equal((await signIn(t)).to, '/');

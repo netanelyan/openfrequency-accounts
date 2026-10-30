@@ -206,12 +206,14 @@ test('the paywall on the pages: payment first and required, the steps locked, th
     let page = (await b.get('/setup')).body;
     const billing = page.slice(page.indexOf('id="setup-billing"'), page.indexOf('id="setup-teder"'));
     assert.ok(page.indexOf('id="setup-billing"') < page.indexOf('id="setup-teder"'), 'payment first');
-    // No provider yet: the online payment opens soon, and the button reaches us on WhatsApp with the words written.
-    assert.match(billing, /<li class="step st-todo"><span class="chip">עוד לא<\/span><span class="what"><b>התשלום על המנוי<\/b><small>התשלום באתר ייפתח בקרוב\. עד אז מסדרים אותו איתנו: כתבו לנו, ונשלח לכם פרטים לתשלום\.<\/small><\/span><a class="button primary" href="https:\/\/wa\.me\/972500000100\?text=[^"]+">כתבו לנו בוואטסאפ<\/a><\/li>/);
-    assert.ok(billing.includes(encodeURIComponent('היי, כותבים מ״Noa Shop״. רוצים לשלם על המנוי.')));
+    // Manual payment (OF_PAYMENT unset): we email the details, Teder opens once the payment reaches us, and the button
+    // (quiet: nothing to start here) reaches us on WhatsApp for questions, with the words written.
+    assert.match(billing, /<li class="step st-todo"><span class="chip">עוד לא<\/span><span class="what"><b>התשלום על המנוי<\/b><small>את פרטי התשלום אנחנו שולחים לכם במייל\. תדר נפתח אחרי שהתשלום מגיע אלינו\.<\/small><\/span><a class="button quiet" href="https:\/\/wa\.me\/972500000100\?text=[^"]+">כתבו לנו בוואטסאפ<\/a><\/li>/);
+    assert.ok(billing.includes(encodeURIComponent('היי, כותבים מ״Noa Shop״. יש לנו שאלה על התשלום.')));
+    assert.doesNotMatch(billing, /בקרוב|ונשלח לכם פרטים/);
     // The price: the subscription's, before VAT, with the setup fee until the first payment.
     assert.match(billing, /<li>תדר, החבילה המלאה: 790 ₪ לחודש, לא כולל מע״מ, ודמי הקמה של 1,490 ₪ פעם אחת<\/li>/);
-    assert.match(billing, /אפשר גם לענות לאחד המיילים שקיבלתם מאיתנו\./);
+    assert.match(billing, /<p class="muted">יש שאלה על התשלום\? כתבו לנו בוואטסאפ, או ענו לאחד המיילים שקיבלתם מאיתנו\.<\/p>/);
     // Teder's steps are there, locked: no button into Teder, "אחרי התשלום", a done step still done.
     const teder = page.slice(page.indexOf('id="setup-teder"'));
     assert.match(page, /<section class="card setup-p locked" id="setup-teder">[^]*<span class="tag off">נפתח אחרי התשלום<\/span>/);
@@ -242,13 +244,18 @@ test('the paywall on the pages: payment first and required, the steps locked, th
   }
 });
 
-test('the account page: the next charge only once a provider is connected; a payment step that leads to its checkout or, without one, to us', async () => {
-  const t = await setup({ env: { OF_BILLING_PROVIDER: 'test-provider' } });
+test('the account page: the next payment only with OF_PAYMENT=provider; a payment step that leads to its payment page or, in manual mode, to us', async () => {
+  const t = await setup({ env: { OF_PAYMENT: 'provider', OF_PAYMENT_URL: 'https://pay.example.com/of' } });
   try {
-    payMonth(t.db, t.ws.id, 'teder', { by: null });
     const b = signedIn(t, t.db, t.noa);
+    // Before paying: "לתשלום", the one blue button, opens the provider's payment page.
+    const page = (await b.get('/setup')).body;
+    assert.match(page, /<small>משלמים בכרטיס אשראי בדף התשלום\. תדר נפתח אחרי שהתשלום מאושר\.<\/small><\/span><a class="button primary" href="https:\/\/pay\.example\.com\/of">לתשלום<\/a>/);
+    payMonth(t.db, t.ws.id, 'teder', { by: null });
     const home = (await b.get('/')).body;
-    assert.match(home, /החיוב הבא: 790 ₪ ועוד מע״מ, ב-22\.11\.2026/);
+    // The next payment, not a "charge": nothing is taken from a card by itself.
+    assert.match(home, /התשלום הבא: 790 ₪ ועוד מע״מ, ב-22\.11\.2026/);
+    assert.doesNotMatch(home, /החיוב הבא/);
     assert.match(home, /790 ₪ לחודש, לא כולל מע״מ/);
   } finally {
     await t.done();
@@ -257,7 +264,8 @@ test('the account page: the next charge only once a provider is connected; a pay
   const u = await setup();
   try {
     const page = (await signedIn(u, u.db, u.noa).get('/setup')).body;
-    assert.match(page, /<a class="button primary" href="https:\/\/openfrequency\.co\.il\/join">ליצירת קשר<\/a>/);
+    assert.match(page, /<a class="button quiet" href="https:\/\/openfrequency\.co\.il\/join">ליצירת קשר<\/a>/);
+    assert.match(page, /<p class="muted">יש שאלה על התשלום\? ענו לאחד המיילים שקיבלתם מאיתנו\.<\/p>/);
   } finally {
     await u.done();
   }
@@ -273,7 +281,9 @@ test('/signup shows each product with its price, VAT excluded, and its setup fee
     // ?plan=small, from the website's button under that plan, starts it chosen.
     assert.match((await t.browser().get('/signup?p=teder&plan=small')).body, /value="small" checked/);
     assert.match(page, /<b>תורן<\/b><small>[^<]+<\/small><small class="price">590 ₪ לחודש ועוד מע״מ, ודמי הקמה של 990 ₪ פעם אחת<\/small>/);
-    assert.match(page, /משלמים אחרי שהחשבון נפתח, והמוצרים נפתחים אחרי התשלום\./);
+    // How paying works (manual: OF_PAYMENT unset), and under the plans Teder's setup fee: one time, not refunded.
+    assert.match(page, /<small>אחרי שהחשבון נפתח, נשלח לכם במייל את פרטי התשלום, והמוצרים נפתחים אחרי שהתשלום מגיע אלינו\. אפשר לבטל את המנוי מהדף הראשי, והוא עובד עד סוף התקופה ששולמה\.<\/small>/);
+    assert.match(page, /<small>חל רק כשבוחרים בתדר\. אפשר לעבור חבילה אחר כך, בכתיבה אלינו\. דמי ההקמה לא מוחזרים, ומשלמים אותם פעם אחת, עם החודש הראשון\.<\/small><\/fieldset>/);
   } finally {
     await t.done();
   }
@@ -399,9 +409,14 @@ test('the welcome email, right after a sign-up is confirmed: pay, then set up, w
     assert.equal(w.to, 'noa.c@example.com');
     assert.equal(w.subject, 'החשבון של Noa Ceramics נפתח');
     assert.equal(w.link, 'https://accounts.openfrequency.co.il/setup');
-    assert.match(w.text, /קודם התשלום על המנוי\. התשלום באתר ייפתח בקרוב, ועד אז מסדרים אותו איתנו: ענו למייל הזה ונשלח לכם פרטים לתשלום\./);
-    assert.match(w.text, /תדר, החבילה המלאה: 790 ₪ לחודש ועוד מע״מ, ודמי הקמה של 1,490 ₪ פעם אחת\./);
-    assert.match(w.text, /תורן: 590 ₪ לחודש ועוד מע״מ, ודמי הקמה של 990 ₪ פעם אחת\./);
+    // Manual payment: we email the details to this address, and both open once the payment reaches us.
+    assert.match(w.text, /קודם התשלום על המנוי\. את פרטי התשלום נשלח לכם במייל, לכתובת הזאת\. תדר ותורן נפתחים אחרי שהתשלום מגיע אלינו\./);
+    assert.doesNotMatch(w.text, /בקרוב|ונשלח לכם פרטים/);
+    // Teder's setup fee is not refunded, as its terms say; Toran's terms say it otherwise, so its line does not.
+    assert.match(w.text, /תדר, החבילה המלאה: 790 ₪ לחודש ועוד מע״מ, ודמי הקמה של 1,490 ₪ פעם אחת\. דמי ההקמה לא מוחזרים\./);
+    assert.match(w.text, /תורן: 590 ₪ לחודש ועוד מע״מ, ודמי הקמה של 990 ₪ פעם אחת\.\n/);
+    // No OF_SUPPORT_WA here: questions are a reply.
+    assert.match(w.text, /יש שאלה על התשלום\? ענו למייל הזה\./);
     assert.match(w.text, /אחר כך ההגדרה\./);
     assert.ok(w.text.indexOf('התשלום') < w.text.indexOf('ההגדרה'), 'pay first, then set up');
     assert.match(w.html, /<a href="https:\/\/accounts\.openfrequency\.co\.il\/setup"[^>]*>לדף ההגדרה<\/a>/);
@@ -414,8 +429,8 @@ test('the welcome email, right after a sign-up is confirmed: pay, then set up, w
   }
 });
 
-test('the welcome email with a payment provider connected says to pay on the setup page', async () => {
-  const t = await setup({ env: { OF_SIGNUP: '1', OF_BILLING_PROVIDER: 'test-provider' } });
+test('the welcome email with OF_PAYMENT=provider says to pay by card on the setup page, and when Teder opens', async () => {
+  const t = await setup({ env: { OF_SIGNUP: '1', OF_PAYMENT: 'provider', OF_PAYMENT_URL: 'https://pay.example.com/of', OF_PAYMENT_METHOD: 'העברה בנקאית' } });
   try {
     const b = t.browser();
     await b.get('/signup');
@@ -423,8 +438,10 @@ test('the welcome email with a payment provider connected says to pay on the set
     await b.get('/signup');
     await b.post('/signup/confirm', { t: tokenOf(t.mails[0].link) });
     const w = t.mails.find((m) => m.subject === 'החשבון של Noa Ceramics נפתח');
-    assert.match(w.text, /משלמים בדף ההגדרה, ואחרי התשלום המוצרים נפתחים\./);
-    assert.doesNotMatch(w.text, /ייפתח בקרוב/);
+    assert.match(w.text, /קודם התשלום על המנוי\. משלמים בכרטיס אשראי בדף ההגדרה, בכפתור "לתשלום"\. תדר נפתח אחרי שהתשלום מאושר\./);
+    assert.equal(w.link, 'https://accounts.openfrequency.co.il/setup');
+    // OF_PAYMENT_METHOD is manual mode's: not said with a provider, nor anything about emailing details.
+    assert.doesNotMatch(w.text, /בקרוב|איך משלמים|פרטי התשלום/);
   } finally {
     await t.done();
   }

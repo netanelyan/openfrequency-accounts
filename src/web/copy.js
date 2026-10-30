@@ -13,6 +13,12 @@ export const ROLE_NAMES = { client_owner: 'בעלים', client_member: 'צוות
 export const PLAN_NAMES = { full: 'החבילה המלאה', small: 'החבילה הקטנה' };
 /** What a plan gives in a month, after its name. */
 export const planGives = (slideshows, redos) => `${slideshows} מצגות בחודש, ו-${redos} החלפות למצגות שדחיתם`;
+/**
+ * When a product opens, by the payment mode (OF_PAYMENT, src/accounts/billing.js): manual, once the payment reaches us;
+ * provider, once it is confirmed (the operator still records it on /admin, so never "at once"). `names` are the
+ * products' names, joined ("תדר", "תדר ותורן", "המוצרים"); `many` when there is more than one.
+ */
+export const opensAfter = (mode, names, many) => `${names} ${many ? 'נפתחים' : 'נפתח'} ${mode === 'provider' ? 'אחרי שהתשלום מאושר' : 'אחרי שהתשלום מגיע אלינו'}.`;
 
 const minutes = (seconds) => Math.max(1, Math.ceil(seconds / 60));
 
@@ -100,7 +106,7 @@ export const T = {
   subLeft: (n) => (n === 1 ? 'זה היום האחרון בחודש ששולם' : `נשארו ${n} ימים בחודש ששולם`),
   subDay: (day, days) => `יום ${day} מתוך ${days}`,
   subBarLabel: (from, to) => `החודש ששולם, מ-${from} עד ${to}`,
-  subNext: (d, amount, plusVat) => `החיוב הבא: ${amount}${plusVat ? ' ועוד מע״מ' : ''}, ב-${d}`,
+  subNext: (d, amount, plusVat) => `התשלום הבא: ${amount}${plusVat ? ' ועוד מע״מ' : ''}, ב-${d}`,
   subDue: (d, until) => `התשלום לחודש שהתחיל ב-${d} עוד לא הגיע אלינו. המנוי ממשיך לעבוד עד ${until}, ואם התשלום לא יגיע עד אז הוא ייעצר עד שישולם.`,
   subDueStopped: (d) => `התשלום לחודש שהתחיל ב-${d} לא הגיע, אז המנוי נעצר. הוא ייפתח שוב כשהתשלום יגיע.`,
   subPlan: (name, gives) => `${name}: ${gives}`,
@@ -413,16 +419,23 @@ export const MAIL = {
 
   // To the owner (OF_SIGNUP_NOTIFY), on each confirmed sign-up.
   noticeSubject: (business) => `הרשמה חדשה: ${business}`,
-  noticeLines: (name, email, business, products, at, method, link) => [
+  noticeLines: (name, email, business, products, at, method, link, prices = [], pay = '') => [
     'נפתח חשבון חדש מההרשמה באתר.',
     `שם: ${name}`,
     `מייל: ${email}`,
     `עסק: ${business}`,
     `מוצרים: ${products}`,
+    ...[].concat(prices),
     `מתי: ${at}`,
     `אישור: ${method === 'google' ? 'Google' : 'קישור במייל'}`,
+    ...(pay ? [pay] : []),
     { link },
   ],
+  /** A product's plan and price, as its subscription has them: "תדר, החבילה הקטנה: 490 ₪ לחודש + 990 ₪ דמי הקמה, לא כולל מע״מ". */
+  noticePrice: (product, monthly, setup, vat) => `${product}: ${monthly} לחודש${setup ? ` + ${setup} דמי הקמה` : ''}, ${vat}`,
+  /** What the owner does next, by the payment mode: in manual, email the customer the payment details; either way, record the payment. */
+  noticePay: (mode, email, names, many) =>
+    `${mode === 'provider' ? 'הלקוח משלם בכרטיס אשראי בדף התשלום. כשהתשלום עובר' : `צריך לשלוח ל-${email} במייל את פרטי התשלום. כשהתשלום מגיע`}, רושמים אותו בקונסולה ("התקבל תשלום לחודש"), ורק אז ${names} ${many ? 'נפתחים' : 'נפתח'} ללקוח.`,
   noticeButton: 'לחשבון בקונסולה',
 
   existingSubject: 'כבר יש לכם חשבון ב-OpenFrequency',
@@ -433,39 +446,43 @@ export const MAIL = {
     'הוא עובד פעם אחת, במשך 15 דקות.',
     'לא ביקשתם? אפשר להתעלם מהמייל הזה. בלי הקישור אף אחד לא נכנס לחשבון שלכם.',
   ],
-  // Right after a sign-up is confirmed.
+  // Right after a sign-up is confirmed. `mode` is how payment works (OF_PAYMENT), `opens` when the products open
+  // (opensAfter()), and `prices` the price lines, then (manual) how to pay and whom to ask.
   welcomeSubject: (business) => `החשבון של ${business} נפתח`,
-  welcomeLines: (business, link, providerReady, prices) => [
+  welcomeLines: (business, link, mode, opens, prices) => [
     'שלום,',
     `החשבון של ${business} ב-OpenFrequency פתוח. נשארו שני דברים.`,
-    providerReady
-      ? 'קודם התשלום על המנוי. משלמים בדף ההגדרה, ואחרי התשלום המוצרים נפתחים.'
-      : 'קודם התשלום על המנוי. התשלום באתר ייפתח בקרוב, ועד אז מסדרים אותו איתנו: ענו למייל הזה ונשלח לכם פרטים לתשלום. המוצרים נפתחים אחרי התשלום.',
+    mode === 'provider'
+      ? `קודם התשלום על המנוי. משלמים בכרטיס אשראי בדף ההגדרה, בכפתור "לתשלום". ${opens}`
+      : `קודם התשלום על המנוי. את פרטי התשלום נשלח לכם במייל, לכתובת הזאת. ${opens}`,
     ...[].concat(prices),
     'אחר כך ההגדרה. בדף ההגדרה יש רשימה של מה שנשאר, וכל צעד מוביל למקום שבו עושים אותו.',
     { link },
     'אין סיסמה לזכור. נכנסים עם קישור שנשלח למייל, או עם Google.',
   ],
   welcomeButton: 'לדף ההגדרה',
-  welcomePrice: (product, monthly, setup) => `${product}: ${monthly} לחודש ועוד מע״מ, ודמי הקמה של ${setup} פעם אחת.`,
+  // `noRefund`: Teder's setup fee, which its terms say is not refunded (Toran's terms say it otherwise).
+  welcomePrice: (product, monthly, setup, noRefund = false) => `${product}: ${monthly} לחודש ועוד מע״מ, ודמי הקמה של ${setup} פעם אחת.${noRefund ? ' דמי ההקמה לא מוחזרים.' : ''}`,
   welcomePayHow: (how) => `איך משלמים: ${how}`,
+  /** Whom to ask about paying, in an email: a reply, or our WhatsApp (OF_SUPPORT_WA, international digits) when it is set. */
+  payAsk: (wa) => (wa ? `יש שאלה על התשלום? ענו למייל הזה, או כתבו לנו בוואטסאפ ל-${phoneHe(wa)}.` : 'יש שאלה על התשלום? ענו למייל הזה.'),
 
   // To each owner, when a payment is recorded (/admin).
   paidSubject: (product) => `קיבלנו את התשלום על ${product}`,
   paidLines: (business, product, until, link) => [
     'שלום,',
     `קיבלנו את התשלום על ${product} בחשבון של ${business}. המנוי שולם עד ${until}.`,
-    'החשבונית תופיע בדף הראשי של החשבון, ואפשר להוריד אותה משם.',
+    'כשהחשבונית מוכנה, היא תופיע בדף הראשי של החשבון, ואפשר יהיה להוריד אותה משם.',
     { link },
   ],
   paidButton: 'לדף הראשי',
 
-  // To each owner, before and when a payment falls due (src/web/daily.js). `pay` is how to pay (a sentence).
+  // To each owner, before and when a payment falls due (src/web/daily.js). `pay` is how to pay (a line, or lines).
   soonSubject: (product, d) => `התשלום הבא על ${product}: ${d}`,
   soonLines: (business, product, d, amount, pay, link) => [
     'שלום,',
     `החודש הבא של ${product} בחשבון של ${business} מתחיל ב-${d}. הסכום: ${amount}.`,
-    pay,
+    ...[].concat(pay),
     { link },
     'כבר שילמתם? אפשר להתעלם מהמייל הזה. ביטלתם, או רוצים לבטל? אפשר לעשות את זה מהדף הראשי.',
   ],
@@ -474,7 +491,7 @@ export const MAIL = {
     'שלום,',
     `החודש של ${product} בחשבון של ${business} התחיל ב-${d}, והתשלום עליו (${amount}) עוד לא הגיע אלינו.`,
     `${product} ממשיך לעבוד עד ${until}. אם התשלום לא יגיע עד אז, ${product} ייעצר עד שישולם. שום דבר לא נמחק.`,
-    pay,
+    ...[].concat(pay),
     { link },
   ],
   stoppedSubject: (product) => `${product} נעצר עד שהתשלום יגיע`,
@@ -485,8 +502,10 @@ export const MAIL = {
   ],
   payButton: 'לחשבון',
   amount: (sum, plusVat) => (plusVat ? `${sum} ועוד מע״מ` : sum),
-  payByProvider: 'משלמים בדף ההגדרה, בכפתור "לתשלום".',
-  payByUs: 'התשלום באתר עוד לא פתוח. ענו למייל הזה, או כתבו לנו בוואטסאפ, ונשלח לכם פרטים לתשלום.',
+  // With a provider, the email's button is its payment page (OF_PAYMENT_URL), "לתשלום"; in manual mode, the account.
+  payByProvider: 'משלמים בכרטיס אשראי, בדף התשלום:',
+  payOnlineButton: 'לתשלום',
+  payByUs: 'משלמים לפי פרטי התשלום ששלחנו לכם במייל.',
 
   // To the owner (OF_SIGNUP_NOTIFY): a payment fell due, or a grace ended.
   dueNoticeSubject: (business, product) => `תשלום לא הגיע: ${business}, ${product}`,
@@ -565,8 +584,12 @@ export const SIGNUP = {
   productSoon: 'ההרשמה אליו תיפתח בקרוב.',
   price: (monthly, setup) => `${monthly} לחודש ועוד מע״מ, ודמי הקמה של ${setup} פעם אחת`,
   planLegend: 'איזו חבילה של תדר',
-  planHint: 'חל רק כשבוחרים בתדר. אפשר לעבור חבילה אחר כך, בכתיבה אלינו.',
-  pricesNote: 'משלמים אחרי שהחשבון נפתח, והמוצרים נפתחים אחרי התשלום. אפשר לבטל את המנוי מהדף הראשי, והוא עובד עד סוף התקופה ששולמה.',
+  // Teder's setup fee is not refunded (its terms: "דמי ההקמה לא מוחזרים"). Toran's terms say it otherwise, and this note
+  // is Teder's only.
+  planHint: 'חל רק כשבוחרים בתדר. אפשר לעבור חבילה אחר כך, בכתיבה אלינו. דמי ההקמה לא מוחזרים, ומשלמים אותם פעם אחת, עם החודש הראשון.',
+  /** How paying works, by the payment mode (OF_PAYMENT), and cancelling. */
+  pricesNote: (mode) =>
+    `${mode === 'provider' ? 'אחרי שהחשבון נפתח, משלמים בו בכרטיס אשראי' : 'אחרי שהחשבון נפתח, נשלח לכם במייל את פרטי התשלום'}, ו${opensAfter(mode, 'המוצרים', true)} אפשר לבטל את המנוי מהדף הראשי, והוא עובד עד סוף התקופה ששולמה.`,
   termsPre: 'מסכימים ל',
   termsLink: 'תנאי השימוש',
   termsMid: ' ול',
@@ -602,6 +625,8 @@ export const SIGNUP = {
   confirmTitle: 'אישור החשבון',
   confirmLead: (business, email) => `לחצו כדי לפתוח את החשבון של ${business}, עם הכתובת ${email}.`,
   confirmProducts: (names) => `המוצרים שבחרתם: ${names}.`,
+  /** What comes after the button, by the payment mode (OF_PAYMENT). `opens` is opensAfter(). */
+  confirmPay: (mode, opens) => `${mode === 'provider' ? 'אחרי שהחשבון נפתח, משלמים בו בכרטיס אשראי.' : 'אחרי שהחשבון נפתח, נשלח לכם במייל את פרטי התשלום.'} ${opens}`,
   confirmButton: 'לפתוח את החשבון',
   and: ' ו',
 
@@ -645,19 +670,20 @@ export const SETUP = {
   noSteps: 'אין כאן צעדים כרגע.',
   billingTitle: 'תשלום',
   billingStep: 'התשלום על המנוי',
-  billingSoon: 'התשלום באתר ייפתח בקרוב. עד אז מסדרים אותו איתנו: כתבו לנו, ונשלח לכם פרטים לתשלום.',
-  billingTodo: 'משלמים בדף התשלום, ואחרי זה המוצרים נפתחים.',
+  // How paying works, by the payment mode (OF_PAYMENT). `opens` is opensAfter() for the products still closed, or ''.
+  billingManual: (opens) => `את פרטי התשלום אנחנו שולחים לכם במייל.${opens ? ` ${opens}` : ''}`,
+  billingTodo: (opens) => `משלמים בכרטיס אשראי בדף התשלום.${opens ? ` ${opens}` : ''}`,
   billingDone: 'המנוי שולם.',
   billingComp: 'החשבון הזה אצלנו ללא תשלום.',
   billingPay: 'לתשלום',
   billingWrite: 'כתבו לנו בוואטסאפ',
   billingContact: 'ליצירת קשר',
-  billingReply: 'אפשר גם לענות לאחד המיילים שקיבלתם מאיתנו.',
+  billingAsk: (wa) => (wa ? 'יש שאלה על התשלום? כתבו לנו בוואטסאפ, או ענו לאחד המיילים שקיבלתם מאיתנו.' : 'יש שאלה על התשלום? ענו לאחד המיילים שקיבלתם מאיתנו.'),
   billingPrice: (product, monthly, vat, setup) => `${product}: ${monthly} לחודש, ${vat}${setup ? `, ודמי הקמה של ${setup} פעם אחת` : ''}`,
   billingPaidUntil: (product, d) => `${product}: שולם עד ${d}`,
   billingDue: (product, d) => `${product}: התשלום על החודש הנוכחי עוד לא הגיע. המנוי עובד עד ${d}, ואחרי זה נעצר עד שישולם.`,
   billingHow: (how) => `איך משלמים: ${how}`,
-  billingSupportText: (business) => `היי, כותבים מ״${business}״. רוצים לשלם על המנוי.`,
+  billingSupportText: (business) => `היי, כותבים מ״${business}״. יש לנו שאלה על התשלום.`,
   locked: 'נפתח אחרי התשלום',
   lockedChip: 'אחרי התשלום',
   lockedLead: (product) => `הצעדים של ${product} נפתחים אחרי התשלום.`,

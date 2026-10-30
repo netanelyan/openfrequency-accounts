@@ -10,6 +10,12 @@ import { loadEnv } from '../src/core/env.js';
 
 requireHome();
 loadEnv();
+// The billing emails say how to pay: with OF_PAYMENT set wrong they would say it wrong, so nothing runs (as the service).
+const { paymentProblem } = await import('../src/accounts/billing.js');
+if (paymentProblem()) {
+  console.error(`npm run daily will not run: ${paymentProblem()}`);
+  process.exit(1);
+}
 const { openDb, closeDb } = await import('../src/db/index.js');
 const { lastRuns, runDaily } = await import('../src/web/daily.js');
 const { createMailer } = await import('../src/mail/send.js');

@@ -4,7 +4,7 @@ import { ROOT } from '../core/paths.js';
 import { addDays, addMonths, describe, israelToday, LIST_PRICES, PLANS, plansOf } from '../accounts/subscriptions.js';
 import { total } from '../accounts/invoices.js';
 import { KINDS } from '../accounts/notify.js';
-import { AUDIT_NAMES, CANCEL, ERASE, NOTIFY, OPS, PLAN_NAMES, PRODUCT_NAMES, ROLE_NAMES, SETUP, SIGNUP, T, dayHe, hourHe, ils, phoneHe, planGives, when } from './copy.js';
+import { AUDIT_NAMES, CANCEL, ERASE, NOTIFY, OPS, PLAN_NAMES, PRODUCT_NAMES, ROLE_NAMES, SETUP, SIGNUP, T, dayHe, hourHe, ils, opensAfter, phoneHe, planGives, when } from './copy.js';
 import { PRIVACY_URL, TERMS_URL } from '../accounts/signup.js';
 
 // Server-rendered pages: Hebrew, right to left, one stylesheet. No script, except
@@ -157,7 +157,8 @@ function paidBar(s, { saysLeft = true } = {}) {
 
 /**
  * One product's subscription, as its customer sees it: the plan and its price, how far through the month paid for,
- * the next charge (only once a payment provider is connected: before that the payments are arranged with us), and
+ * the next payment (only with OF_PAYMENT=provider, when they pay it on the payment page; in manual mode the payments
+ * are arranged with us, by email), and
  * the status in plain words (src/accounts/subscriptions.js describe(), and the paywall's access, entitlement.js).
  * While the paywall keeps it closed, its button leads to the payment instead of into the product. Its owner cancels
  * it here (a confirmation page first) and takes a cancellation back before its last day.
@@ -352,8 +353,9 @@ ${owner ? `<p class="links"><a href="/account/delete">${esc(T.dashDelete)}</a></
  * The sign-up form: name, business, products (each with its line), the terms, a honeypot, and the email; and, while
  * Google is set up, "continue with Google", a second submit button of the same form, so the choices go with it (kept
  * on our side, never in the URL). It skips the browser's checks, since Google brings the address; ours still run.
+ * Under the products, how paying works in this payment mode (`payment`, OF_PAYMENT: manual or provider).
  */
-export function signupPage({ csrf, form = {}, error = '', google = false, open = ['teder', 'toran'] }) {
+export function signupPage({ csrf, form = {}, error = '', google = false, open = ['teder', 'toran'], payment = 'manual' }) {
   const chosen = [].concat(form.products || []);
   // A product sign-up does not offer yet (OF_SIGNUP_PRODUCTS): shown after the open ones, its box disabled and outside
   // the form's data, with a "בקרוב" tag and one line on why.
@@ -388,7 +390,7 @@ ${csrfField(csrf)}
 <fieldset class="products-pick"><legend>${esc(SIGNUP.productsLegend)}</legend>
 ${order.map(product).join('\n')}
 ${open.length > 1 ? `<small>${esc(SIGNUP.productsHint)}</small>` : ''}
-<small>${esc(SIGNUP.pricesNote)}</small>
+<small>${esc(SIGNUP.pricesNote(payment))}</small>
 </fieldset>
 <label class="check terms"><input type="checkbox" name="terms" value="1" required${form.terms ? ' checked' : ''}> <span>${esc(SIGNUP.termsPre)}<a href="${esc(TERMS_URL)}" target="_blank" rel="noopener">${esc(SIGNUP.termsLink)}</a>${esc(SIGNUP.termsMid)}<a href="${esc(PRIVACY_URL)}" target="_blank" rel="noopener">${esc(SIGNUP.privacyLink)}</a></span></label>
 <div class="hp" aria-hidden="true"><label for="su-website">${esc(SIGNUP.honeypot)}</label><input id="su-website" name="website" tabindex="-1" autocomplete="off"></div>
@@ -412,12 +414,16 @@ export const signupSentPage = ({ email }) => `
 </section>
 ${links([['/signup', SIGNUP.again]])}`;
 
-/** The page the email's link opens: what is about to be opened, and the button (mail scanners open links). */
-export const signupConfirmPage = ({ csrf, token, row }) => `
+/**
+ * The page the email's link opens: what is about to be opened, how paying works next (`payment`, OF_PAYMENT), and the
+ * button (mail scanners open links).
+ */
+export const signupConfirmPage = ({ csrf, token, row, payment = 'manual' }) => `
 <section class="card">
 <h1>${esc(SIGNUP.confirmTitle)}</h1>
 <p class="lead">${esc(SIGNUP.confirmLead(row.business, row.email))}</p>
 <p class="muted">${esc(SIGNUP.confirmProducts(row.products.map((p) => productLabel(p, p === 'teder' ? row.plan : null)).join(SIGNUP.and)))}</p>
+<p class="muted">${esc(SIGNUP.confirmPay(payment, opensAfter(payment, row.products.map((p) => PRODUCT_NAMES[p]).join(SIGNUP.and), row.products.length > 1)))}</p>
 <form method="post" action="/signup/confirm">${csrfField(csrf)}<input type="hidden" name="t" value="${esc(token)}"><button class="primary">${esc(SIGNUP.confirmButton)}</button></form>
 </section>`;
 
@@ -440,14 +446,19 @@ function stepRow(s, { readOnly, first, locked = false }) {
 
 /**
  * The payment step, first: what is still to pay, product by product (the price recorded on the subscription: the
- * list price before VAT, and the setup fee until the first payment), or until when it is paid. Without a payment
- * provider it says the online payment opens soon and leads to us; with one, to its checkout.
+ * list price before VAT, and the setup fee until the first payment), or until when it is paid. How paying works
+ * follows the payment mode (OF_PAYMENT): with a provider, "לתשלום" opens its payment page and the closed products open
+ * once the payment is confirmed; in manual mode we email the payment details, the closed products open once the
+ * payment reaches us, and the button (quiet: there is nothing to start here) is for questions, to us.
  */
 function billingCard(b, { readOnly, first, products, access, prices, payHow = '' }) {
   const done = b.status === 'done';
-  const detail = done ? (b.comp ? SETUP.billingComp : SETUP.billingDone) : b.checkout ? SETUP.billingTodo : SETUP.billingSoon;
-  const label = b.checkout ? SETUP.billingPay : /^https:\/\/wa\.me\//.test(b.href || '') ? SETUP.billingWrite : SETUP.billingContact;
-  const btn = !done && b.href && !readOnly ? `<a class="button ${first() ? 'primary' : 'quiet'}" href="${esc(b.href)}">${esc(label)}</a>` : '';
+  const closed = products.filter((p) => !access[p]?.allowed);
+  const opens = closed.length ? opensAfter(b.checkout ? 'provider' : 'manual', closed.map((p) => PRODUCT_NAMES[p]).join(SIGNUP.and), closed.length > 1) : '';
+  const detail = done ? (b.comp ? SETUP.billingComp : SETUP.billingDone) : b.checkout ? SETUP.billingTodo(opens) : SETUP.billingManual(opens);
+  const wa = /^https:\/\/wa\.me\//.test(b.href || '');
+  const label = b.checkout ? SETUP.billingPay : wa ? SETUP.billingWrite : SETUP.billingContact;
+  const btn = !done && b.href && !readOnly ? `<a class="button ${b.checkout && first() ? 'primary' : 'quiet'}" href="${esc(b.href)}">${esc(label)}</a>` : '';
   const lines = products
     .map((p) => {
       const a = access[p];
@@ -464,7 +475,7 @@ function billingCard(b, { readOnly, first, products, access, prices, payHow = ''
 <ol class="steps"><li class="step st-${done ? 'done' : 'todo'}"><span class="chip">${esc(SETUP.status[done ? 'done' : 'todo'])}</span><span class="what"><b>${esc(SETUP.billingStep)}</b><small>${esc(detail)}</small></span>${btn}</li></ol>
 ${lines ? `<ul class="prices">${lines}</ul>` : ''}
 ${!done && payHow ? `<p>${esc(SETUP.billingHow(payHow))}</p>` : ''}
-${!done && !b.checkout ? `<p class="muted">${esc(SETUP.billingReply)}</p>` : ''}
+${!done && !b.checkout ? `<p class="muted">${esc(SETUP.billingAsk(wa))}</p>` : ''}
 </section>`;
 }
 

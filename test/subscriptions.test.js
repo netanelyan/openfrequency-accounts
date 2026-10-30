@@ -54,14 +54,14 @@ test("the bar is the month paid for that today is in: day 1 on its first day, fu
 });
 
 test('on the page: a <progress> with its numbers in words, the days left and the next charge beside it; no bar where nothing is paid', () => {
-  // The next charge is shown once a payment provider is connected (providerReady); before that, only "paid until".
+  // The next payment is shown with OF_PAYMENT=provider (providerReady); in manual mode, only "paid until".
   const page = (s, today, providerReady = true) =>
     homePage({ csrf: 'x', user: { id: 1, email: 'dana@example.com', name: 'דנה' }, workspace: { name: 'החנות' }, products: ['teder'], productUrls: { teder: '/' }, subscriptions: { teder: describe(s, today) }, providerReady });
-  assert.doesNotMatch(page({ ...S, monthly: 790, paid_until: '2026-11-21' }, '2026-10-22', false), /החיוב הבא/);
+  assert.doesNotMatch(page({ ...S, monthly: 790, paid_until: '2026-11-21' }, '2026-10-22', false), /התשלום הבא/);
   const first = page({ ...S, monthly: 790, paid_until: '2026-11-21' }, '2026-10-22');
   assert.match(first, /<progress max="31" value="1" aria-label="החודש ששולם, מ-22\.10\.2026 עד 21\.11\.2026" aria-valuetext="יום 1 מתוך 31\. נשארו 31 ימים בחודש ששולם"><\/progress>/);
   assert.match(first, /<span>נשארו 31 ימים בחודש ששולם<\/span><span class="muted">יום 1 מתוך 31<\/span>/);
-  assert.match(first, /החיוב הבא: 790 ₪ ועוד מע״מ, ב-22\.11\.2026/);
+  assert.match(first, /התשלום הבא: 790 ₪ ועוד מע״מ, ב-22\.11\.2026/);
   assert.match(page({ ...S, paid_until: '2026-11-21' }, '2026-11-21'), /<progress max="31" value="31"[^>]*aria-valuetext="יום 31 מתוך 31\. זה היום האחרון בחודש ששולם"/);
 
   const due = page({ ...S, paid_until: '2026-11-21' }, '2026-11-25');

@@ -45,7 +45,7 @@ SESSION_SECRET=               # openssl rand -base64 48
 RESEND_API_KEY=
 MAIL_FROM=OpenFrequency <accounts@openfrequency.co.il>
 MAIL_REPLY_TO=                # where "reply to this email" lands; your own inbox (the billing emails ask customers to reply)
-OF_SUPPORT_WA=                # our WhatsApp for "write to us", digits only (972...); unset, "how to pay" opens an email to MAIL_REPLY_TO
+OF_SUPPORT_WA=                # our WhatsApp for "write to us", digits only (972...); unset, a question about paying opens an email to MAIL_REPLY_TO
 OF_ASSISTANT_WA=              # the owner line's WhatsApp number, digits only; the same as TORAN_ASSISTANT_WA in Toran's .env
 OF_TORAN_INTERNAL=            # Toran on this machine, for /admin and /admin/toran; empty means http://127.0.0.1:4710
 GOOGLE_CLIENT_ID=             # sign in with Google (below); unset, only the emailed link is offered
@@ -56,15 +56,20 @@ OF_SIGNUP=                    # 1 opens /signup; anything else, it says it opens
 OF_SIGNUP_PRODUCTS=           # the products it offers, comma-separated; teder while Toran waits for Meta
 OF_SIGNUP_NOTIFY=             # who hears of each sign-up, cancellation, deletion, unpaid payment and ended grace (comma-separated)
 OF_SIGNUP_DAILY_EMAILS=       # the most sign-up emails a day, from everyone together; empty means 200
-OF_PAYMENT_METHOD=            # how to pay until a provider is connected, in Hebrew ("העברה בנקאית או ביט"); said on /setup and in the emails
-OF_BILLING_PROVIDER=          # set only once a payment provider is connected
+OF_PAYMENT=                   # manual (empty means manual) or provider; anything else and the service will not start
+OF_PAYMENT_URL=               # with OF_PAYMENT=provider, required: the provider's https payment page
+OF_PAYMENT_METHOD=            # manual only: how to pay, in Hebrew ("העברה בנקאית או ביט"); said on /setup and in the emails
 ```
 
 **What a stranger who signs up needs.** With `OF_SIGNUP=1`, the first lines of the log say which of
 these is missing, because each one leaves a customer with no way forward:
-`OF_SIGNUP_NOTIFY` (otherwise nobody hears of a new customer or an unpaid month), `OF_SUPPORT_WA`
-or `MAIL_REPLY_TO` (otherwise "how do I pay" leads to the website's contact form), and
-`OF_PAYMENT_METHOD` (otherwise the pages say only that we will send payment details). Whether they
+`OF_SIGNUP_NOTIFY` (otherwise nobody hears of a new customer or an unpaid month, and in manual
+payment nobody is told to send the payment details), `OF_SUPPORT_WA` or `MAIL_REPLY_TO` (otherwise
+a question about paying leads to the website's contact form), and, in manual payment,
+`OF_PAYMENT_METHOD` (otherwise the pages say only that we email the payment details). The log
+also says which payment mode it runs in ("Payment: manual" or "Payment: provider"), and a bad
+`OF_PAYMENT`, or `provider` without an https `OF_PAYMENT_URL`, stops it with "of-accounts will not
+start: ..." (in `pm2 logs of-accounts`). Whether they
 are set on the server today: UNVERIFIED (`grep -c '^OF_SIGNUP_NOTIFY=.' /opt/openfrequency-accounts/private/.env`, and the same
 for each name; the values are not printed).
 

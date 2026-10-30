@@ -38,24 +38,29 @@ An address that already has an account gets a sign-in link instead, never a seco
 `OF_SIGNUP_PRODUCTS` (default `teder,toran`) says which products the form offers: one left out
 shows as coming soon and is refused (Toran waits for Meta's approval of WhatsApp: `teder`).
 Each confirmed sign-up sends a short email to every address in `OF_SIGNUP_NOTIFY` (unset: none),
-with who signed up, the business, the products, the time and a link to it on `/admin`, and the
+with who signed up, the business, each product's plan and price, the time, what to do next (in
+manual payment, email the customer the payment details) and a link to it on `/admin`, and the
 customer a welcome email (pay first, then set up, with the prices and a link to `/setup`). The
-form shows each product's price, VAT excluded, with its setup fee.
+form shows each product's price, VAT excluded, with its setup fee, and under Teder's plans that
+the setup fee is not refunded.
 
 ## The paywall, cancelling and deleting
 
 The products are behind a paywall: a workspace may use one only while a recorded payment covers
-today, or while the superadmin has marked it complimentary on `/admin/accounts`. There is no
-payment provider yet (`src/accounts/billing.js` is the hook one plugs into, `OF_BILLING_PROVIDER`),
-so payments are recorded on `/admin` ("התקבל תשלום לחודש" moves the paid-until day a month on).
+today, or while the superadmin has marked it complimentary on `/admin/accounts`. Payments are
+recorded on `/admin` ("התקבל תשלום לחודש" moves the paid-until day a month on). How the customer
+pays is the switch `OF_PAYMENT` (`src/accounts/billing.js`): `manual` (the default: we email the
+payment details, `OF_PAYMENT_METHOD` says how) or `provider` (they pay by card on the provider's
+page, `OF_PAYMENT_URL`, which is then required); any other value and the service will not start.
+Every page and email that describes paying says the mode's way ([docs/setup.md](docs/setup.md)).
 Teder and Toran ask `GET /internal/entitlement?workspace=<id>&product=<p>`: `access` is `paid`,
 `comp`, `unpaid`, `cancelled` or `off`, and `allowed` says whether to open. Every workspace that
 existed before the paywall (migration 7) is complimentary for the products it had on, so nothing
 that worked stops; a new sign-up is not. Until it is paid, `/setup` shows the payment as the
-first required step (leading to our WhatsApp while there is no provider) and the product's steps
-locked, and the home page's product card says "להסדיר תשלום". The home page shows the plan, the
-price, the day it is paid until, the next charge (once there is a provider) and the status in
-plain words.
+first required step ("לתשלום" to the provider's page, or, in manual mode, our WhatsApp for
+questions) and the product's steps locked, and the home page's product card says "להסדיר תשלום".
+The home page shows the plan, the price, the day it is paid until, the next payment (with a
+provider) and the status in plain words.
 
 An owner cancels a product online from the home page (a confirmation page first): it works to
 the last day paid for and then stops, with nothing more charged, and can be taken back until

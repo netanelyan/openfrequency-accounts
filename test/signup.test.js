@@ -419,6 +419,9 @@ test('the owner hears of each confirmed sign-up: once per address, after the lin
     assert.equal(m.subject, 'הרשמה חדשה: <b>Noa</b> & Co');
     for (const line of ['שם: Noa <i>Levi</i>', 'מייל: noa@example.com', 'עסק: <b>Noa</b> & Co', 'מוצרים: תדר', 'מתי: 22.10.2026, 13:00', 'אישור: קישור במייל'])
       assert.ok(m.text.includes(line), line);
+    // The plan and its price, and, in manual mode (OF_PAYMENT unset), to email the payment details to the customer.
+    assert.ok(m.text.includes('תדר, החבילה המלאה: 790 ₪ לחודש + 1,490 ₪ דמי הקמה, לא כולל מע״מ'), m.text);
+    assert.ok(m.text.includes('צריך לשלוח ל-noa@example.com במייל את פרטי התשלום. כשהתשלום מגיע, רושמים אותו בקונסולה ("התקבל תשלום לחודש"), ורק אז תדר נפתח ללקוח.'), m.text);
     assert.equal(m.link, `https://accounts.openfrequency.co.il/admin/accounts#ws-${ws.id}`);
     // The HTML part escapes what the customer typed.
     assert.ok(m.html.includes('&lt;b&gt;Noa&lt;/b&gt; &amp; Co'));
@@ -506,6 +509,9 @@ test('a sign-up confirmed by Google sends the notice too, once', async () => {
     assert.equal(sent.length, 1);
     assert.ok(sent[0].text.includes('מייל: noa@gmail.com'));
     assert.ok(sent[0].text.includes('מוצרים: תדר, תורן'));
+    assert.ok(sent[0].text.includes('תורן: 590 ₪ לחודש + 990 ₪ דמי הקמה, לא כולל מע״מ'));
+    assert.ok(sent[0].text.includes('צריך לשלוח ל-noa@gmail.com במייל את פרטי התשלום.'));
+    assert.ok(sent[0].text.includes('ורק אז תדר ותורן נפתחים ללקוח.'));
     assert.ok(sent[0].text.includes('אישור: Google'));
   } finally {
     await t.done();

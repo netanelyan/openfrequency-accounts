@@ -62,29 +62,34 @@ const plain = (v, max = 120) =>
     .slice(0, max);
 
 /**
- * To the owner (OF_SIGNUP_NOTIFY), once a sign-up is confirmed: who, which business, which products, when, and a link
- * to the workspace on /admin. `products` are names already (תורן, תדר).
+ * To the owner (OF_SIGNUP_NOTIFY), once a sign-up is confirmed: who, which business, which products, each one's plan and
+ * price (`prices`, lines already written), when, what to do next by the payment mode (`payment`: in manual, email the
+ * customer the payment details), and a link to the workspace on /admin. `products` and `names` are names already
+ * (תורן, תדר); `many` when there is more than one.
  */
-export const signupNoticeMail = (to, { name, email, business, products, at, method, link }) => {
+export const signupNoticeMail = (to, { name, email, business, products, prices = [], payment = 'manual', names = products, many = false, at, method, link }) => {
   const b = plain(business, 80);
+  const address = plain(email, 254);
   return {
     to,
     ...build(
       MAIL.noticeSubject(b),
-      MAIL.noticeLines(plain(name, 80), plain(email, 254), b, plain(products), when(at), method, link),
+      MAIL.noticeLines(plain(name, 80), address, b, plain(products), when(at), method, link, prices, MAIL.noticePay(payment, address, plain(names), many)),
       MAIL.noticeButton
     ),
   };
 };
 
 /**
- * Right after a sign-up is confirmed: the account is open, what happens next (pay, then set up), and /setup. `payHow`
- * is how payment works today (OF_PAYMENT_METHOD), said when it is set.
+ * Right after a sign-up is confirmed: the account is open, what happens next (pay, then set up), and /setup. `payment`
+ * is how customers pay (OF_PAYMENT) and `opens` when the products open (opensAfter()). In manual mode, `payHow` is how
+ * they pay (OF_PAYMENT_METHOD), said when it is set, and questions go to a reply or to our WhatsApp (`wa`, digits).
  */
-export const welcomeMail = (to, { business, link, providerReady = false, prices = [], payHow = '' }) => {
+export const welcomeMail = (to, { business, link, payment = 'manual', opens = '', prices = [], payHow = '', wa = null }) => {
   const b = plain(business, 80);
   const how = plain(payHow, 200);
-  return { to, ...build(MAIL.welcomeSubject(b), MAIL.welcomeLines(b, link, providerReady, [...[].concat(prices), ...(how ? [MAIL.welcomePayHow(how)] : [])]), MAIL.welcomeButton) };
+  const manual = payment !== 'provider' ? [...(how ? [MAIL.welcomePayHow(how)] : []), MAIL.payAsk(wa)] : [];
+  return { to, ...build(MAIL.welcomeSubject(b), MAIL.welcomeLines(b, link, payment, opens, [...[].concat(prices), ...manual]), MAIL.welcomeButton) };
 };
 
 /** To each owner, when a month's payment is recorded on /admin: until when it is paid. */
@@ -95,14 +100,18 @@ export const paidMail = (to, { business, product, until, link }) => ({
 
 /**
  * The billing emails to each owner (src/web/daily.js): `kind` soon7 or soon1 (before the payment falls due), due (the
- * day it does, which starts the grace), stopped (the grace is over). `pay` says how to pay; `amount` is said as written.
+ * day it does, which starts the grace), stopped (the grace is over). `pay` says how to pay (a line, or lines); `amount`
+ * is said as written. The button of soon and due goes to `payLink` with `payButton` when there is one (the provider's
+ * payment page, "לתשלום"); else, like stopped's, to `link`, the account.
  */
-export const billingMail = (to, { kind, business, product, dueOn, graceUntil = null, amount, pay, link }) => {
+export const billingMail = (to, { kind, business, product, dueOn, graceUntil = null, amount, pay, link, payLink = null, payButton = MAIL.payButton }) => {
   const b = plain(business, 80);
   const p = PRODUCT_NAMES[product];
-  if (kind === 'due') return { to, ...build(MAIL.dueSubject(p), MAIL.dueLines(b, p, dayHe(dueOn), dayHe(graceUntil), amount, pay, link), MAIL.payButton) };
+  const go = payLink || link;
+  const label = payLink ? payButton : MAIL.payButton;
+  if (kind === 'due') return { to, ...build(MAIL.dueSubject(p), MAIL.dueLines(b, p, dayHe(dueOn), dayHe(graceUntil), amount, pay, go), label) };
   if (kind === 'stopped') return { to, ...build(MAIL.stoppedSubject(p), MAIL.stoppedLines(b, p, link), MAIL.payButton) };
-  return { to, ...build(MAIL.soonSubject(p, dayHe(dueOn)), MAIL.soonLines(b, p, dayHe(dueOn), amount, pay, link), MAIL.payButton) };
+  return { to, ...build(MAIL.soonSubject(p, dayHe(dueOn)), MAIL.soonLines(b, p, dayHe(dueOn), amount, pay, go), label) };
 };
 
 /** To the owner (OF_SIGNUP_NOTIFY): a customer's payment fell due (`kind` due), or its grace ended (stopped). */

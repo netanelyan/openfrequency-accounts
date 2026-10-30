@@ -142,8 +142,8 @@ export function setupClient({ env = process.env, fetchImpl = globalThis.fetch, l
  * src/accounts/entitlement.js accessFor()) and the payment hook. Pure.
  *   billing     the payment step, first and required, or null with no product on. "done" once every product is
  *               allowed (paid for, or complimentary) and none is in its grace (due); until then "todo", leading to the
- *               provider's checkout once one
- *               is connected (billingReady) and, before that, to us (`contact`: our WhatsApp or the contact page)
+ *               provider's payment page with OF_PAYMENT=provider (billingReady, `checkout`) and, in manual mode, to us
+ *               for questions (`contact`: our WhatsApp, an email, or the contact page)
  *   sections    one per product: { product, ok, locked, ready, done, required: [...], optional: [...] }. A product
  *               that is not allowed yet is locked: its steps are shown, closed, until the payment is in
  *   done/total  the steps done, out of every step there is now (a "soon" step is not counted)
@@ -161,7 +161,7 @@ export function setupState(results, products, { billingReady = false, access = {
         status: paidAll ? 'done' : 'todo',
         mode: billingReady ? 'provider' : 'contact',
         comp: products.every((p) => access[p]?.access === 'comp'),
-        // A connected provider with no checkout page to send them to yet still leaves a way to reach us.
+        // Provider mode with no payment page to send them to (the service does not start so) still leaves a way to us.
         href: paidAll ? null : (billingReady && checkout) || contact,
         checkout: Boolean(!paidAll && billingReady && checkout),
         required: true,

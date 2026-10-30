@@ -13,6 +13,14 @@ try {
   process.exit(1);
 }
 loadEnv();
+// How customers pay (OF_PAYMENT, src/accounts/billing.js): a value it does not know, or provider without an https
+// OF_PAYMENT_URL, and the service stops here, before it opens anything, rather than tell customers the wrong way to pay.
+const { paymentMode, paymentProblem } = await import('../src/accounts/billing.js');
+const payProblem = paymentProblem();
+if (payProblem) {
+  console.error(`of-accounts will not start: ${payProblem}`);
+  process.exit(1);
+}
 const { openDb, closeDb, SchemaError } = await import('../src/db/index.js');
 const { listen } = await import('../src/web/server.js');
 const { startDaily } = await import('../src/web/daily.js');
@@ -42,13 +50,20 @@ if (!String(env.OF_ASSISTANT_WA || '').trim()) {
 }
 const signupOn = String(env.OF_SIGNUP || '').trim() === '1';
 console.log(signupOn ? 'Sign-up is open (OF_SIGNUP=1): /signup opens new accounts.' : 'Sign-up is closed: /signup says it opens soon. OF_SIGNUP=1 opens it.');
-// What a stranger who signs up needs from us (docs/deploy.md, ACC-02, ACC-03): a way to ask how to pay, a reply
-// address that reaches a person, and someone told of each sign-up.
+const payment = paymentMode(env);
+console.log(
+  payment === 'provider'
+    ? 'Payment: provider (OF_PAYMENT): customers pay on OF_PAYMENT_URL, and each payment is still recorded on /admin before a product opens.'
+    : 'Payment: manual (OF_PAYMENT unset or manual): customers are told we email them the payment details; the sign-up notice says to send them.'
+);
+if (String(env.OF_BILLING_PROVIDER || '').trim()) console.log('OF_BILLING_PROVIDER is no longer read: OF_PAYMENT=provider with OF_PAYMENT_URL replaces it.');
+// What a stranger who signs up needs from us (docs/deploy.md, ACC-02, ACC-03): a way to ask about paying, a reply
+// address that reaches a person, and someone told of each sign-up (in manual mode, the one who sends the details).
 if (signupOn) {
   if (!String(env.OF_SIGNUP_NOTIFY || '').trim()) console.log('OF_SIGNUP_NOTIFY is unset: nobody hears of a new sign-up, a payment that did not come, or a cancellation.');
-  if (!String(env.OF_SUPPORT_WA || '').trim()) console.log('OF_SUPPORT_WA is unset: "how do I pay" leads to an email to MAIL_REPLY_TO, or to the website contact page.');
+  if (!String(env.OF_SUPPORT_WA || '').trim()) console.log('OF_SUPPORT_WA is unset: a question about paying leads to an email to MAIL_REPLY_TO, or to the website contact page.');
   if (!String(env.MAIL_REPLY_TO || '').trim()) console.log('MAIL_REPLY_TO is unset: a reply to the welcome or billing emails goes to the sending address.');
-  if (!String(env.OF_BILLING_PROVIDER || '').trim() && !String(env.OF_PAYMENT_METHOD || '').trim()) console.log('OF_PAYMENT_METHOD is unset: /setup and the emails say only that we send the payment details.');
+  if (payment === 'manual' && !String(env.OF_PAYMENT_METHOD || '').trim()) console.log('OF_PAYMENT_METHOD is unset: /setup and the emails say only that we email the payment details, not how they pay.');
 }
 if (!String(env.PUBLIC_HOST || '').trim()) {
   console.log('PUBLIC_HOST is unset: development mode (plain http, a host-only cookie). Set it on the server.');

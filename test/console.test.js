@@ -304,14 +304,14 @@ test("the customer's dashboard: each product's subscription, recorded on the con
     assert.match(home, /<progress max="31" value="1"/);
     assert.match(home, /שולם עד 21\.11\.2026/);
     assert.match(home, /<a class="button primary" href="https:\/\/teder\.openfrequency\.co\.il\/">כניסה לתדר<\/a>/);
-    // No payment provider yet, so no "next charge": the payments are arranged with us.
-    assert.doesNotMatch(home, /החיוב הבא/);
+    // Manual payment (OF_PAYMENT unset), so no "next payment" line: the payments are arranged with us.
+    assert.doesNotMatch(home, /התשלום הבא/);
 
     // Stopped: its last day is the end of the month paid for.
     await t.admin.post(`/admin/workspaces/${w.id}/subscription`, { product: 'teder', monthly: '790', setup: '1490', vat: 'excluded', started_on: '2026-10-22', paid_until: '2026-11-21', ends_on: '2026-11-21' });
     home = (await b.get('/')).body;
     assert.match(home, /המנוי מסתיים ב-21\.11\.2026\. נשארו 31 ימים\./);
-    assert.doesNotMatch(home, /החיוב הבא/);
+    assert.doesNotMatch(home, /התשלום הבא/);
 
     // What the console refuses, and what a customer cannot do at all.
     const bad = await t.admin.post(`/admin/workspaces/${w.id}/subscription`, { product: 'teder', monthly: 'abc' });

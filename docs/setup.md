@@ -14,12 +14,15 @@ deleted, and the settings that turn each part on.
 | `OF_SIGNUP_PRODUCTS` | `teder,toran` | The products `/signup` offers, comma-separated, unknown names ignored. One left out shows as "בקרוב" with its box off and is refused, by the form and through Google; with one product open, it starts chosen. The console opens any product either way. |
 | `OF_SIGNUP_NOTIFY` | unset | Comma-separated addresses that get a short email on each confirmed sign-up, each online cancellation (and its undo), each deleted workspace, each payment that did not come on its day and each grace that ended (src/web/daily.js), and the workspaces deleted for being unused. Unset, no notice: this is how the operator hears of a new customer. |
 | `OF_SIGNUP_DAILY_EMAILS` | `200` | The most sign-up emails `/signup` sends in a day, from every address together. Past it the form answers 429 ("עצרנו אותם עד מחר") and the log says so. |
-| `OF_PAYMENT_METHOD` | unset | How payment works until a provider is connected, in plain Hebrew ("העברה בנקאית או ביט"). Set, `/setup`, the welcome email and the billing emails say "איך משלמים: ...". |
+| `OF_PAYMENT` | `manual` | How customers pay: `manual` (unset means manual) or `provider`. Any other value, and the service will not start, saying why in one line (`npm run daily` too). What each mode tells the customer is under "Payment" below. |
+| `OF_PAYMENT_URL` | unset | With `OF_PAYMENT=provider`, required: the provider's hosted payment page, an `https` address (no user name or password in it), the same for every workspace. Missing or not `https`, the service will not start. Unused in manual mode. |
+| `OF_PAYMENT_METHOD` | unset | Manual mode only: how the customer pays, in plain Hebrew ("העברה בנקאית או ביט"). Set, `/setup`, the welcome email and the billing emails say "איך משלמים: ...". Not said with a provider. |
 | `OF_TEDER_INTERNAL` | `http://127.0.0.1:4700` | Where `/setup` reaches Teder's internal routes, and where a deleted workspace's data is deleted. |
 | `OF_TORAN_INTERNAL` | `http://127.0.0.1:4710` | Where `/setup` reaches Toran's (the same address `/admin` uses), and the same for deleting. |
 | `OF_INTERNAL_TOKEN` | unset | The bearer token for both directions. Unset or shorter than 32 characters, no product is asked (each says "לא הצלחנו לבדוק כרגע", and deleting a workspace stops), and our internal routes answer 503. |
-| `OF_BILLING_PROVIDER` | unset | The payment hook. Unset, `billingReady()` is false: the payment step says the online payment opens soon and leads to us, and the home page shows no next charge. |
-| `OF_SUPPORT_WA` | unset | Our WhatsApp, where the payment step's button leads while there is no provider. Unset, it leads to an email to `MAIL_REPLY_TO`, and without that to `https://openfrequency.co.il/join`. |
+| `OF_SUPPORT_WA` | unset | Our WhatsApp, where the payment step's button leads in manual mode, for questions about paying; the welcome and billing emails give the number. Unset, the button leads to an email to `MAIL_REPLY_TO`, and without that to `https://openfrequency.co.il/join`. |
+
+`OF_BILLING_PROVIDER`, the hook before `OF_PAYMENT`, is no longer read; the service says so in its log when it is set.
 
 ## Sign-up
 
@@ -59,22 +62,40 @@ address checked like the login's. Each sign-up is in the audit log (`signup_requ
 
 **The owner's notice.** Each address in `OF_SIGNUP_NOTIFY` gets one email when a sign-up is
 confirmed (by the link or by Google), after its transaction has committed: subject "הרשמה חדשה:
-<business>", then the person's name and email, the business, the products, the time (Israel), how
-it was confirmed, and a link to the workspace on `/admin/accounts`. What the customer typed is
+<business>", then the person's name and email, the business, the products, each product's plan and
+price as its subscription has them ("תדר, החבילה הקטנה: 490 ₪ לחודש + 990 ₪ דמי הקמה, לא כולל
+מע״מ"), the time (Israel), how it was confirmed, what to do next (manual payment: email the payment
+details to the customer's address; either way, record the payment on the console, and only then
+the product opens), and a link to the workspace on `/admin/accounts`. What the customer typed is
 put on one line (no control characters or bidi overrides) and escaped in the HTML part. Nothing
 is sent for the form alone, a closed sign-up, the honeypot, a form past the limits, or an address
 that already has an account. A notice that fails to send is logged and never holds up the sign-up.
 
 Right after the confirmation (by the link or by Google) the customer gets a **welcome email**:
-the account is open, the payment comes first (with each product's price before VAT and its setup
-fee; without a provider, "answer this email and we send the payment details"), then the setup,
-with a button to `/setup`.
+the account is open, the payment comes first (how, by the payment mode below, with each product's
+price before VAT and its setup fee; Teder's says its setup fee is not refunded, as Teder's terms
+do), then the setup, with a button to `/setup`.
+
+### Payment
 
 Payment is not taken here. The subscription starts unpaid (the console's "open": on, no payment
 recorded), and a new sign-up is never complimentary, so its products stay behind the paywall
-(below) until a payment is recorded. `src/accounts/billing.js` has the hooks a card-clearing
-provider will plug into: `billingReady(env)` and `checkoutUrl()`, which is null until a provider
-is connected.
+(below) until a payment is recorded on `/admin`, in both modes. `OF_PAYMENT` says which way the
+customer pays, and every place that describes paying follows it (`src/accounts/billing.js`):
+
+| | `manual` (the default) | `provider` |
+|---|---|---|
+| The sign-up form and its confirmation page | we email the payment details after the account opens, and the products open once the payment reaches us | they pay by card in the account, and the products open once the payment is confirmed |
+| The welcome email | the same, with "איך משלמים: ..." (`OF_PAYMENT_METHOD`, when set) and questions to a reply or our WhatsApp's number | pay by card on the setup page, "לתשלום"; the products open once the payment is confirmed |
+| `/setup`'s payment step | the same; its button (quiet: nothing to start) asks us on WhatsApp, "יש לנו שאלה על התשלום" written | "לתשלום", the one blue button, opens `OF_PAYMENT_URL` |
+| The billing emails (soon, due) | pay by the details we emailed, how, and whom to ask; the button goes to the account | pay by card on the payment page; the button "לתשלום" goes to `OF_PAYMENT_URL` |
+| The home page | no next-payment line | "התשלום הבא: <amount>, ב-<date>" |
+| The owner's sign-up notice | email the payment details to the customer's address, then record the payment | record the payment once it has gone through |
+
+A product never opens "at once" in either mode: the operator records the payment on `/admin`
+("התקבל תשלום לחודש"). The sign-up form's note under Teder's plans says the setup fee is paid
+once, with the first month, and not refunded ("דמי ההקמה לא מוחזרים", Teder's terms); Toran's
+terms say it differently, so nothing says it of Toran's.
 
 ## /setup
 
@@ -139,10 +160,10 @@ site) is dropped and the step has no button.
 - Payment comes first, and it is required: `todo` until every product the workspace has on is
   allowed by the paywall (paid for, or complimentary), then `done`. It lists each product's price
   as recorded on its subscription (before VAT, with the setup fee until the first payment), or
-  the day it is paid until. With no provider (`billingReady()` false) it says the online payment
-  opens soon and its button reaches us: our WhatsApp (`OF_SUPPORT_WA`, with "רוצים לשלם על המנוי"
-  written) or, unset, `https://openfrequency.co.il/join`. Once a provider is connected and
-  `checkoutUrl()` gives a page, the button goes there.
+  the day it is paid until. In manual mode it says we email the payment details and which products
+  open once the payment reaches us, and its quiet button reaches us: our WhatsApp (`OF_SUPPORT_WA`,
+  with "יש לנו שאלה על התשלום" written), else an email to `MAIL_REPLY_TO`, else
+  `https://openfrequency.co.il/join`. With `OF_PAYMENT=provider`, "לתשלום" opens `OF_PAYMENT_URL`.
 - A product that is not allowed yet is **locked**: its steps are shown (asked of the product as
   usual), with "נפתח אחרי התשלום" and no buttons; a step it already reports done stays done.
 - The count at the top ("3 מתוך 5 צעדים") is the steps done out of every step there is, payment
@@ -157,7 +178,7 @@ site) is dropped and the step has no button.
   the top until every product has said it is. A product that is not allowed has "להסדיר תשלום"
   on its card instead of the way into it. Each card says its status in plain words (פעיל, עוד לא
   שולם, מחכה לתשלום, בוטל, ללא תשלום, מסתיים, הסתיים), the price, the setup fee until the first
-  payment, the day it is paid until, and the next charge once a provider is connected.
+  payment, the day it is paid until, and, with `OF_PAYMENT=provider`, the next payment.
 
 ## The plans
 
@@ -173,7 +194,8 @@ one's, a price agreed by hand stays. Toran has no plans here.
 ## The paywall
 
 The product is sold behind a paywall: a workspace uses a product only while it is **allowed**.
-There is no payment provider yet, so "paid" is what the superadmin records on `/admin/accounts`:
+Nothing here hears from a payment provider, in either payment mode (`OF_PAYMENT`), so "paid" is
+what the superadmin records on `/admin/accounts`:
 "התקבל תשלום לחודש" moves the subscription's last paid day (`paid_until`) a month on (from the
 last paid day, or from today when that has passed), and the date can be edited by hand in the same
 form. The console shows each product's access ("גישה: שולם, פתוח, עד 21.11.2026") and a button
