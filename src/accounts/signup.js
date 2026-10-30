@@ -25,8 +25,8 @@ import { DEFAULT_PLAN, PLANS } from './subscriptions.js';
 // link instead (the page says the same thing either way), and a confirmation that finds the address taken by then
 // opens nothing.
 
-/** The terms and privacy policy the form links to, by the date they were last updated (openfrequency.co.il). */
-export const TERMS_VERSION = '2026-10-29';
+/** The terms the form links to, by the date they were last updated: the website's legal.signupUpdated (openfrequency.co.il/terms). */
+export const TERMS_VERSION = '2026-10-30';
 export const TERMS_URL = 'https://openfrequency.co.il/terms';
 export const PRIVACY_URL = 'https://openfrequency.co.il/privacy';
 /** The website's page for leaving details, where a closed sign-up sends people. */
