@@ -1,37 +1,73 @@
 import { MAIL, NOTIFY, PRODUCT_NAMES, dayHe, when } from '../web/copy.js';
 import { esc } from '../web/html.js';
 
-// The emails (a sign-in link, an invite, a sign-up to confirm), as plain text and as simple right-to-left HTML that reads
-// the same in Gmail, Outlook and a phone. The link is also written out in full,
-// for a mail program that hides buttons.
+// The emails (a sign-in link, an invite, a sign-up to confirm, billing, a product's notice), as plain text and as
+// right-to-left HTML in the website's look: the silver ground, one white card, the mark and the name above it, one
+// button. It is built of tables with inline styles, so Gmail, Outlook and a phone read it the same; a mail program that
+// knows dark mode (Apple Mail, Outlook on a Mac) gets the site's dark colours from the <style> block, and one that
+// strips it keeps the light ones. The link is also written out in full, for a mail program that hides buttons.
+
+// The marks are the website's PNGs (openfrequency-web assets/brand/png, built to /mail): a mail program shows no SVG.
+// A product's notice wears its product's mark and colour; everything else, OpenFrequency's.
+export const MAIL_IMAGES = 'https://openfrequency.co.il/mail';
+const BRAND = {
+  openfrequency: { name: 'OpenFrequency', image: 'openfrequency', color: '#2747d6', dark: '#8fa2ff', button: '#0071e3' },
+  teder: { name: PRODUCT_NAMES.teder, image: 'teder', color: '#5b33c2', dark: '#b9a2ff', button: '#6a3fd6' },
+  toran: { name: PRODUCT_NAMES.toran, image: 'toran', color: '#0c6b49', dark: '#5fd6a6', button: '#0f7a54' },
+};
+const FONT = "-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif";
+
+// A number written with separators (a phone, 055-253-6259; a date, 1.12.2026; a time, 09:12) is kept whole and left
+// to right inside a Hebrew line: without it a narrow screen breaks it at a dash, and the bidi order moves the pieces.
+const ltrNumbers = (html) => html.replace(/\d+(?:[-.:/]\d+)+/g, (n) => `<span dir="ltr" style="white-space:nowrap">${n}</span>`);
 
 // `footer`, when there is one: { text, href, label }, a small line under the card (where to turn the email off).
-function build(subject, lines, button, footer = null) {
+// `brand`: openfrequency, teder or toran.
+function build(subject, lines, button, footer = null, brand = 'openfrequency') {
+  const b = BRAND[brand] || BRAND.openfrequency;
   const link = lines.find((l) => typeof l === 'object')?.link;
   const text = [...lines.map((l) => (typeof l === 'object' ? l.link : l)), '', MAIL.signature, ...(footer ? [`${footer.text}\n${footer.href}`] : [])]
     .join('\n\n')
     .replace(/\n\n\n\n/g, '\n\n');
+  // The line an inbox shows beside the subject: the first one that says something, not the greeting.
+  const preview = lines.find((l) => typeof l === 'string' && l !== 'שלום,') || '';
   const body = lines
     .map((l) =>
       typeof l === 'object'
-        ? `<p style="margin:24px 0"><a href="${esc(l.link)}" style="background:#0071e3;color:#ffffff;text-decoration:none;padding:12px 28px;border-radius:10px;display:inline-block;font-weight:600">${esc(button)}</a></p>
-<p style="margin:0 0 16px;font-size:13px;color:#56565b;direction:ltr;text-align:right;word-break:break-all">${esc(l.link)}</p>`
-        : `<p style="margin:0 0 16px">${esc(l).replace(/\n/g, '<br>')}</p>`
+        ? `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:26px 0 12px"><tr><td bgcolor="${b.button}" style="background:${b.button};border-radius:12px"><a href="${esc(l.link)}" style="display:inline-block;padding:13px 30px;font:600 16px/1.25 ${FONT};color:#ffffff;text-decoration:none;border-radius:12px">${esc(button)}</a></td></tr></table>
+<p class="of-muted" style="margin:0 0 22px;font-size:13px;line-height:1.5;color:#636368;direction:ltr;text-align:right;word-break:break-all">${esc(l.link)}</p>`
+        : `<p class="of-ink" style="margin:0 0 16px;color:#1d1d1f">${ltrNumbers(esc(l)).replace(/\n/g, '<br>')}</p>`
     )
     .join('\n');
   const html = `<!doctype html>
-<html lang="he" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>${esc(subject)}</title></head>
-<body style="margin:0;background:#eeeff2;font-family:-apple-system,'Segoe UI',Arial,sans-serif;color:#1d1d1f">
-<div dir="rtl" style="max-width:520px;margin:0 auto;padding:32px 16px">
-<div style="background:#ffffff;border-radius:16px;padding:28px 24px;font-size:16px;line-height:1.6;text-align:right">
+<html lang="he" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light dark"><meta name="supported-color-schemes" content="light dark"><title>${esc(subject)}</title>
+<style>
+@media (prefers-color-scheme: dark) {
+  .of-bg { background:#111113 !important; }
+  .of-card { background:#1c1c1e !important; border-color:#2c2c2e !important; }
+  .of-ink { color:#f5f5f7 !important; }
+  .of-muted, .of-muted a { color:#a1a1a6 !important; }
+  .of-name { color:${b.dark} !important; }
+  .of-rule { border-color:#2c2c2e !important; }
+}
+@media (max-width: 600px) { .of-pad { padding:26px 20px !important; } }
+</style></head>
+<body class="of-bg" style="margin:0;padding:0;background:#eeeff2">
+<div style="display:none;max-height:0;overflow:hidden;opacity:0;mso-hide:all">${esc(preview)}</div>
+<table role="presentation" class="of-bg" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#eeeff2" style="background:#eeeff2"><tr><td align="center" style="padding:28px 12px 36px">
+<table role="presentation" dir="rtl" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:560px">
+<tr><td align="right" style="padding:0 6px 16px"><table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td style="padding-left:10px"><img src="${MAIL_IMAGES}/${b.image}.png" width="36" height="36" alt="" style="display:block;border:0;width:36px;height:36px"></td><td class="of-name" style="font:700 20px/1 ${FONT};color:${b.color}">${esc(b.name)}</td></tr></table></td></tr>
+<tr><td class="of-card of-pad" bgcolor="#ffffff" style="background:#ffffff;border:1px solid #e3e4e8;border-radius:18px;padding:32px 30px;font:16px/1.65 ${FONT};color:#1d1d1f;text-align:right">
 ${body}
-<p style="margin:24px 0 0;color:#56565b">${esc(MAIL.signature)}</p>
-</div>${
+<p class="of-muted of-rule" style="margin:26px 0 0;padding-top:18px;border-top:1px solid #ececf0;color:#636368">${esc(MAIL.signature)}</p>
+</td></tr>${
     footer
       ? `
-<p style="margin:16px 8px 0;font-size:13px;color:#56565b;text-align:right">${esc(footer.text)} <a href="${esc(footer.href)}" style="color:#56565b">${esc(footer.label)}</a></p>`
+<tr><td class="of-muted" style="padding:16px 8px 0;font:13px/1.5 ${FONT};color:#636368;text-align:right">${esc(footer.text)} <a href="${esc(footer.href)}" style="color:#636368">${esc(footer.label)}</a></td></tr>`
       : ''
-  }</div></body></html>`;
+  }
+<tr><td class="of-muted" style="padding:20px 8px 0;font:12px/1.5 ${FONT};color:#636368;text-align:right">OpenFrequency™ · <a href="https://openfrequency.co.il" style="color:#636368;text-decoration:none">openfrequency.co.il</a></td></tr>
+</table></td></tr></table></body></html>`;
   return { subject, text, html, link };
 }
 
@@ -165,5 +201,5 @@ export const deleteNoticeMail = (to, { business, who, at, byAdmin = false, resul
 export const productNoticeMail = (to, { product, kind, subject, text, link, manage }) => {
   const name = PRODUCT_NAMES[product];
   const lines = [...text.split(/\n{2,}/), { link }];
-  return { to, ...build(subject, lines, NOTIFY.mailButton(name), { text: NOTIFY.mailFooter(NOTIFY.kinds[kind], name), href: manage, label: NOTIFY.mailFooterLink }) };
+  return { to, ...build(subject, lines, NOTIFY.mailButton(name), { text: NOTIFY.mailFooter(NOTIFY.kinds[kind], name), href: manage, label: NOTIFY.mailFooterLink }, product) };
 };

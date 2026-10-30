@@ -49,8 +49,12 @@ test('a notification goes to the owners, by default, as plain text with the prod
     assert.match(m.text, /יש 3 פוסטים חדשים שמחכים לכם\.\n\nאפשר לאשר אותם מהטלפון\./);
     const manage = `https://accounts.openfrequency.co.il/notifications?workspace=${t.ws.id}`;
     assert.match(m.text, new RegExp(`קיבלתם את המייל הזה כי ההתראות על פוסטים שמחכים לאישור בתדר פועלות אצלכם\\.\\n${manage.replace(/[.?]/g, '\\$&')}`));
-    assert.ok(m.html.includes(`<a href="${manage}" style="color:#56565b">לשנות את ההתראות</a>`));
+    assert.ok(m.html.includes(`<a href="${manage}" style="color:#636368">לשנות את ההתראות</a>`));
     assert.match(m.html, />לפתוח את תדר<\/a>/);
+    // Teder's notice wears Teder's mark, name and colour.
+    assert.ok(m.html.includes('src="https://openfrequency.co.il/mail/teder.png"'));
+    assert.match(m.html, /color:#5b33c2">תדר<\/td>/);
+    assert.match(m.html, /bgcolor="#6a3fd6"/);
     assert.ok(t.db.get("SELECT 1 FROM audit WHERE action = 'notify_sent' AND workspace_id = ?", t.ws.id));
   } finally {
     await t.done();
@@ -74,7 +78,9 @@ test('what a product sends is made safe: one-line subject, no control characters
     assert.match(m.text, /שורה אחת <b>מודגשת<\/b>\n\nשורה שנייה/);
     assert.doesNotMatch(m.text, /[\u0000⁦⁩]/);
     assert.ok(m.html.includes('&lt;b&gt;מודגשת&lt;/b&gt;'));
-    assert.doesNotMatch(m.html, /<script|<img|<b>/);
+    assert.doesNotMatch(m.html, /<script|<b>|onerror/);
+    // The one image is our own mark; nothing the product sent becomes one.
+    assert.deepEqual(m.html.match(/<img [^>]*>/g).map((i) => /src="([^"]+)"/.exec(i)[1]), ['https://openfrequency.co.il/mail/teder.png']);
     assert.equal(oneLine('x'.repeat(500)).length, 150);
     assert.equal(plainText('a\n\n\n\nb'), 'a\n\nb');
   } finally {

@@ -62,6 +62,19 @@ test('without a key, the email is written to the outbox and its link printed', a
   }
 });
 
+test("OpenFrequency's own emails wear its mark, its name and its blue, preview their first real line, and end with the site's foot", () => {
+  const m = magicLinkMail('dana@example.com', LINK);
+  assert.ok(m.html.includes('src="https://openfrequency.co.il/mail/openfrequency.png"'));
+  assert.match(m.html, /color:#2747d6">OpenFrequency<\/td>/);
+  assert.match(m.html, /bgcolor="#0071e3"/);
+  // The inbox's preview is the first line that says something, not "שלום,".
+  assert.match(m.html, /<div style="display:none[^"]*">ביקשתם להיכנס ל-OpenFrequency\. זה הקישור:<\/div>/);
+  assert.match(m.html, /OpenFrequency™ · <a href="https:\/\/openfrequency\.co\.il"/);
+  // Dark mode for the mail programs that read it; the light colours stay inline for the rest.
+  assert.match(m.html, /@media \(prefers-color-scheme: dark\)/);
+  assert.match(m.html, /<meta name="color-scheme" content="light dark">/);
+});
+
 test('the magic-link email: Hebrew, right to left, the link as a button and in full', () => {
   const m = magicLinkMail('dana@example.com', LINK);
   assert.match(m.html, /<html lang="he" dir="rtl">/);
