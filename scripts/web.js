@@ -46,7 +46,7 @@ console.log(signupOn ? 'Sign-up is open (OF_SIGNUP=1): /signup opens new account
 // address that reaches a person, and someone told of each sign-up.
 if (signupOn) {
   if (!String(env.OF_SIGNUP_NOTIFY || '').trim()) console.log('OF_SIGNUP_NOTIFY is unset: nobody hears of a new sign-up, a payment that did not come, or a cancellation.');
-  if (!String(env.OF_SUPPORT_WA || '').trim()) console.log('OF_SUPPORT_WA is unset: "how do I pay" leads to an email to MAIL_REPLY_TO, or to the website's contact page.');
+  if (!String(env.OF_SUPPORT_WA || '').trim()) console.log('OF_SUPPORT_WA is unset: "how do I pay" leads to an email to MAIL_REPLY_TO, or to the website contact page.');
   if (!String(env.MAIL_REPLY_TO || '').trim()) console.log('MAIL_REPLY_TO is unset: a reply to the welcome or billing emails goes to the sending address.');
   if (!String(env.OF_BILLING_PROVIDER || '').trim() && !String(env.OF_PAYMENT_METHOD || '').trim()) console.log('OF_PAYMENT_METHOD is unset: /setup and the emails say only that we send the payment details.');
 }
