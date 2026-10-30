@@ -42,7 +42,7 @@ Every answer is JSON with `Cache-Control: no-store`.
       "products": ["teder", "toran"],
       "people": 2, "invitesWaiting": 1, "lastLoginAt": "2026-10-23T18:00:00.000Z",
       "subscriptions": [
-        { "product": "toran", "monthly": 449, "vat": "excluded", "setup": 990, "startedOn": "2026-10-01",
+        { "product": "toran", "plan": null, "monthly": 449, "vat": "excluded", "setup": 990, "startedOn": "2026-10-01",
           "paidUntil": "2026-10-31", "endsOn": null, "cancelledAt": null, "comp": false,
           "state": "paid", "nextChargeOn": "2026-11-01" }
       ],
@@ -62,6 +62,7 @@ Every answer is JSON with `Cache-Control: no-store`.
 | `invitesWaiting` | Its invites not used and not expired (72 hours), as `/admin` lists them. An invite sent to someone already in counts too. |
 | `lastLoginAt` | The latest `users.last_login_at` of any of its members (disabled ones included), or `null` when none has signed in. That column is set whenever a session is made (`createSession`, every sign-in), per person, not per workspace: a person in two workspaces counts for both. |
 | `subscriptions` | Every subscription the workspace has, `teder` then `toran`, including one whose product has since been turned off (it can still be ending, or late). A product with no subscription row is not listed. |
+| `plan` | Teder's plan, `full` or `small` (docs/setup.md, "The plans"); `null` for Toran. |
 | `monthly`, `setup` | ₪, before VAT when `vat` is `excluded`, with VAT when `included`. Any of `monthly`, `vat`, `setup`, `startedOn` can be `null` if the operator cleared it on `/admin`. |
 | `paidUntil` | The last day already paid for, or `null`. |
 | `endsOn` | Set once the subscription is stopped: its last day. |

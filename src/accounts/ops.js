@@ -14,6 +14,8 @@ export function opsSubscription(row, today, comp = false) {
   const d = describe(row, today);
   return {
     product: row.product,
+    // Teder's plan (full or small, subscriptions.js PLANS), null for Toran.
+    plan: row.plan ?? null,
     monthly: row.monthly,
     vat: row.vat,
     setup: row.setup,

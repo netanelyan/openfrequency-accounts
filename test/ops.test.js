@@ -67,7 +67,7 @@ test('the operator gets every workspace, newest first, in the documented shape, 
       invitesWaiting: 0,
       lastLoginAt: null,
       subscriptions: [
-        { product: 'toran', monthly: 449, vat: 'excluded', setup: 990, startedOn: '2026-10-01', paidUntil: '2026-10-31', endsOn: null, cancelledAt: null, comp: false, state: 'paid', nextChargeOn: '2026-11-01' },
+        { product: 'toran', plan: null, monthly: 449, vat: 'excluded', setup: 990, startedOn: '2026-10-01', paidUntil: '2026-10-31', endsOn: null, cancelledAt: null, comp: false, state: 'paid', nextChargeOn: '2026-11-01' },
       ],
       invoices: { count: 2, lastIssuedOn: '2026-10-01' },
     });
