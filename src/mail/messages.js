@@ -103,14 +103,14 @@ const plain = (v, max = 120) =>
  * customer the payment details), and a link to the workspace on /admin. `products` and `names` are names already
  * (תורן, תדר); `many` when there is more than one.
  */
-export const signupNoticeMail = (to, { name, email, business, products, prices = [], payment = 'manual', names = products, many = false, at, method, link }) => {
+export const signupNoticeMail = (to, { name, email, business, products, prices = [], payment = 'manual', names = products, many = false, at, method, link, detailsSent = false }) => {
   const b = plain(business, 80);
   const address = plain(email, 254);
   return {
     to,
     ...build(
       MAIL.noticeSubject(b),
-      MAIL.noticeLines(plain(name, 80), address, b, plain(products), when(at), method, link, prices, MAIL.noticePay(payment, address, plain(names), many)),
+      MAIL.noticeLines(plain(name, 80), address, b, plain(products), when(at), method, link, prices, MAIL.noticePay(payment, address, plain(names), many, detailsSent)),
       MAIL.noticeButton
     ),
   };
@@ -125,7 +125,7 @@ export const welcomeMail = (to, { business, link, payment = 'manual', opens = ''
   const b = plain(business, 80);
   const how = plain(payHow, 200);
   const manual = payment !== 'provider' ? [...(how ? [MAIL.welcomePayHow(how)] : []), MAIL.payAsk(wa)] : [];
-  return { to, ...build(MAIL.welcomeSubject(b), MAIL.welcomeLines(b, link, payment, opens, [...[].concat(prices), ...manual]), MAIL.welcomeButton) };
+  return { to, ...build(MAIL.welcomeSubject(b), MAIL.welcomeLines(b, link, payment, opens, [...[].concat(prices), ...manual], payment !== 'provider' && Boolean(how)), MAIL.welcomeButton) };
 };
 
 /** To each owner, when a month's payment is recorded on /admin: until when it is paid. */

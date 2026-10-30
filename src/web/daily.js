@@ -65,7 +65,8 @@ function billing(db, { mailer, env, base, notifyTo, today }) {
         AND s.paid_until IS NOT NULL AND s.cancelled_at IS NULL AND s.ends_on IS NULL`
   );
   const provider = paymentMode(env) === 'provider';
-  const pay = provider ? MAIL.payByProvider : [MAIL.payByUs, ...(payHow(env) ? [MAIL.welcomePayHow(payHow(env))] : []), MAIL.payAsk(supportWa(env))];
+  // With the owner's details (OF_PAYMENT_METHOD) the email gives them; without, it points to the ones we emailed.
+  const pay = provider ? MAIL.payByProvider : [...(payHow(env) ? [MAIL.welcomePayHow(payHow(env))] : [MAIL.payByUs]), MAIL.payAsk(supportWa(env))];
   const sent = { soon7: 0, soon1: 0, due: 0, stopped: 0 };
   for (const s of rows) {
     const kind = billingKind(s.paid_until, today);

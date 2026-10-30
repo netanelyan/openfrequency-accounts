@@ -158,7 +158,7 @@ async function signUp(t) {
 
 const billingOf = (page) => page.slice(page.indexOf('id="setup-billing"'), page.indexOf('id="setup-teder"'));
 
-test('manual: we email the payment details, say how they pay, Teder opens once the payment reaches us, and questions come to us', async () => {
+test("manual with the owner's details (OF_PAYMENT_METHOD): the welcome email, /setup and the owner's notice give them or say they were given, Teder opens once the payment reaches us, and questions come to us", async () => {
   const t = await site(MANUAL);
   try {
     const form = (await t.browser().get('/signup')).body;
@@ -170,27 +170,43 @@ test('manual: we email the payment details, say how they pay, Teder opens once t
 
     assert.equal(welcome.link, `${BASE}/setup`);
     for (const line of [
-      'קודם התשלום על המנוי. את פרטי התשלום נשלח לכם במייל, לכתובת הזאת. תדר נפתח אחרי שהתשלום מגיע אלינו.',
+      'קודם התשלום על המנוי, לפי פרטי התשלום שכאן למטה. תדר נפתח אחרי שהתשלום מגיע אלינו.',
       'תדר, החבילה הקטנה: 490 ₪ לחודש ועוד מע״מ, ודמי הקמה של 990 ₪ פעם אחת. דמי ההקמה לא מוחזרים.',
       'איך משלמים: העברה בנקאית או ביט',
       'יש שאלה על התשלום? ענו למייל הזה, או כתבו לנו בוואטסאפ ל-050-000-0100.',
     ])
       assert.ok(welcome.text.includes(line), line);
-    assert.doesNotMatch(welcome.text, /בקרוב|ונשלח לכם פרטים|כרטיס אשראי/);
+    assert.doesNotMatch(welcome.text, /בקרוב|ונשלח לכם פרטים|נשלח לכם במייל|כרטיס אשראי/);
 
-    // The owner: the plan and its price, and to send the details to this address.
+    // The owner: the plan and its price, and that the details are already with the customer.
     assert.equal(notice.to, 'boss@example.com');
     assert.ok(notice.text.includes('תדר, החבילה הקטנה: 490 ₪ לחודש + 990 ₪ דמי הקמה, לא כולל מע״מ'), notice.text);
-    assert.ok(notice.text.includes('צריך לשלוח ל-noa@example.com במייל את פרטי התשלום. כשהתשלום מגיע, רושמים אותו בקונסולה ("התקבל תשלום לחודש"), ורק אז תדר נפתח ללקוח.'), notice.text);
+    assert.ok(notice.text.includes('פרטי התשלום כבר אצל noa@example.com, במייל הפתיחה. כשהתשלום מגיע, רושמים אותו בקונסולה ("התקבל תשלום לחודש"), ורק אז תדר נפתח ללקוח.'), notice.text);
+    assert.doesNotMatch(notice.text, /צריך לשלוח/);
 
-    // /setup: no button to start (the details come by email), a quiet one to ask us on WhatsApp.
+    // /setup: the details, no button to start, a quiet one to ask us on WhatsApp.
     const billing = billingOf(setup);
-    assert.match(billing, /<small>את פרטי התשלום אנחנו שולחים לכם במייל\. תדר נפתח אחרי שהתשלום מגיע אלינו\.<\/small><\/span><a class="button quiet" href="https:\/\/wa\.me\/972500000100\?text=[^"]+">כתבו לנו בוואטסאפ<\/a>/);
+    assert.match(billing, /<small>משלמים לפי פרטי התשלום שכאן למטה\. תדר נפתח אחרי שהתשלום מגיע אלינו\.<\/small><\/span><a class="button quiet" href="https:\/\/wa\.me\/972500000100\?text=[^"]+">כתבו לנו בוואטסאפ<\/a>/);
     assert.ok(billing.includes(encodeURIComponent('היי, כותבים מ״Noa Ceramics״. יש לנו שאלה על התשלום.')));
     assert.match(billing, /<li>תדר, החבילה הקטנה: 490 ₪ לחודש, לא כולל מע״מ, ודמי הקמה של 990 ₪ פעם אחת<\/li>/);
     assert.match(billing, /<p>איך משלמים: העברה בנקאית או ביט<\/p>/);
     assert.match(billing, /<p class="muted">יש שאלה על התשלום\? כתבו לנו בוואטסאפ, או ענו לאחד המיילים שקיבלתם מאיתנו\.<\/p>/);
     assert.doesNotMatch(billing, /button primary|בקרוב|ונשלח לכם פרטים|כרטיס אשראי/);
+  } finally {
+    await t.done();
+  }
+});
+
+test("manual without the owner's details: we email them, the owner's notice says to send them, and nothing says how", async () => {
+  const t = await site({ OF_SUPPORT_WA: '972500000100' });
+  try {
+    const { welcome, notice, setup } = await signUp(t);
+    assert.ok(welcome.text.includes('קודם התשלום על המנוי. את פרטי התשלום נשלח לכם במייל, לכתובת הזאת. תדר נפתח אחרי שהתשלום מגיע אלינו.'), welcome.text);
+    assert.doesNotMatch(welcome.text, /איך משלמים|שכאן למטה/);
+    assert.ok(notice.text.includes('צריך לשלוח ל-noa@example.com במייל את פרטי התשלום. כשהתשלום מגיע, רושמים אותו בקונסולה ("התקבל תשלום לחודש"), ורק אז תדר נפתח ללקוח.'), notice.text);
+    const billing = billingOf(setup);
+    assert.match(billing, /<small>את פרטי התשלום אנחנו שולחים לכם במייל\. תדר נפתח אחרי שהתשלום מגיע אלינו\.<\/small>/);
+    assert.doesNotMatch(billing, /איך משלמים|שכאן למטה/);
   } finally {
     await t.done();
   }
@@ -230,21 +246,32 @@ test('/setup names the products still closed: both, or only the one not paid for
     const ws = makeWorkspace(t.db, 'two-shop', { name: 'Two Shop', products: ['teder', 'toran'], members: { 'dana@example.com': 'client_owner' } });
     for (const p of ['teder', 'toran']) ensureSubscription(t.db, ws.id, p);
     const b = signedIn(t, t.db, t.db.get("SELECT * FROM users WHERE email = 'dana@example.com'"));
-    assert.match((await b.get('/setup')).body, /את פרטי התשלום אנחנו שולחים לכם במייל\. תדר ותורן נפתחים אחרי שהתשלום מגיע אלינו\./);
+    assert.match((await b.get('/setup')).body, /משלמים לפי פרטי התשלום שכאן למטה\. תדר ותורן נפתחים אחרי שהתשלום מגיע אלינו\./);
     payMonth(t.db, ws.id, 'teder', { by: null });
-    assert.match((await b.get('/setup')).body, /את פרטי התשלום אנחנו שולחים לכם במייל\. תורן נפתח אחרי שהתשלום מגיע אלינו\./);
+    assert.match((await b.get('/setup')).body, /משלמים לפי פרטי התשלום שכאן למטה\. תורן נפתח אחרי שהתשלום מגיע אלינו\./);
   } finally {
     await t.done();
   }
 });
 
-test('the billing emails: manual says to pay by the details we emailed, how, and whom to ask; provider leads soon and due to the payment page', async () => {
+test("the billing emails: manual gives the owner's details (without them, points to the ones we emailed) and whom to ask; provider leads soon and due to the payment page", async () => {
   for (const [env, check] of [
+    [
+      { OF_SUPPORT_WA: '972500000100' },
+      (soon, due) => {
+        for (const m of [soon, due]) {
+          assert.match(m.text, /משלמים לפי פרטי התשלום ששלחנו לכם במייל\.\n\nיש שאלה על התשלום\?/);
+          assert.doesNotMatch(m.text, /איך משלמים/);
+        }
+      },
+    ],
     [
       MANUAL,
       (soon, due, stopped) => {
         for (const m of [soon, due]) {
-          assert.match(m.text, /משלמים לפי פרטי התשלום ששלחנו לכם במייל\.\n\nאיך משלמים: העברה בנקאית או ביט\n\nיש שאלה על התשלום\? ענו למייל הזה, או כתבו לנו בוואטסאפ ל-050-000-0100\./);
+          // The owner's details are in the email itself; nothing points to an earlier one.
+          assert.match(m.text, /איך משלמים: העברה בנקאית או ביט\n\nיש שאלה על התשלום\? ענו למייל הזה, או כתבו לנו בוואטסאפ ל-050-000-0100\./);
+          assert.doesNotMatch(m.text, /ששלחנו לכם במייל/);
           assert.equal(m.link, `${BASE}/setup`);
           assert.match(m.html, />לחשבון<\/a>/);
           assert.doesNotMatch(m.text, /בקרוב|כרטיס אשראי/);

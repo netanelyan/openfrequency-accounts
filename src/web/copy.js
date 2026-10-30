@@ -434,8 +434,9 @@ export const MAIL = {
   /** A product's plan and price, as its subscription has them: "תדר, החבילה הקטנה: 490 ₪ לחודש + 990 ₪ דמי הקמה, לא כולל מע״מ". */
   noticePrice: (product, monthly, setup, vat) => `${product}: ${monthly} לחודש${setup ? ` + ${setup} דמי הקמה` : ''}, ${vat}`,
   /** What the owner does next, by the payment mode: in manual, email the customer the payment details; either way, record the payment. */
-  noticePay: (mode, email, names, many) =>
-    `${mode === 'provider' ? 'הלקוח משלם בכרטיס אשראי בדף התשלום. כשהתשלום עובר' : `צריך לשלוח ל-${email} במייל את פרטי התשלום. כשהתשלום מגיע`}, רושמים אותו בקונסולה ("התקבל תשלום לחודש"), ורק אז ${names} ${many ? 'נפתחים' : 'נפתח'} ללקוח.`,
+  // `sent`: the payment details went out in the customer's welcome email (OF_PAYMENT_METHOD), so there is nothing to send.
+  noticePay: (mode, email, names, many, sent = false) =>
+    `${mode === 'provider' ? 'הלקוח משלם בכרטיס אשראי בדף התשלום. כשהתשלום עובר' : sent ? `פרטי התשלום כבר אצל ${email}, במייל הפתיחה. כשהתשלום מגיע` : `צריך לשלוח ל-${email} במייל את פרטי התשלום. כשהתשלום מגיע`}, רושמים אותו בקונסולה ("התקבל תשלום לחודש"), ורק אז ${names} ${many ? 'נפתחים' : 'נפתח'} ללקוח.`,
   noticeButton: 'לחשבון בקונסולה',
 
   existingSubject: 'כבר יש לכם חשבון ב-OpenFrequency',
@@ -449,12 +450,16 @@ export const MAIL = {
   // Right after a sign-up is confirmed. `mode` is how payment works (OF_PAYMENT), `opens` when the products open
   // (opensAfter()), and `prices` the price lines, then (manual) how to pay and whom to ask.
   welcomeSubject: (business) => `החשבון של ${business} נפתח`,
-  welcomeLines: (business, link, mode, opens, prices) => [
+  // `details`: the owner's payment details are in the email (OF_PAYMENT_METHOD), below the price, so it points to them
+  // instead of promising to send them.
+  welcomeLines: (business, link, mode, opens, prices, details = false) => [
     'שלום,',
     `החשבון של ${business} ב-OpenFrequency פתוח. נשארו שני דברים.`,
     mode === 'provider'
       ? `קודם התשלום על המנוי. משלמים בכרטיס אשראי בדף ההגדרה, בכפתור "לתשלום". ${opens}`
-      : `קודם התשלום על המנוי. את פרטי התשלום נשלח לכם במייל, לכתובת הזאת. ${opens}`,
+      : details
+        ? `קודם התשלום על המנוי, לפי פרטי התשלום שכאן למטה. ${opens}`
+        : `קודם התשלום על המנוי. את פרטי התשלום נשלח לכם במייל, לכתובת הזאת. ${opens}`,
     ...[].concat(prices),
     'אחר כך ההגדרה. בדף ההגדרה יש רשימה של מה שנשאר, וכל צעד מוביל למקום שבו עושים אותו.',
     { link },
@@ -671,7 +676,8 @@ export const SETUP = {
   billingTitle: 'תשלום',
   billingStep: 'התשלום על המנוי',
   // How paying works, by the payment mode (OF_PAYMENT). `opens` is opensAfter() for the products still closed, or ''.
-  billingManual: (opens) => `את פרטי התשלום אנחנו שולחים לכם במייל.${opens ? ` ${opens}` : ''}`,
+  // `how`: the owner's payment details (OF_PAYMENT_METHOD), shown under it in the card (billingHow).
+  billingManual: (opens, how = '') => `${how ? 'משלמים לפי פרטי התשלום שכאן למטה.' : 'את פרטי התשלום אנחנו שולחים לכם במייל.'}${opens ? ` ${opens}` : ''}`,
   billingTodo: (opens) => `משלמים בכרטיס אשראי בדף התשלום.${opens ? ` ${opens}` : ''}`,
   billingDone: 'המנוי שולם.',
   billingComp: 'החשבון הזה אצלנו ללא תשלום.',

@@ -455,7 +455,7 @@ function billingCard(b, { readOnly, first, products, access, prices, payHow = ''
   const done = b.status === 'done';
   const closed = products.filter((p) => !access[p]?.allowed);
   const opens = closed.length ? opensAfter(b.checkout ? 'provider' : 'manual', closed.map((p) => PRODUCT_NAMES[p]).join(SIGNUP.and), closed.length > 1) : '';
-  const detail = done ? (b.comp ? SETUP.billingComp : SETUP.billingDone) : b.checkout ? SETUP.billingTodo(opens) : SETUP.billingManual(opens);
+  const detail = done ? (b.comp ? SETUP.billingComp : SETUP.billingDone) : b.checkout ? SETUP.billingTodo(opens) : SETUP.billingManual(opens, payHow);
   const wa = /^https:\/\/wa\.me\//.test(b.href || '');
   const label = b.checkout ? SETUP.billingPay : wa ? SETUP.billingWrite : SETUP.billingContact;
   const btn = !done && b.href && !readOnly ? `<a class="button ${b.checkout && first() ? 'primary' : 'quiet'}" href="${esc(b.href)}">${esc(label)}</a>` : '';

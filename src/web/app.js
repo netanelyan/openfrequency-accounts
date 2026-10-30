@@ -225,6 +225,8 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
           return MAIL.noticePrice(P.productLabel(p, s.plan), ils(s.monthly ?? list.monthly), setupFee ? ils(setupFee) : '', (s.vat ?? list.vat) === 'included' ? T.vatIncluded : T.vatExcluded);
         }),
         payment,
+        // The welcome email carries the payment details when the owner wrote them (OF_PAYMENT_METHOD).
+        detailsSent: Boolean(payHow(env)),
         names: products.map((p) => PRODUCT_NAMES[p]).join(SIGNUP.and),
         many: products.length > 1,
         at: workspace.created_at,

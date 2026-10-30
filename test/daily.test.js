@@ -57,8 +57,10 @@ test('the billing emails: each kind once for each paid period, to the owners, th
     assert.deepEqual(r.billing, { soon7: 1, soon1: 0, due: 0, stopped: 0 });
     assert.deepEqual(t.mails.map((m) => [m.to, m.subject]), [['noa@example.com', 'התשלום הבא על תדר: 22.11.2026']]);
     assert.match(t.mails[0].text, /החודש הבא של תדר בחשבון של Noa Shop מתחיל ב-22\.11\.2026\. הסכום: 790 ₪ ועוד מע״מ\./);
-    // Manual payment (OF_PAYMENT unset): pay by the details we emailed, how (OF_PAYMENT_METHOD), and a reply for questions.
-    assert.match(t.mails[0].text, /משלמים לפי פרטי התשלום ששלחנו לכם במייל\.\n\nאיך משלמים: העברה בנקאית\n\nיש שאלה על התשלום\? ענו למייל הזה\./);
+    // Manual payment (OF_PAYMENT unset) with the owner's details (OF_PAYMENT_METHOD): the details themselves, and a reply
+    // for questions; nothing points to an earlier email.
+    assert.match(t.mails[0].text, /איך משלמים: העברה בנקאית\n\nיש שאלה על התשלום\? ענו למייל הזה\./);
+    assert.doesNotMatch(t.mails[0].text, /ששלחנו לכם במייל/);
     assert.equal(t.mails[0].link, 'https://accounts.openfrequency.co.il/setup');
     // Once a day; and the same kind is never sent twice, the next day included.
     assert.equal((await t.run('2026-11-15T12:00:00.000Z')).ran, false);
