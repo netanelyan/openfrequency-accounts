@@ -79,7 +79,7 @@ test('open: the form asks for the name, the business, the products with a line e
     for (const field of ['name="name"', 'name="business"', 'name="email"', 'name="products" value="toran"', 'name="products" value="teder"', 'name="terms" value="1" required', 'name="website" tabindex="-1"', 'name="_csrf"'])
       assert.ok(page.body.includes(field), field);
     assert.match(page.body, /עונה ללקוחות שלכם בוואטסאפ/);
-    assert.match(page.body, /מצגות בעברית לטיקטוק ולאינסטגרם/);
+    assert.match(page.body, /מצגות בעברית לטיקטוק, לאינסטגרם ולפייסבוק/);
     assert.match(page.body, /href="https:\/\/openfrequency\.co\.il\/terms"/);
     assert.match(page.body, /href="https:\/\/openfrequency\.co\.il\/privacy"/);
     // No Google button while Google is not set up, and no script on the page.
