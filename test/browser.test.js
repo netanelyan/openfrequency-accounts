@@ -213,11 +213,17 @@ run("the operator's dashboard on a phone and on a desktop: nothing runs off the 
     const box = page.locator('#msg-toran-12');
     await box.fill('היי, ראינו שניסיתם את הדמו. נשמח לשמוע איך היה.');
     const [chat] = await Promise.all([context.waitForEvent('page'), page.click('a[data-copy="#msg-toran-12"]')]);
-    assert.equal(chat.url(), 'https://wa.me/972500000201');
+    assert.equal(chat.url(), `https://wa.me/972500000201?text=${encodeURIComponent('היי, ראינו שניסיתם את הדמו. נשמח לשמוע איך היה.')}`, 'the chat opens with the message as edited');
     assert.equal(await page.evaluate(() => navigator.clipboard.readText()), 'היי, ראינו שניסיתם את הדמו. נשמח לשמוע איך היה.');
     await page.waitForSelector('#toast.show');
     assert.equal(await page.textContent('#toast'), 'ההודעה הועתקה');
     await chat.close();
+    // A mail keeps its subject and takes the edited message as its body (the mail program itself is not opened here).
+    await page.evaluate(() => document.addEventListener('click', (e) => e.target.closest('a[href^="mailto:"]') && e.preventDefault()));
+    await page.locator('#msg-toran-21').fill('שורה אחת & עוד אחת');
+    await page.click('a[data-copy="#msg-toran-21"]');
+    const mail = new URL(await page.getAttribute('a[data-copy="#msg-toran-21"]', 'href'));
+    assert.deepEqual([mail.pathname, mail.searchParams.get('subject'), mail.searchParams.get('body')], ['hello@emek-ceramics.example', 'תורן לקרמיקה בעמק', 'שורה אחת & עוד אחת']);
 
     // "Sent": posted in the background, Toran's line at the bottom, and the card goes.
     const card = page.locator('article.op', { has: page.locator('#msg-toran-12') });
@@ -242,6 +248,7 @@ run("the operator's dashboard on a phone and on a desktop: nothing runs off the 
     await plain.addCookies([{ name: 'of_session', value: sid, url: base }]);
     const p2 = await plain.newPage();
     await p2.goto(`${base}/admin`);
+    assert.equal(new URL(await p2.getAttribute('a[data-copy="#msg-toran-12"]', 'href')).searchParams.get('text'), 'היי, ראינו שניסיתם את הדמו של תורן לנעלי הגליל. איך היה?', 'without script the link has the message too');
     await p2.locator('form[action$="/toran/15/direct"] button').click();
     await p2.waitForURL(`${base}/admin#contact`);
     assert.equal(await p2.textContent('.flash'), SAID.direct);

@@ -71,7 +71,10 @@ test('the superadmin gets the whole dashboard: who to write to with the message,
 
     // A card: the message in a textarea, copy and open (a link to the chat that also copies), sent, and the rest.
     assert.match(b, /<textarea id="msg-toran-12" rows="6" dir="rtl" aria-label="ההודעה">היי, ראינו שניסיתם את הדמו של תורן לנעלי הגליל\. איך היה\?<\/textarea>/);
-    assert.match(b, /<a class="button primary" href="https:\/\/wa\.me\/972500000201" target="_blank" rel="noopener" data-copy="#msg-toran-12" data-done="ההודעה הועתקה"[^>]*>להעתיק ולפתוח וואטסאפ<\/a>/);
+    // The link has the message written in it, so it opens the chat with it without script too.
+    const tried = encodeURIComponent('היי, ראינו שניסיתם את הדמו של תורן לנעלי הגליל. איך היה?');
+    assert.ok(b.includes(`<a class="button primary" href="https://wa.me/972500000201?text=${tried}" target="_blank" rel="noopener" data-copy="#msg-toran-12" data-done="ההודעה הועתקה"`));
+    assert.match(b, /data-copy="#msg-toran-12"[^>]*>להעתיק ולפתוח וואטסאפ<\/a>/);
     assert.match(b, /action="\/admin\/ops\/toran\/12\/reminded" class="inline" data-ajax="remove">[^]*?<button>שלחתי<\/button>/);
     assert.match(b, /action="\/admin\/ops\/toran\/12\/replied"[^]*?<button class="quiet">ענו לי<\/button>/);
     assert.match(b, /action="\/admin\/ops\/toran\/12\/later"[^]*?name="days" value="1"><button class="quiet">מחר<\/button>/);
@@ -80,8 +83,8 @@ test('the superadmin gets the whole dashboard: who to write to with the message,
     assert.match(b, /<a href="https:\/\/toran\.openfrequency\.co\.il\/lead\/12" target="_blank" rel="noopener">נעלי הגליל<\/a>/);
     assert.match(b, /ניסו את הדמו · לפני 3 שעות · <bdi class="ltr">galil-shoes\.example<\/bdi>/);
     // Asked on the website, inside its hours: sending from the demo number is the primary button, copy is the second.
-    assert.match(b, /action="\/admin\/ops\/toran\/15\/direct"[^]*?<button class="primary">לשלוח עכשיו מהמספר של הדמו<\/button>[^]*?<a class="button" href="https:\/\/wa\.me\/972500000203"/);
-    assert.match(b, /href="mailto:hello@emek-ceramics\.example"[^>]*>להעתיק ולפתוח מייל<\/a>/);
+    assert.match(b, /action="\/admin\/ops\/toran\/15\/direct"[^]*?<button class="primary">לשלוח עכשיו מהמספר של הדמו<\/button>[^]*?<a class="button" href="https:\/\/wa\.me\/972500000203\?text=%D7%94%D7%93%D7%9E%D7%95/);
+    assert.match(b, /href="mailto:hello@emek-ceramics\.example\?subject=[^"&]+&amp;body=%D7%94%D7%99%D7%99[^"]*"[^>]*>להעתיק ולפתוח מייל<\/a>/);
     // A next step that is due: open the chat, the next step's form, not interested. No message, no "sent".
     const contact = b.slice(b.indexOf('<section id="contact">'), b.indexOf('<section id="talking">'));
     const next = contact.split('<article class="op" data-item>').find((x) => x.includes('סטודיו כרמל'));

@@ -1,6 +1,8 @@
 // The operator's dashboard on /admin (src/web/dashboard.js). Everything on it works without this file: each button is
-// a form that posts and comes back, and "copy and open" is a link to the chat. With it (ported from Toran's app.js):
-//   - [data-copy] copies the message in its card first (the link then opens the chat as usual)
+// a form that posts and comes back, and "copy and open" is a link to the chat with the message written in it (Toran's
+// wa.me text or mailto body). With it (ported from Toran's app.js):
+//   - [data-copy] copies the message in its card first, and the link opens the chat with the message as it is in the
+//     box now, edited or not
 //   - forms marked data-ajax post in the background; Toran's line shows at the bottom, and the card goes away
 //     ("remove") or the page reloads ("reload")
 // Words come from the page (data-done, data-fail) or from the toast's own data-*, so every Hebrew line stays in copy.js.
@@ -18,12 +20,28 @@
     timer = setTimeout(() => toast.classList.remove('show'), 3600);
   };
 
-  // The copy runs inside the click, where browsers allow it; execCommand first because it works on more phones.
+  /**
+   * A chat or mail link with `text` written in it, in place of the message the page gave it: wa.me's text, mailto's
+   * body (the other fields, a mail's subject, stay). Any other link is left as it is.
+   */
+  const withText = (href, text) => {
+    const mail = /^mailto:/i.test(href);
+    if (!mail && !/^https:\/\/wa\.me\//i.test(href)) return href;
+    const at = href.indexOf('?');
+    const key = mail ? 'body' : 'text';
+    const keep = at < 0 ? [] : href.slice(at + 1).split('&').filter((p) => p && !p.startsWith(`${key}=`));
+    if (text) keep.push(`${key}=${encodeURIComponent(text)}`);
+    return `${at < 0 ? href : href.slice(0, at)}${keep.length ? `?${keep.join('&')}` : ''}`;
+  };
+
+  // The copy runs inside the click, where browsers allow it; execCommand first because it works on more phones. A link
+  // takes the message as it is in its box now, edited or not, before it opens.
   document.addEventListener('click', (e) => {
     const b = e.target.closest('[data-copy]');
     if (!b) return;
     const src = document.querySelector(b.dataset.copy);
     const text = src ? ('value' in src ? src.value : src.textContent) : '';
+    if (b.tagName === 'A' && b.getAttribute('href')) b.setAttribute('href', withText(b.getAttribute('href'), text));
     let ok = false;
     try {
       const ta = document.createElement('textarea');

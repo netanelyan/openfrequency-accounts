@@ -24,15 +24,19 @@ const ago = (at, hours) => new Date(at - hours * 3_600_000).toISOString();
 
 /** A dashboard's worth of leads, in the documented shapes, as of `at` (ms). Fictional stores only. */
 export function sampleOps(at = Date.now()) {
-  const wa = (phone) => ({ kind: 'whatsapp', href: `https://wa.me/${phone}`, label: 'להעתיק ולפתוח וואטסאפ' });
+  // Toran's links carry the card's message (wa.me's text, mailto's body); with no message, the chat alone.
+  const wa = (phone, text) => ({ kind: 'whatsapp', href: `https://wa.me/${phone}${text ? `?text=${encodeURIComponent(text)}` : ''}`, label: 'להעתיק ולפתוח וואטסאפ' });
   const lead = (id) => `https://toran.openfrequency.co.il/lead/${id}`;
+  const tried = 'היי, ראינו שניסיתם את הדמו של תורן לנעלי הגליל. איך היה?';
+  const asked = 'הדמו של תורן לתבלינים מהשוק מוכן.\nhttps://toran.openfrequency.co.il/p/spice-market';
+  const first = 'היי, כאן OpenFrequency. הכנו לקרמיקה בעמק דף שמראה את תורן עונה ללקוחות של החנות.';
   return {
     teder: { ok: true },
     items: [
-      { key: 'toran:12', product: 'toran', id: '12', reason: 'tried_demo', rank: 100, name: 'נעלי הגליל', domain: 'galil-shoes.example', why: 'ניסו את הדמו', message: 'היי, ראינו שניסיתם את הדמו של תורן לנעלי הגליל. איך היה?', target: wa('972500000201'), direct: false, mark: 'reminded', page: 'https://toran.openfrequency.co.il/p/galil-shoes', at: ago(at, 3), leadUrl: lead(12) },
+      { key: 'toran:12', product: 'toran', id: '12', reason: 'tried_demo', rank: 100, name: 'נעלי הגליל', domain: 'galil-shoes.example', why: 'ניסו את הדמו', message: tried, target: wa('972500000201', tried), direct: false, mark: 'reminded', page: 'https://toran.openfrequency.co.il/p/galil-shoes', at: ago(at, 3), leadUrl: lead(12) },
       { key: 'teder:7', product: 'teder', id: '7', reason: 'next_step', rank: 90, name: 'סטודיו כרמל', domain: 'carmel-studio.example', why: 'הצעד הבא: לשלוח הצעת מחיר', message: null, target: wa('972500000202'), direct: false, mark: 'next', page: 'https://teder.openfrequency.co.il/s/carmel-x1', at: ago(at, 2), leadUrl: null },
-      { key: 'toran:15', product: 'toran', id: '15', reason: 'asked_toran', rank: 85, name: 'תבלינים מהשוק', domain: 'spice-market.example', why: 'ביקשו דמו באתר, הדף מוכן', message: 'הדמו של תורן לתבלינים מהשוק מוכן.\nhttps://toran.openfrequency.co.il/p/spice-market', target: wa('972500000203'), direct: true, mark: 'sent', page: 'https://toran.openfrequency.co.il/p/spice-market', at: ago(at, 5), leadUrl: lead(15) },
-      { key: 'toran:21', product: 'toran', id: '21', reason: 'first_send', rank: 47, name: 'קרמיקה בעמק', domain: 'emek-ceramics.example', why: 'מוכן לשליחה, ציון 71', message: 'היי, כאן OpenFrequency. הכנו לקרמיקה בעמק דף שמראה את תורן עונה ללקוחות של החנות.', target: { kind: 'email', href: 'mailto:hello@emek-ceramics.example', label: 'להעתיק ולפתוח מייל' }, direct: false, mark: 'sent', page: 'https://toran.openfrequency.co.il/p/emek-ceramics', at: ago(at, 26), leadUrl: lead(21) },
+      { key: 'toran:15', product: 'toran', id: '15', reason: 'asked_toran', rank: 85, name: 'תבלינים מהשוק', domain: 'spice-market.example', why: 'ביקשו דמו באתר, הדף מוכן', message: asked, target: wa('972500000203', asked), direct: true, mark: 'sent', page: 'https://toran.openfrequency.co.il/p/spice-market', at: ago(at, 5), leadUrl: lead(15) },
+      { key: 'toran:21', product: 'toran', id: '21', reason: 'first_send', rank: 47, name: 'קרמיקה בעמק', domain: 'emek-ceramics.example', why: 'מוכן לשליחה, ציון 71', message: first, target: { kind: 'email', href: `mailto:hello@emek-ceramics.example?subject=${encodeURIComponent('תורן לקרמיקה בעמק')}&body=${encodeURIComponent(first)}`, label: 'להעתיק ולפתוח מייל' }, direct: false, mark: 'sent', page: 'https://toran.openfrequency.co.il/p/emek-ceramics', at: ago(at, 26), leadUrl: lead(21) },
     ],
     noContact: [{ id: 31, name: 'צמחים בבית', domain: 'plants-home.example', score: 64, leadUrl: lead(31) }],
     stuck: [{ domain: 'wix-store.example', phone: '972500000204', at: ago(at, 6), why: 'האתר על Wix, ותורן בונה דמו רק לחנויות Shopify', storeId: 40, leadUrl: lead(40) }],
