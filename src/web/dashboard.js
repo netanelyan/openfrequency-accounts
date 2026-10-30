@@ -73,15 +73,14 @@ ${buttons}
 }
 
 /**
- * A demo asked for on the website with nothing to send yet: why, since when, and Toran's message for the reason, to copy
- * and send to the number that asked. No "sent" here: it is a request, not a lead with an outreach.
+ * Someone who asked for a demo on the website and has no link to get yet: a request with nothing to send (stuck), or a
+ * Teder demo that failed. Why, since when, and Toran's message for it, to copy and send to the number that asked. No
+ * "sent" here: it is a request, not a lead with an outreach. `name` is the escaped title, `note` a line under it.
  */
-function stuckCard(x, at, i) {
-  const msgId = `stuck-${i}`;
-  const name = `<bdi class="ltr">${esc(x.domain)}</bdi>`;
-  const sub = [esc(x.why), x.at ? esc(OPS.stuckAsked(agoHe(x.at, at))) : '', x.phone ? `<bdi class="ltr">+${esc(x.phone)}</bdi>` : ''].filter(Boolean).join(' · ');
+function askedCard(x, at, msgId, { name, phone, note = '' }) {
+  const sub = [esc(x.why), x.at ? esc(OPS.stuckAsked(agoHe(x.at, at))) : '', phone ? `<bdi class="ltr">+${esc(phone)}</bdi>` : ''].filter(Boolean).join(' · ');
   const head = `<header class="op-who">${x.product ? productMark(x.product) : ''}<div><h3>${x.leadUrl ? ext(x.leadUrl, name) : name}${x.product ? ` ${productTag(x.product)}` : ''}</h3><small>${sub}</small></div></header>`;
-  const chat = x.target.href || (x.phone ? `https://wa.me/${x.phone}` : null);
+  const chat = x.target.href || (phone ? `https://wa.me/${phone}` : null);
   const button = x.message
     ? chat
       ? `<a class="button primary" href="${esc(chat)}" target="_blank" rel="noopener" data-copy="#${msgId}" data-done="${esc(OPS.copied)}" data-fail="${esc(OPS.copyFailed)}">${esc(x.target.label || OPS.copyOpen)}</a>`
@@ -91,9 +90,29 @@ function stuckCard(x, at, i) {
       : '';
   return `<article class="op" data-item>
 ${head}
+${note ? `<p class="muted op-note">${esc(note)}</p>` : ''}
 ${x.message ? `<textarea id="${msgId}" rows="4" dir="rtl" aria-label="${esc(OPS.message)}">${esc(x.message)}</textarea>` : ''}
 <div class="op-acts">${button}</div>
 </article>`;
+}
+
+const stuckCard = (x, at, i) => askedCard(x, at, `stuck-${i}`, { name: `<bdi class="ltr">${esc(x.domain)}</bdi>`, phone: x.phone });
+
+/**
+ * Teder's demos that are not up yet: a failed one is a card with Teder's reason and the message to the number that asked;
+ * the rest (building, waiting for the check in Teder) one line each. Every name opens the demo in Teder.
+ */
+function tederSection(list, at) {
+  if (!list.length) return '';
+  const nameOf = (x) => `${esc(x.name)}${x.name !== x.domain ? ` <bdi class="ltr muted">${esc(x.domain)}</bdi>` : ''}`;
+  const failed = list.filter((x) => x.status === 'failed');
+  const rest = list.filter((x) => x.status !== 'failed');
+  const row = (x) =>
+    `<li>${x.leadUrl ? ext(x.leadUrl, `<b>${esc(x.name)}</b>`, 'who') : `<b class="who">${esc(x.name)}</b>`}<span class="tag">${esc(x.why)}</span><span class="muted">${x.at ? esc(OPS.stuckAsked(agoHe(x.at, at))) : ''}${x.whatsapp ? ` · <bdi class="ltr">+${esc(x.whatsapp)}</bdi>` : ''}</span></li>`;
+  return `<section id="teder-demos"><div class="list-h"><h2>${esc(OPS.tederDemosTitle)}</h2><p class="muted">${esc(OPS.tederDemosHint)}</p></div>
+${failed.length ? `<div class="ops-cards">${failed.map((x, i) => askedCard({ ...x, product: 'teder' }, at, `teder-demo-${i}`, { name: nameOf(x), phone: x.whatsapp, note: x.error || '' })).join('')}</div>` : ''}
+${rest.length ? `<ul class="people teder-demos">${rest.map(row).join('')}</ul>` : ''}
+</section>`;
 }
 
 function conversation(csrf, c, at) {
@@ -202,6 +221,7 @@ ${d.noContact.length ? `<details class="card no-contact"><summary>${esc(OPS.noCo
     ? `<section id="stuck"><div class="list-h"><h2>${esc(OPS.stuckTitle)}</h2><p class="muted">${esc(OPS.stuckHint)}</p></div><div class="ops-cards">${d.stuck.map((x, i) => stuckCard(x, at, i)).join('')}</div></section>`
     : '';
 
+  const teder = d ? tederSection(d.tederDemos, at) : '';
   const talking = !d ? down(toran) : d.conversations.length ? `<div class="ops-cards">${d.conversations.map((c) => conversation(csrf, c, at)).join('')}</div>` : empty(OPS.talkingEmpty, OPS.talkingEmptyLead);
   const funnel = funnels ? `<div class="funnels">${funnelTable('toran', funnels.toran)}${funnelTable('teder', funnels.teder)}</div><p class="muted">${esc(OPS.funnelNote)}</p>` : down(toran);
 
@@ -213,6 +233,7 @@ ${d && !d.teder.ok ? `<p class="muted note">${esc(OPS.tederStale)}</p>` : ''}
 ${contact}
 </section>
 ${stuck}
+${teder}
 <section id="talking"><div class="list-h"><h2>${esc(OPS.talkingTitle)}</h2></div>
 ${talking}
 </section>

@@ -78,6 +78,11 @@ export function readOps(b) {
     noContact: list(b.noContact).map((x) => ({ id: idOf(x.id), name: str(x.name, 200) || str(x.domain, 200) || '', domain: str(x.domain, 200) || '', score: num(x.score), leadUrl: safeHref(x.leadUrl) })),
     // A request with nothing to send yet, with Toran's message for its reason (null when there is nothing to say).
     stuck: list(b.stuck).map((x) => ({ product: kindOf(x.product), domain: str(x.domain, 200) || '', phone: String(x.phone ?? '').replace(/\D/g, '').slice(0, 15), at: str(x.at, 40), why: str(x.why, 300) || '', storeId: num(x.storeId), message: str(x.message), target: target(x.target), leadUrl: safeHref(x.leadUrl) })),
+    // Every Teder demo not up yet (building, waiting for the check in Teder, failed with Teder's reason), each with its
+    // page in Teder; a failed one with Toran's message to the number that asked.
+    tederDemos: list(b.tederDemos)
+      .map((x) => ({ id: idOf(x.id), domain: str(x.domain, 200) || '', name: str(x.name, 200) || str(x.domain, 200) || '', status: str(x.status, 40) || '', why: str(x.why, 300) || '', error: str(x.error, 1000), whatsapp: digits(x.whatsapp), at: str(x.at, 40), message: str(x.message), target: target(x.target), leadUrl: safeHref(x.leadUrl) }))
+      .filter((x) => x.id),
     conversations,
     funnels: { toran: stages(b.funnels?.toran), teder: stages(b.funnels?.teder) },
     // Our one WhatsApp number, once our company store connected it (null before), and the demo number as it sends now:

@@ -96,11 +96,21 @@ test('the superadmin gets the whole dashboard: who to write to with the message,
     assert.match(b, /<summary>דף אחד מוכן, ואין לנו איך לפנות לחנות<\/summary>[^]*?href="https:\/\/toran\.openfrequency\.co\.il\/lead\/31"[^]*?צמחים בבית[^]*?ציון 64/);
     assert.match(b, /<h2>ביקשו דמו באתר, ועוד אין מה לשלוח<\/h2>[^]*?wix-store\.example[^]*?האתר על Wix, ותורן בונה דמו רק לחנויות Shopify · ביקשו לפני 6 שעות · <bdi class="ltr">\+972500000204<\/bdi>/);
     // Each with Toran's message for its reason, to copy and send to the number that asked; no "sent", it is no lead.
-    const stuck = b.slice(b.indexOf('<section id="stuck">'), b.indexOf('<section id="talking">'));
+    const stuck = b.slice(b.indexOf('<section id="stuck">'), b.indexOf('<section id="teder-demos">'));
     assert.match(stuck, /<textarea id="stuck-0" rows="4" dir="rtl" aria-label="ההודעה">היי, כאן OpenFrequency\. ביקשתם באתר דמו של תורן ל־wix-store\. תורן בונה דמו רק לחנויות Shopify, והחנות על Wix, אז לא יכולנו לבנות אותו\. אם יש שאלה, אפשר לענות כאן\.<\/textarea>/);
     assert.match(stuck, /<a class="button primary" href="https:\/\/wa\.me\/972500000204\?text=%D7%94%D7%99%D7%99[^"]*" target="_blank" rel="noopener" data-copy="#stuck-0" data-done="ההודעה הועתקה"[^>]*>להעתיק ולפתוח וואטסאפ<\/a>/);
     assert.match(stuck, /<a href="https:\/\/toran\.openfrequency\.co\.il\/lead\/40" target="_blank" rel="noopener"><bdi class="ltr">wix-store\.example<\/bdi><\/a> <span class="tag p-toran">תורן<\/span>/);
     assert.doesNotMatch(stuck, /<form|שלחתי/);
+
+    // Teder's demos not up yet: a failed one is a card with Teder's reason and the message; the others one line each.
+    // Every name opens the demo in Teder.
+    const teder = b.slice(b.indexOf('<section id="teder-demos">'), b.indexOf('<section id="talking">'));
+    assert.match(teder, /<h2>הדמואים של תדר שעוד לא עלו<\/h2><p class="muted">מי שביקשו באתר דמו של תדר, והעמוד שלו עוד לא באוויר\. כל שם פותח את הדמו בתדר\.<\/p>/);
+    assert.match(teder, /<a href="https:\/\/teder\.openfrequency\.co\.il\/demos\/14" target="_blank" rel="noopener">חנות הכלים <bdi class="ltr muted">kelim\.example<\/bdi><\/a> <span class="tag p-teder">תדר<\/span><\/h3><small>לא נבנה · ביקשו לפני 20 שעות · <bdi class="ltr">\+972500000208<\/bdi><\/small>/);
+    assert.match(teder, /<p class="muted op-note">לא הצלחנו לקרוא את החנות<\/p>\s*<textarea id="teder-demo-0" rows="4" dir="rtl" aria-label="ההודעה">היי, כאן OpenFrequency\. ביקשתם באתר דמו של תדר לחנות הכלים, ולא הצלחנו לבנות אותו\. אם יש שאלה, אפשר לענות כאן\.<\/textarea>/);
+    assert.match(teder, /<a class="button primary" href="https:\/\/wa\.me\/972500000208\?text=%D7%94%D7%99%D7%99[^"]*" target="_blank" rel="noopener" data-copy="#teder-demo-0"/);
+    assert.match(teder, /<ul class="people teder-demos"><li><a class="who" href="https:\/\/teder\.openfrequency\.co\.il\/demos\/15" target="_blank" rel="noopener"><b>new-teder\.example<\/b><\/a><span class="tag">בבנייה<\/span><span class="muted">ביקשו לפני שעה<\/span><\/li><\/ul>/);
+    assert.doesNotMatch(teder, /<form|שלחתי/);
 
     // In a conversation: Toran's pilot (already a pilot: only "paying"), Teder's customer, the next step's form.
     const talking = b.slice(b.indexOf('<section id="talking">'), b.indexOf('<section id="funnel">'));
@@ -309,7 +319,7 @@ test('a request with nothing to say (a Teder demo taken down), or from a Toran b
       ],
     };
     const b = (await t.op.get('/admin')).body;
-    const stuck = b.slice(b.indexOf('<section id="stuck">'), b.indexOf('<section id="talking">'));
+    const stuck = b.slice(b.indexOf('<section id="stuck">'), b.indexOf('<section id="teder-demos">'));
     assert.equal((stuck.match(/<article class="op" data-item>/g) || []).length, 2);
     assert.match(stuck, /<span class="tag p-teder">תדר<\/span><\/h3><small>הדמו של תדר הוסר · ביקשו לפני שעה[^]*?<a class="button" href="https:\/\/wa\.me\/972500000211" target="_blank" rel="noopener">לפתוח שיחה<\/a>/);
     assert.match(stuck, /<bdi class="ltr">old\.example<\/bdi><\/h3><small>הדף לא נבנה[^]*?<a class="button" href="https:\/\/wa\.me\/972500000212" target="_blank" rel="noopener">לפתוח שיחה<\/a>/);
@@ -343,12 +353,12 @@ test("Teder's demos not read this time: the dashboard says its copies are from t
   try {
     t.fake.state.data = { ...sampleOps(now()), teder: { ok: false } };
     assert.match((await t.op.get('/admin')).body, /את המצגות של תדר תורן לא הצליח לקרוא עכשיו \(GET \/internal\/demos\)/);
-    t.fake.state.data = { ...sampleOps(now()), items: [], conversations: [], noContact: [], stuck: [] };
+    t.fake.state.data = { ...sampleOps(now()), items: [], conversations: [], noContact: [], stuck: [], tederDemos: [] };
     const empty = (await t.op.get('/admin')).body;
     assert.match(empty, /<b>אין כרגע למי לכתוב<\/b><p>כאן יופיעו דפים מוכנים, תזכורות שהגיע זמנן, ומי שביקשו דמו באתר\.<\/p>/);
     assert.match(empty, /<b>אף אחד עוד לא בשיחה<\/b><p>מי שעונים לכם עוברים לכאן כשמסמנים &quot;ענו לי&quot;\.<\/p>/);
     assert.match(empty, /<span class="s">אין למי לכתוב עכשיו<\/span>/);
-    assert.doesNotMatch(empty, /id="stuck"|no-contact/);
+    assert.doesNotMatch(empty, /id="stuck"|id="teder-demos"|no-contact/);
   } finally {
     await t.done();
   }

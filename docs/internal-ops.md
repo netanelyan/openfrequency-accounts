@@ -135,7 +135,9 @@ Toran's links (`target.href`, `page`, `leadUrl`) reach the page only when they a
 script (`static/admin.js`) the link takes the message as it is in the card's box when pressed,
 edited or not, and the message is copied too. A request with nothing to send yet (`stuck`) is a
 card too, with Toran's message for its reason and the same button, and no "שלחתי": it is a
-request, not a lead.
+request, not a lead. Under them, "הדמואים של תדר שעוד לא עלו" lists Toran's `tederDemos`: a
+failed one is such a card, with Teder's reason under its name; the others (building, waiting for
+the check in Teder) are a line each. Every name opens the demo in Teder (`leadUrl`).
 
 Above the numbers, one line says how our number sends, from Toran's `demoLine` (`live`, `via`:
 `meta`, `twilio` or `sim`, and `number`): "המספר שלנו מחובר דרך Meta." with the number, or, when
