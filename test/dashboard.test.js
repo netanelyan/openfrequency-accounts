@@ -60,8 +60,9 @@ test('the superadmin gets the whole dashboard: who to write to with the message,
     assert.equal(t.fake.calls[0].auth, 'Bearer internal-token-for-tests-only-0123456789');
     assert.equal(t.fake.calls[0].path, '/internal/ops');
 
-    // The tabs, and the numbers at the top.
+    // The tabs, our number, and the numbers at the top.
     assert.match(b, /<a href="\/admin" aria-current="page">היום<\/a><a href="\/admin\/accounts">חשבונות<\/a>/);
+    assert.match(b, /<p class="number-line ok" role="note">המספר שלנו מחובר דרך Meta\. <bdi class="ltr">\+972500000999<\/bdi><\/p>\s*<div class="kpis top-kpis">/);
     assert.match(b, /<a class="kpi lead" href="#contact"><span class="l">לפנות היום<\/span><span class="v">4<\/span><span class="s">ההודעה מוכנה בכל כרטיס/);
     assert.match(b, /בשיחה<\/span><span class="cnt sig">2<\/span>/);
     assert.match(b, /הכנסה חודשית<\/span><span class="cnt ok">1,688 ₪<\/span>/);
@@ -282,6 +283,25 @@ test('with OF_INTERNAL_TOKEN unset, /admin does not call Toran and says why', as
     const b = (await t.op.get('/admin')).body;
     assert.match(b, /OF_INTERNAL_TOKEN לא מוגדר כאן, או שהוא קצר מ-32 תווים, אז לא פנינו לתורן\./);
     assert.equal(t.fake.calls.length, 0);
+  } finally {
+    await t.done();
+  }
+});
+
+test('our number at the top: connected and through what, not connected yet (sending from it and the automatic links wait), the simulator, or nothing from a Toran that does not say', async () => {
+  const t = await setup();
+  try {
+    const line = async (demoLine) => {
+      t.fake.state.data = { ...sampleOps(now()), demoLine };
+      return /<p class="number-line[^"]*" role="note">[^]*?<\/p>/.exec((await t.op.get('/admin')).body)?.[0] || null;
+    };
+    assert.equal(await line({ live: false, via: 'sim', number: '972500000999' }), '<p class="number-line off" role="note">המספר שלנו עוד לא מחובר, אז שליחה ממנו והלינקים לדמואים שיוצאים לבד מחכים עד שיתחבר.</p>');
+    assert.equal(await line({ live: true, via: 'twilio', number: null }), '<p class="number-line ok" role="note">המספר שלנו מחובר דרך Twilio.</p>');
+    assert.equal(await line({ live: true, via: 'sim', number: null }), '<p class="number-line" role="note">הדמו כאן על הסימולטור: מה שנשלח ממנו לא יוצא לאף אחד.</p>');
+    assert.equal(await line({ live: true, via: 'pigeon', number: '<b>1</b>' }), '<p class="number-line ok" role="note">המספר שלנו מחובר. <bdi class="ltr">+1</bdi></p>', 'what is not known is left out');
+    assert.equal(await line(undefined), null, 'a Toran from before says nothing: no line');
+    t.fake.state.down = true;
+    assert.equal(await line({ live: false, via: 'sim', number: null }), null, 'Toran not answering: its own card says so');
   } finally {
     await t.done();
   }

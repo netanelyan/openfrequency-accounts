@@ -60,6 +60,8 @@ export function sampleOps(at = Date.now()) {
         { key: 'customers', label: 'לקוחות', all: null, month: null },
       ],
     },
+    ourNumber: { number: '972500000999', status: 'active', roles: [{ key: 'demo', he: 'הדמו: מי ששלח קוד מעמוד של חנות, או שהדמו שלו עוד פתוח' }], leadUrl: lead(1) },
+    demoLine: { live: true, via: 'meta', number: '972500000999' },
   };
 }
 

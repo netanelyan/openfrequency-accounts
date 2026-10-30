@@ -68,6 +68,10 @@ export function readOps(b) {
     }))
     .filter((x) => x.product && x.id);
   const stages = (v) => list(v).map((s) => ({ key: str(s.key, 40) || '', label: str(s.label, 80) || '', all: num(s.all), month: num(s.month) }));
+  const obj = (v) => (v && typeof v === 'object' && !Array.isArray(v) ? v : null);
+  const digits = (v) => String(v ?? '').replace(/\D/g, '').slice(0, 15) || null;
+  const one = obj(b.ourNumber);
+  const line = obj(b.demoLine);
   return {
     teder: { ok: b.teder?.ok !== false },
     items,
@@ -75,6 +79,10 @@ export function readOps(b) {
     stuck: list(b.stuck).map((x) => ({ domain: str(x.domain, 200) || '', phone: String(x.phone ?? '').replace(/\D/g, '').slice(0, 15), at: str(x.at, 40), why: str(x.why, 300) || '', storeId: num(x.storeId), leadUrl: safeHref(x.leadUrl) })),
     conversations,
     funnels: { toran: stages(b.funnels?.toran), teder: stages(b.funnels?.teder) },
+    // Our one WhatsApp number, once our company store connected it (null before), and the demo number as it sends now:
+    // through Meta, Twilio or the simulator, and whether that reaches anyone. null from a Toran that does not say.
+    ourNumber: one ? { number: digits(one.number), status: str(one.status, 40) || '', roles: list(one.roles).map((r) => ({ key: str(r.key, 40) || '', he: str(r.he, 300) || '' })), leadUrl: safeHref(one.leadUrl) } : null,
+    demoLine: line ? { live: line.live === true, via: ['meta', 'twilio', 'sim'].includes(line.via) ? line.via : null, number: digits(line.number) } : null,
   };
 }
 

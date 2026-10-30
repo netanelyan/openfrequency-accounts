@@ -825,6 +825,10 @@ export const OPS = {
   toranDownLead: (base) => `החלק הזה מגיע מתורן, מ-GET /internal/ops ב-${base}. שאר הדף עובד בלעדיו.`,
   toranNotConfigured: 'OF_INTERNAL_TOKEN לא מוגדר כאן, או שהוא קצר מ-32 תווים, אז לא פנינו לתורן. שאר הדף עובד בלעדיו.',
   tederStale: 'את המצגות של תדר תורן לא הצליח לקרוא עכשיו (GET /internal/demos). מה שמופיע מהן כאן הוא מהקריאה הקודמת.',
+  // Our number, at the top: Toran's demoLine (live, and through what).
+  numberLive: (via) => (via ? `המספר שלנו מחובר דרך ${via}.` : 'המספר שלנו מחובר.'),
+  numberSim: 'הדמו כאן על הסימולטור: מה שנשלח ממנו לא יוצא לאף אחד.',
+  numberOff: 'המספר שלנו עוד לא מחובר, אז שליחה ממנו והלינקים לדמואים שיוצאים לבד מחכים עד שיתחבר.',
 
   contactTitle: 'לפנות היום',
   contactOrder: 'קודם מי שניסו את הדמו, אחריהם מי שביקשו באתר, התזכורות, ובסוף דפים חדשים לפי הציון',

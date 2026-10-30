@@ -104,6 +104,17 @@ function funnelTable(product, stages) {
     .join('')}</tbody></table></section>`;
 }
 
+/**
+ * One line on our number (Toran's demoLine): connected, and through what; or not yet, and then sending from it and the
+ * links that go by themselves wait. Nothing from a Toran that does not say.
+ */
+function numberLine(line) {
+  if (!line) return '';
+  if (!line.live) return `<p class="number-line off" role="note">${esc(OPS.numberOff)}</p>`;
+  if (line.via === 'sim') return `<p class="number-line" role="note">${esc(OPS.numberSim)}</p>`;
+  return `<p class="number-line ok" role="note">${esc(OPS.numberLive({ meta: 'Meta', twilio: 'Twilio' }[line.via]))}${line.number ? ` <bdi class="ltr">+${esc(line.number)}</bdi>` : ''}</p>`;
+}
+
 const down = (toran) =>
   `<div class="card empty" role="note"><b>${esc(OPS.toranDown)}</b><p>${esc(toran.why === 'not_configured' ? OPS.toranNotConfigured : OPS.toranDownLead(toran.base))}</p></div>`;
 const empty = (title, lead) => `<div class="card empty"><b>${esc(title)}</b><p>${esc(lead)}</p></div>`;
@@ -177,6 +188,7 @@ ${d.noContact.length ? `<details class="card no-contact"><summary>${esc(OPS.noCo
   const funnel = funnels ? `<div class="funnels">${funnelTable('toran', funnels.toran)}${funnelTable('teder', funnels.teder)}</div><p class="muted">${esc(OPS.funnelNote)}</p>` : down(toran);
 
   return `${top}
+${d ? numberLine(d.demoLine) : ''}
 ${kpis}
 ${d && !d.teder.ok ? `<p class="muted note">${esc(OPS.tederStale)}</p>` : ''}
 <section id="contact"><div class="list-h"><h2>${esc(OPS.contactTitle)}</h2><p class="muted">${esc(OPS.contactOrder)}</p></div>

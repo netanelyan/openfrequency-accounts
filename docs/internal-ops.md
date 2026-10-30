@@ -132,6 +132,12 @@ started in the last 30 days.
 Toran's links (`target.href`, `page`, `leadUrl`) reach the page only when they are `https:`,
 `http:` or `mailto:` addresses.
 
+Above the numbers, one line says how our number sends, from Toran's `demoLine` (`live`, `via`:
+`meta`, `twilio` or `sim`, and `number`): "המספר שלנו מחובר דרך Meta." with the number, or, when
+it is not live (on the VPS, Toran's demo number on the simulator), "המספר שלנו עוד לא מחובר, אז
+שליחה ממנו והלינקים לדמואים שיוצאים לבד מחכים עד שיתחבר." Toran then offers no "send now" on any
+card and sends no link by itself. A Toran that gives no `demoLine` gets no line.
+
 ## /admin/toran
 
 Toran's operator dashboard (the leads, a lead's page, the review queue, the follow-ups, the

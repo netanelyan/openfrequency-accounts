@@ -538,6 +538,10 @@ a.kpi:hover { background: var(--surface-hi); }
 }
 p.note { margin: 12px 4px 0; }
 .list-h { flex-wrap: wrap; }
+/* Our number, above the numbers: connected (green) or not yet (amber). */
+p.number-line { margin: 0 0 16px; padding: 10px 14px; border-radius: var(--r-m); background: var(--fill); color: var(--ink-2); font-size: 15px; overflow-wrap: anywhere; }
+p.number-line.ok { background: var(--ok-bg); color: var(--ok); }
+p.number-line.off { background: var(--warn-bg); color: var(--warn); }
 
 /* A card per store: who and why, the message, then the buttons in two rows (the message's, then the rest). */
 .ops-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 440px), 1fr)); gap: 16px; align-items: start; }
