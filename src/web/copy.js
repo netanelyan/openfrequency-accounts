@@ -917,7 +917,6 @@ export const OPS = {
   // After an action, when the line is ours and not Toran's
   toranNoAnswer: 'תורן לא ענה, אז שום דבר לא נרשם. כדאי לנסות שוב בעוד רגע.',
   toranFailed: (status) => `תורן החזיר שגיאה (${status}), אז שום דבר לא נרשם.`,
-  directToranOnly: 'אפשר לשלוח מהמספר של הדמו רק את תורן',
   pilotToranOnly: 'פיילוט ותשלום נרשמים כאן רק לתורן',
   wonTederOnly: 'לקוח נרשם כאן רק לתדר',
   badAction: 'אין פעולה כזו',

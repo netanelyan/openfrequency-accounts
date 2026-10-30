@@ -13,8 +13,11 @@ const GET_MS = 3000;
 const POST_MS = 15_000;
 
 export const KINDS = ['toran', 'teder'];
-/** Every action Toran takes, and which product each is for (null: both). */
-export const ACTIONS = { sent: null, reminded: null, direct: 'toran', replied: null, next: null, later: null, lost: null, reopen: null, pilot: 'toran', paid: 'toran', won: 'teder' };
+/**
+ * Every action Toran takes, and which product each is for (null: both). "direct" is both: Toran's demo, or Teder's asked
+ * for with a code, inside its hours; Toran refuses the rest in its own words.
+ */
+export const ACTIONS = { sent: null, reminded: null, direct: null, replied: null, next: null, later: null, lost: null, reopen: null, pilot: 'toran', paid: 'toran', won: 'teder' };
 export const LOST_REASONS = ['not_interested', 'price', 'has_solution', 'no_answer', 'not_fit', 'other'];
 /** A lead's id as Toran gives it, safe in our path and in Toran's. */
 export const ID = /^[\w.:-]{1,100}$/;

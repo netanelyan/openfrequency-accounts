@@ -170,6 +170,7 @@ test('every button goes to Toran as its action, with only what it takes, and the
       ['/admin/ops/toran/12/sent', {}, '/internal/ops/toran/12/sent', { by }],
       ['/admin/ops/toran/12/reminded', {}, '/internal/ops/toran/12/reminded', { by }],
       ['/admin/ops/toran/15/direct', {}, '/internal/ops/toran/15/direct', { by }],
+      ['/admin/ops/teder/7/direct', {}, '/internal/ops/teder/7/direct', { by }],
       ['/admin/ops/teder/7/replied', {}, '/internal/ops/teder/7/replied', { by }],
       ['/admin/ops/teder/7/next', { text: '  לשלוח הצעת מחיר  ', days: '3', back: 'talking' }, '/internal/ops/teder/7/next', { by, text: 'לשלוח הצעת מחיר', days: 3 }],
       ['/admin/ops/toran/12/later', { days: '1' }, '/internal/ops/toran/12/later', { by, days: 1 }],
@@ -224,7 +225,6 @@ test('what Toran refuses comes back as an error line, and what cannot be right n
 
     const calls = t.fake.posts().length;
     const refused = [
-      ['/admin/ops/teder/7/direct', {}, 'אפשר לשלוח מהמספר של הדמו רק את תורן'],
       ['/admin/ops/teder/7/paid', {}, 'פיילוט ותשלום נרשמים כאן רק לתורן'],
       ['/admin/ops/toran/9/won', {}, 'לקוח נרשם כאן רק לתדר'],
       ['/admin/ops/toran/12/lost', { reason: 'rude' }, 'צריך לבחור למה'],
@@ -302,6 +302,20 @@ test('with OF_INTERNAL_TOKEN unset, /admin does not call Toran and says why', as
     const b = (await t.op.get('/admin')).body;
     assert.match(b, /OF_INTERNAL_TOKEN לא מוגדר כאן, או שהוא קצר מ-32 תווים, אז לא פנינו לתורן\./);
     assert.equal(t.fake.calls.length, 0);
+  } finally {
+    await t.done();
+  }
+});
+
+test("a Teder card Toran says can go now from the demo number has that button, as Toran's does; one it says cannot has none", async () => {
+  const t = await setup();
+  try {
+    const text = 'הדמו של תדר לחנות הכלים מוכן.\nhttps://teder.openfrequency.co.il/s/kelim-x1';
+    const item = (id, direct) => ({ key: `teder:${id}`, product: 'teder', id, reason: 'asked_teder', rank: 85, name: 'חנות הכלים', domain: 'kelim.example', why: 'ביקשו דמו של תדר באתר, המצגת מוכנה', message: text, target: { kind: 'whatsapp', href: `https://wa.me/972500000208?text=${encodeURIComponent(text)}`, label: 'להעתיק ולפתוח וואטסאפ' }, direct, mark: 'sent', page: 'https://teder.openfrequency.co.il/s/kelim-x1', at: new Date(now() - 3_600_000).toISOString(), leadUrl: null });
+    t.fake.state.data = { ...sampleOps(now()), items: [item('8', true), item('9', false)] };
+    const b = (await t.op.get('/admin')).body;
+    assert.match(b, /action="\/admin\/ops\/teder\/8\/direct"[^]*?<button class="primary">לשלוח עכשיו מהמספר של הדמו<\/button>/);
+    assert.doesNotMatch(b, /\/admin\/ops\/teder\/9\/direct/);
   } finally {
     await t.done();
   }

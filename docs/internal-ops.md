@@ -118,7 +118,10 @@ The other direction: the public site's `/admin` is a client of Toran's internal 
 The POST body is JSON with only what the action takes: `by` always (the superadmin's name, else
 the email), `text` and `days` for `next`, `days` (1 or 7) for `later`, `reason` for `lost`.
 Before forwarding, `/admin` checks the superadmin's session, the CSRF token, that the session is
-not in view-as, the action's name and product, and the reason. Toran's `message` comes back as
+not in view-as, the action's name and product, and the reason. `direct` goes to Toran for both
+products: Toran sends a Teder demo asked for with a code inside its 23 hours, and refuses one
+asked for with a typed number, one past its hours, and anything while our number is not
+connected, each in its own words. Toran's `message` comes back as
 the flash line at the top of the page (or the page script's toast), and its `400 { error }` as
 an error line. A Toran that does not answer, or answers anything else, records nothing, and the
 line says so. Each forwarded action is written to our audit log as `ops_action`.

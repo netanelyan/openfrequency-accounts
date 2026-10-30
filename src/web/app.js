@@ -1021,7 +1021,7 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
           }
           if (!ID.test(id) || !Object.hasOwn(ACTIONS, action)) return answer(false, OPS.badAction);
           if (session.view_as_workspace_id) return answer(false, OPS.viewAsClosed);
-          if (ACTIONS[action] && ACTIONS[action] !== kind) return answer(false, action === 'direct' ? OPS.directToranOnly : action === 'won' ? OPS.wonTederOnly : OPS.pilotToranOnly);
+          if (ACTIONS[action] && ACTIONS[action] !== kind) return answer(false, action === 'won' ? OPS.wonTederOnly : OPS.pilotToranOnly);
           const body = { by: me.name || me.email };
           if (action === 'next') {
             const days = Number(f('days'));
