@@ -828,7 +828,7 @@ export const OPS = {
   // Our number, at the top: Toran's demoLine (live, and through what).
   numberLive: (via) => (via ? `המספר שלנו מחובר דרך ${via}.` : 'המספר שלנו מחובר.'),
   numberSim: 'הדמו כאן על הסימולטור: מה שנשלח ממנו לא יוצא לאף אחד.',
-  numberOff: 'המספר שלנו עוד לא מחובר, אז שליחה ממנו והלינקים לדמואים שיוצאים לבד מחכים עד שיתחבר.',
+  numberOff: 'המספר שלנו עוד לא מחובר. עד שיתחבר אי אפשר לשלוח ממנו, והלינקים לדמו שיוצאים לבד מחכים.',
 
   contactTitle: 'לפנות היום',
   contactOrder: 'קודם מי שניסו את הדמו, אחריהם מי שביקשו באתר, התזכורות, ובסוף דפים חדשים לפי הציון',
@@ -872,7 +872,7 @@ export const OPS = {
   stuckHint: 'הם כתבו לנו מהמספר שלהם ומחכים לדמו. כשאין דף לשלוח, כדאי לענות להם בעצמכם: בכל כרטיס יש הודעה לפי הסיבה.',
 
   tederDemosTitle: 'הדמואים של תדר שעוד לא עלו',
-  tederDemosHint: 'מי שביקשו באתר דמו של תדר, והעמוד שלו עוד לא באוויר. כל שם פותח את הדמו בתדר.',
+  tederDemosHint: 'ביקשו אותם באתר, והם עוד לא באוויר. כל שם פותח את הדמו בתדר.',
 
   // The website's leads that reached only the email (Toran's leads, from the website's GET /internal/leads)
   leadsTitle: 'לידים מהאתר',

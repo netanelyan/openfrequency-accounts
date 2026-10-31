@@ -151,8 +151,8 @@ website, the section says so in one line.
 
 Above the numbers, one line says how our number sends, from Toran's `demoLine` (`live`, `via`:
 `meta`, `twilio` or `sim`, and `number`): "המספר שלנו מחובר דרך Meta." with the number, or, when
-it is not live (on the VPS, Toran's demo number on the simulator), "המספר שלנו עוד לא מחובר, אז
-שליחה ממנו והלינקים לדמואים שיוצאים לבד מחכים עד שיתחבר." Toran then offers no "send now" on any
+it is not live (on the VPS, Toran's demo number on the simulator), "המספר שלנו עוד לא מחובר. עד
+שיתחבר אי אפשר לשלוח ממנו, והלינקים לדמו שיוצאים לבד מחכים." Toran then offers no "send now" on any
 card and sends no link by itself. A Toran that gives no `demoLine` gets no line.
 
 ## /admin/toran

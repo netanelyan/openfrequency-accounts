@@ -105,7 +105,7 @@ test('the superadmin gets the whole dashboard: who to write to with the message,
     // Teder's demos not up yet: a failed one is a card with Teder's reason and the message; the others one line each.
     // Every name opens the demo in Teder.
     const teder = b.slice(b.indexOf('<section id="teder-demos">'), b.indexOf('<section id="talking">'));
-    assert.match(teder, /<h2>הדמואים של תדר שעוד לא עלו<\/h2><p class="muted">מי שביקשו באתר דמו של תדר, והעמוד שלו עוד לא באוויר\. כל שם פותח את הדמו בתדר\.<\/p>/);
+    assert.match(teder, /<h2>הדמואים של תדר שעוד לא עלו<\/h2><p class="muted">ביקשו אותם באתר, והם עוד לא באוויר\. כל שם פותח את הדמו בתדר\.<\/p>/);
     assert.match(teder, /<a href="https:\/\/teder\.openfrequency\.co\.il\/demos\/14" target="_blank" rel="noopener">חנות הכלים <bdi class="ltr muted">kelim\.example<\/bdi><\/a> <span class="tag p-teder">תדר<\/span><\/h3><small>לא נבנה · ביקשו לפני 20 שעות · <bdi class="ltr">\+972500000208<\/bdi><\/small>/);
     assert.match(teder, /<p class="muted op-note">לא הצלחנו לקרוא את החנות<\/p>\s*<textarea id="teder-demo-0" rows="4" dir="rtl" aria-label="ההודעה">היי, כאן OpenFrequency\. ביקשתם באתר דמו של תדר לחנות הכלים, ולא הצלחנו לבנות אותו\. אם יש שאלה, אפשר לענות כאן\.<\/textarea>/);
     assert.match(teder, /<a class="button primary" href="https:\/\/wa\.me\/972500000208\?text=%D7%94%D7%99%D7%99[^"]*" target="_blank" rel="noopener" data-copy="#teder-demo-0"/);
@@ -394,7 +394,7 @@ test('our number at the top: connected and through what, not connected yet (send
       t.fake.state.data = { ...sampleOps(now()), demoLine };
       return /<p class="number-line[^"]*" role="note">[^]*?<\/p>/.exec((await t.op.get('/admin')).body)?.[0] || null;
     };
-    assert.equal(await line({ live: false, via: 'sim', number: '972500000999' }), '<p class="number-line off" role="note">המספר שלנו עוד לא מחובר, אז שליחה ממנו והלינקים לדמואים שיוצאים לבד מחכים עד שיתחבר.</p>');
+    assert.equal(await line({ live: false, via: 'sim', number: '972500000999' }), '<p class="number-line off" role="note">המספר שלנו עוד לא מחובר. עד שיתחבר אי אפשר לשלוח ממנו, והלינקים לדמו שיוצאים לבד מחכים.</p>');
     assert.equal(await line({ live: true, via: 'twilio', number: null }), '<p class="number-line ok" role="note">המספר שלנו מחובר דרך Twilio.</p>');
     assert.equal(await line({ live: true, via: 'sim', number: null }), '<p class="number-line" role="note">הדמו כאן על הסימולטור: מה שנשלח ממנו לא יוצא לאף אחד.</p>');
     assert.equal(await line({ live: true, via: 'pigeon', number: '<b>1</b>' }), '<p class="number-line ok" role="note">המספר שלנו מחובר. <bdi class="ltr">+1</bdi></p>', 'what is not known is left out');

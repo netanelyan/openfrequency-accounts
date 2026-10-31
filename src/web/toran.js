@@ -88,11 +88,11 @@ export function readOps(b) {
     noContact: list(b.noContact).map((x) => ({ id: idOf(x.id), name: str(x.name, 200) || str(x.domain, 200) || '', domain: str(x.domain, 200) || '', score: num(x.score), leadUrl: safeHref(x.leadUrl) })),
     // A request with nothing to send yet, with Toran's message for its reason (null when there is nothing to say).
     stuck: list(b.stuck).map((x) => ({ product: kindOf(x.product), domain: str(x.domain, 200) || '', phone: String(x.phone ?? '').replace(/\D/g, '').slice(0, 15), at: str(x.at, 40), why: str(x.why, 300) || '', storeId: num(x.storeId), message: str(x.message), target: target(x.target), leadUrl: safeHref(x.leadUrl) })),
-    // Every Teder demo not up yet (building, waiting for the check in Teder, failed with Teder's reason), each with its
-    // page in Teder; a failed one with Toran's message to the number that asked.
     // The website's leads that reached the owner only by email (Toran reads the website's GET /internal/leads): Toran's
     // waitlist, and those no product took. null from a Toran that does not give them; ok false when it could not read them.
     leads: site ? { ok: site.ok === true, waitlist: list(site.waitlist).map(siteLead), failed: list(site.failed).map((x) => ({ ...siteLead(x), product: kindOf(x.product), source: str(x.source, 20) || '' })) } : null,
+    // Every Teder demo not up yet (building, waiting for the check in Teder, failed with Teder's reason), each with its
+    // page in Teder; a failed one with Toran's message to the number that asked.
     tederDemos: list(b.tederDemos)
       .map((x) => ({ id: idOf(x.id), domain: str(x.domain, 200) || '', name: str(x.name, 200) || str(x.domain, 200) || '', status: str(x.status, 40) || '', why: str(x.why, 300) || '', error: str(x.error, 1000), whatsapp: digits(x.whatsapp), at: str(x.at, 40), message: str(x.message), target: target(x.target), leadUrl: safeHref(x.leadUrl) }))
       .filter((x) => x.id),
