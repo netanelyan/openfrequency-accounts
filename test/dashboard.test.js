@@ -336,6 +336,21 @@ test("the website's leads that reached only the email: those no product took, th
   }
 });
 
+test('who to write to today shows 50 cards, and counts the rest under them', async () => {
+  const t = await setup();
+  try {
+    const one = sampleOps(now()).items[0];
+    t.fake.state.data = { ...sampleOps(now()), items: Array.from({ length: 60 }, (_, i) => ({ ...one, key: `toran:${100 + i}`, id: String(100 + i) })) };
+    const b = (await t.op.get('/admin')).body;
+    const contact = b.slice(b.indexOf('<section id="contact">'), b.indexOf('<section id="stuck">'));
+    assert.equal((contact.match(/<article class="op" data-item>/g) || []).length, 50);
+    assert.match(contact, /<p class="muted more">ועוד 10\. הם יופיעו כאן כשהרשימה תתקצר\.<\/p>/);
+    assert.match(b, /<a class="kpi lead" href="#contact"><span class="l">לפנות היום<\/span><span class="v">60<\/span>/, 'the number at the top counts them all');
+  } finally {
+    await t.done();
+  }
+});
+
 test("a Teder card Toran says can go now from the demo number has that button, as Toran's does; one it says cannot has none", async () => {
   const t = await setup();
   try {

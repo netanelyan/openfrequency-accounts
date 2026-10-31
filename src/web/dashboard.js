@@ -12,7 +12,8 @@ import { LOST_REASONS } from './toran.js';
 // static/admin.js, "copy and open" copies the message first, and the forms marked data-ajax post in the background:
 // the card goes away and the line shows at the bottom of the screen.
 
-const SHOWN = 25;
+// How many cards "לפנות היום" shows; the rest are counted under them and come up as the list gets shorter.
+const SHOWN = 50;
 
 const productTag = (p) => `<span class="tag p-${p}">${esc(PRODUCT_NAMES[p])}</span>`;
 const ext = (href, inner, cls = '') => `<a${cls ? ` class="${cls}"` : ''} href="${esc(href)}" target="_blank" rel="noopener">${inner}</a>`;
