@@ -590,8 +590,8 @@ export const SIGNUP = {
   price: (monthly, setup) => `${monthly} לחודש ועוד מע״מ, ודמי הקמה של ${setup} פעם אחת`,
   planLegend: 'איזו חבילה של תדר',
   // Teder's setup fee is not refunded (its terms: "דמי ההקמה לא מוחזרים"). Toran's terms say it otherwise, and this note
-  // is Teder's only.
-  planHint: 'חל רק כשבוחרים בתדר. אפשר לעבור חבילה אחר כך, בכתיבה אלינו. דמי ההקמה לא מוחזרים, ומשלמים אותם פעם אחת, עם החודש הראשון.',
+  // is Teder's only. The plans show only once Teder is ticked (site.css), so the note need not say it applies to Teder.
+  planHint: 'אפשר לעבור חבילה אחר כך, בכתיבה אלינו. דמי ההקמה לא מוחזרים, ומשלמים אותם פעם אחת, עם החודש הראשון.',
   /** How paying works, by the payment mode (OF_PAYMENT), and cancelling. */
   pricesNote: (mode) =>
     `${mode === 'provider' ? 'אחרי שהחשבון נפתח, משלמים בו בכרטיס אשראי' : 'אחרי שהחשבון נפתח, נשלח לכם במייל את פרטי התשלום'}, ו${opensAfter(mode, 'המוצרים', true)} אפשר לבטל את המנוי מהדף הראשי, והוא עובד עד סוף התקופה ששולמה.`,

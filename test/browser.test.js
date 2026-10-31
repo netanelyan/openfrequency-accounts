@@ -170,13 +170,25 @@ run('on a phone, a customer ticks the box, gets the code and the WhatsApp button
   }
 });
 
-run("sign-up on a phone, in dark mode: Teder's plans are rows with a small dot, their words beside it, and a tap on the words picks the plan", async () => {
+run("sign-up on a phone, in dark mode: Teder starts unticked with its plans closed; ticked, they open as rows with a small dot, their words beside it, and a tap on the words picks the plan", async () => {
   // The radios once took the field style (width 100%), a box as wide as the row, with the plan's words squeezed beside it.
   const t = await setup({ env: { OF_SIGNUP: '1', OF_SIGNUP_PRODUCTS: 'teder' } });
   try {
     const context = await t.browser.newContext({ viewport: { width: 375, height: 812 }, colorScheme: 'dark' });
     const page = await context.newPage();
-    await page.goto(`${t.base}/signup?p=teder`);
+    // From the website's button under the full plan: still nothing ticked, the plans closed.
+    await page.goto(`${t.base}/signup?p=teder&plan=full`);
+    const teder = page.locator('input[name="products"][value="teder"]');
+    assert.equal(await teder.isChecked(), false);
+    assert.equal(await page.locator('fieldset.plans-pick').isVisible(), false);
+    // A tap on Teder's name ticks it and opens its plans, the one from the website's button chosen; untick, closed again.
+    await page.click('label.product-pick:has(input[value="teder"]) b');
+    assert.equal(await teder.isChecked(), true);
+    assert.equal(await page.locator('fieldset.plans-pick').isVisible(), true);
+    assert.equal(await page.isChecked('input[name="plan"][value="full"]'), true);
+    await page.click('label.product-pick:has(input[value="teder"]) b');
+    assert.equal(await page.locator('fieldset.plans-pick').isVisible(), false);
+    await page.click('label.product-pick:has(input[value="teder"]) b');
     const rows = page.locator('label.plan-pick');
     assert.equal(await rows.count(), 2);
     for (let i = 0; i < 2; i++) {

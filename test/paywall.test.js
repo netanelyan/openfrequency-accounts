@@ -283,7 +283,7 @@ test('/signup shows each product with its price, VAT excluded, and its setup fee
     assert.match(page, /<b>תורן<\/b><small>[^<]+<\/small><small class="price">590 ₪ לחודש ועוד מע״מ, ודמי הקמה של 990 ₪ פעם אחת<\/small>/);
     // How paying works (manual: OF_PAYMENT unset), and under the plans Teder's setup fee: one time, not refunded.
     assert.match(page, /<small>אחרי שהחשבון נפתח, נשלח לכם במייל את פרטי התשלום, והמוצרים נפתחים אחרי שהתשלום מגיע אלינו\. אפשר לבטל את המנוי מהדף הראשי, והוא עובד עד סוף התקופה ששולמה\.<\/small>/);
-    assert.match(page, /<small>חל רק כשבוחרים בתדר\. אפשר לעבור חבילה אחר כך, בכתיבה אלינו\. דמי ההקמה לא מוחזרים, ומשלמים אותם פעם אחת, עם החודש הראשון\.<\/small><\/fieldset>/);
+    assert.match(page, /<small>אפשר לעבור חבילה אחר כך, בכתיבה אלינו\. דמי ההקמה לא מוחזרים, ומשלמים אותם פעם אחת, עם החודש הראשון\.<\/small><\/fieldset>/);
   } finally {
     await t.done();
   }

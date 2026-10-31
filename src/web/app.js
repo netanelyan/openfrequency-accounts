@@ -634,13 +634,11 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
           const links = found.user.is_superadmin ? [['/admin', T.adminTitle]] : [['/', SIGNUP.home], ['/logout', SIGNUP.signOut]];
           return page(200, SIGNUP.title, P.messagePage({ title: SIGNUP.signedInTitle(found.user.email), lead: found.user.is_superadmin ? '' : SIGNUP.signedInLead, links }));
         }
-        // The product the visitor came from (?p=, from the website's buttons) starts chosen, if sign-up offers it; with
-        // one product open, that one does.
+        // No product starts chosen, not even the one the visitor came from (?p=) or the only one open: they tick it
+        // themselves, and its plans open under it (the owner's choice, 2026-10-31).
         if (req.method !== 'POST') {
-          const asked = url.searchParams.get('p');
-          const start = openProducts.includes(asked) ? [asked] : openProducts.length === 1 ? openProducts : [];
-          // ?plan= (the website's button under each of Teder's plans) starts that plan chosen.
-          return page(200, SIGNUP.title, P.signupPage({ csrf, google: Boolean(google), open: openProducts, payment, form: { products: start, plan: url.searchParams.get('plan') || '' } }));
+          // ?plan= (the website's button under each of Teder's plans) starts that plan chosen, for when Teder is ticked.
+          return page(200, SIGNUP.title, P.signupPage({ csrf, google: Boolean(google), open: openProducts, payment, form: { products: [], plan: url.searchParams.get('plan') || '' } }));
         }
 
         const via = f('via') === 'google' && google ? 'google' : 'email';

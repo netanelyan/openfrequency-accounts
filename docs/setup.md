@@ -11,7 +11,7 @@ deleted, and the settings that turn each part on.
 | Variable | Default | What it does |
 |---|---|---|
 | `OF_SIGNUP` | unset | `1` opens `/signup`. Anything else: `/signup` says "ההרשמה תיפתח בקרוב" with a link to `https://openfrequency.co.il/join`, and every POST to it is refused (403). |
-| `OF_SIGNUP_PRODUCTS` | `teder,toran` | The products `/signup` offers, comma-separated, unknown names ignored. One left out shows as "בקרוב" with its box off and is refused, by the form and through Google; with one product open, it starts chosen. The console opens any product either way. |
+| `OF_SIGNUP_PRODUCTS` | `teder,toran` | The products `/signup` offers, comma-separated, unknown names ignored. One left out shows as "בקרוב" with its box off and is refused, by the form and through Google. No product starts ticked, not even the only one open; a product's plans open under its box once it is ticked. The console opens any product either way. |
 | `OF_SIGNUP_NOTIFY` | unset | Comma-separated addresses that get a short email on each confirmed sign-up, each online cancellation (and its undo), each deleted workspace, each payment that did not come on its day and each grace that ended (src/web/daily.js), and the workspaces deleted for being unused. Unset, no notice: this is how the operator hears of a new customer. |
 | `OF_SIGNUP_DAILY_EMAILS` | `200` | The most sign-up emails `/signup` sends in a day, from every address together. Past it the form answers 429 ("עצרנו אותם עד מחר") and the log says so. |
 | `OF_PAYMENT` | `manual` | How customers pay: `manual` (unset means manual) or `provider`. Any other value, and the service will not start, saying why in one line (`npm run daily` too). What each mode tells the customer is under "Payment" below. |

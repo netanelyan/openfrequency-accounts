@@ -90,13 +90,9 @@ test('open: the form asks for the name, the business, the products with a line e
     assert.doesNotMatch(page.headers['content-security-policy'], /unsafe-inline|unsafe-eval|nonce-/);
     // The login page points to it.
     assert.match((await t.browser().get('/login')).body, /עוד אין לכם חשבון\? <a href="\/signup">להרשמה<\/a>/);
-    // Nothing is chosen with both open, and the website's button (?p=) chooses its product; an unknown one, nothing.
+    // Nothing starts chosen, not even the product the website's button (?p=) came from: the visitor ticks it.
     assert.doesNotMatch(page.body, /value="(toran|teder)" checked/);
-    assert.match((await t.browser().get('/signup?p=teder')).body, /value="teder" checked/);
-    const toran = (await t.browser().get('/signup?p=toran')).body;
-    assert.match(toran, /value="toran" checked/);
-    assert.doesNotMatch(toran, /value="teder" checked/);
-    assert.doesNotMatch((await t.browser().get('/signup?p=nope')).body, /value="(toran|teder)" checked/);
+    for (const p of ['teder', 'toran', 'nope']) assert.doesNotMatch((await t.browser().get(`/signup?p=${p}`)).body, /value="(toran|teder)" checked/, p);
   } finally {
     await t.done();
   }
@@ -541,12 +537,12 @@ test('by default both products are open, neither chosen in advance, and neither 
   }
 });
 
-test('with OF_SIGNUP_PRODUCTS=teder: Toran shows as coming soon and is refused, by the form and by Google; Teder starts chosen', async () => {
+test('with OF_SIGNUP_PRODUCTS=teder: Toran shows as coming soon and is refused, by the form and by Google; Teder, the only one open, still starts unticked', async () => {
   const t = await setup({ env: { ...OPEN, ...CLIENT, OF_SIGNUP_PRODUCTS: 'teder' } });
   try {
     const b = t.browser();
     const page = await b.get('/signup');
-    assert.ok(page.body.includes('name="products" value="teder" checked>'));
+    assert.ok(page.body.includes('name="products" value="teder">'));
     assert.match(page.body, /<label class="product-pick soon"><input type="checkbox" disabled aria-describedby="su-soon-toran">/);
     assert.match(page.body, /<small id="su-soon-toran">ההרשמה אליו תיפתח בקרוב\.<\/small><\/span><span class="tag off">בקרוב<\/span>/);
     assert.doesNotMatch(page.body, /name="products" value="toran"/);

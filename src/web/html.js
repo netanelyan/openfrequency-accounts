@@ -359,7 +359,8 @@ export function signupPage({ csrf, form = {}, error = '', google = false, open =
   const chosen = [].concat(form.products || []);
   // A product sign-up does not offer yet (OF_SIGNUP_PRODUCTS): shown after the open ones, its box disabled and outside
   // the form's data, with a "בקרוב" tag and one line on why.
-  // A product with plans (Teder) shows each plan, with what a month gives and its price, to choose under its box.
+  // A product with plans (Teder) shows each plan, with what a month gives and its price, to choose under its box, once
+  // the box is ticked (site.css; no product starts ticked).
   // ?plan=full or ?plan=small (the website's buttons) starts that one chosen; anything else, or none, the full one.
   const picked = Object.hasOwn(PLANS.teder, form.plan ?? '') ? form.plan : plansOf('teder')[0];
   const plans = (p) =>

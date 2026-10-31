@@ -678,6 +678,11 @@ label.plan-pick input { flex: none; margin: 0; }
 label.plan-pick b { display: block; font-weight: 600; }
 label.plan-pick small { margin: 2px 0 0; }
 fieldset.plans-pick > small { margin: 0; }
+/* A product's plans open under its box once it is ticked, for any product with plans (Teder now, Toran if it gets
+   some). A browser without :has() shows them all along. */
+@supports selector(:has(*)) {
+  label.product-pick:not(:has(input:checked)) + fieldset.plans-pick { display: none; }
+}
 label.check.terms { display: flex; align-items: flex-start; gap: 10px; margin: 20px 0 0; padding-top: 10px; line-height: 1.45; font-size: 15px; }
 label.check.terms input { flex: none; margin: 1px 0 0; }
 .card form > button.google { margin-top: 0; }
