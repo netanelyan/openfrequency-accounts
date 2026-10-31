@@ -182,7 +182,8 @@ input, select {
   width: 100%;
   min-height: 50px;
 }
-input[type='checkbox'] { width: 20px; height: 20px; min-height: 0; accent-color: var(--accent-fill); }
+/* A box or a dot is its own size, not a field's: without this a radio (Teder's plans on /signup) took the whole row. */
+input[type='checkbox'], input[type='radio'] { width: 20px; height: 20px; min-height: 0; padding: 0; accent-color: var(--accent-fill); }
 input:focus, select:focus { outline: none; border-color: var(--accent-fill); box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent-fill) 25%, transparent); }
 input[aria-invalid='true'] { border-color: var(--bad); }
 ::placeholder { color: var(--ink-3); opacity: 1; }

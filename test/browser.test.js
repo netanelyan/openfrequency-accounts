@@ -25,12 +25,12 @@ try {
 
 const run = chromium ? test : test.skip;
 
-async function setup({ comp = true } = {}) {
+async function setup({ comp = true, env = {} } = {}) {
   const h = tempHome();
   // Complimentary unless a test pays for it, so the sign-in lands on the home page (an unpaid workspace lands on /setup).
   makeWorkspace(h.db, 'dana-shop', { name: 'החנות של דנה', products: ['teder'], comp, members: { 'dana@example.com': 'client_owner' } });
   const { codes } = setSuperadmin(h.db, { email: 'admin@example.com', password: 'a long enough password', totpSecret: newTotpSecret() });
-  const site = await startSite(h.db, { env: { PUBLIC_HOST: '', TEDER_URL: 'http://localhost:4700/', OF_ASSISTANT_WA: '972500000100' } });
+  const site = await startSite(h.db, { env: { PUBLIC_HOST: '', TEDER_URL: 'http://localhost:4700/', OF_ASSISTANT_WA: '972500000100', ...env } });
   const browser = await chromium.launch();
   const base = `http://127.0.0.1:${site.s.port}`;
   return { ...h, ...site, codes, browser, base, done: async () => (await browser.close(), await site.close(), h.cleanup()) };
@@ -163,6 +163,33 @@ run('on a phone, a customer ticks the box, gets the code and the WhatsApp button
     assert.match(code, /^LINK-[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{6}$/);
     assert.equal(await page.getAttribute('.wa-code a.button', 'href'), `https://wa.me/972500000100?text=${code}`);
     assert.equal(t.db.get('SELECT opt_in FROM phone_links').opt_in, 1);
+    const wide = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+    assert.equal(wide, 0);
+  } finally {
+    await t.done();
+  }
+});
+
+run("sign-up on a phone, in dark mode: Teder's plans are rows with a small dot, their words beside it, and a tap on the words picks the plan", async () => {
+  // The radios once took the field style (width 100%), a box as wide as the row, with the plan's words squeezed beside it.
+  const t = await setup({ env: { OF_SIGNUP: '1', OF_SIGNUP_PRODUCTS: 'teder' } });
+  try {
+    const context = await t.browser.newContext({ viewport: { width: 375, height: 812 }, colorScheme: 'dark' });
+    const page = await context.newPage();
+    await page.goto(`${t.base}/signup?p=teder`);
+    const rows = page.locator('label.plan-pick');
+    assert.equal(await rows.count(), 2);
+    for (let i = 0; i < 2; i++) {
+      const row = await rows.nth(i).boundingBox();
+      const dot = await rows.nth(i).locator('input[type="radio"]').boundingBox();
+      const words = await rows.nth(i).locator('span').boundingBox();
+      assert.ok(dot.width <= 24 && dot.height <= 24, `plan ${i}: the dot is ${dot.width}x${dot.height}`);
+      assert.ok(words.width > row.width * 0.6, `plan ${i}: the words take ${words.width} of ${row.width}`);
+      assert.ok(row.x >= 0 && row.x + row.width <= 375, `plan ${i}: the row fits`);
+    }
+    await page.click('label.plan-pick:has(input[value="small"]) b');
+    assert.equal(await page.isChecked('input[name="plan"][value="small"]'), true);
+    assert.equal(await page.isChecked('input[name="plan"][value="full"]'), false);
     const wide = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
     assert.equal(wide, 0);
   } finally {
