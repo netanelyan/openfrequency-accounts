@@ -24,7 +24,7 @@ import { CANCEL, ERASE, MAIL, NOTIFY, OPS, PRODUCT_NAMES, SETUP, SIGNUP, T, dayH
 import { setupClient, setupState } from './setup.js';
 import { eraseClient } from './erase.js';
 import { createLinkCode, openLinkCode, phoneIn, phonesFor, PHONE, removePhone, setConsent } from '../accounts/phones.js';
-import { describe, listPrice, payMonth, setSubscription, subscriptionsOf } from '../accounts/subscriptions.js';
+import { describe, listPrice, payMonth, payTotal, setSubscription, subscriptionsOf } from '../accounts/subscriptions.js';
 import { addInvoice, invoiceIn, invoicesOf, PDF_MAX, removeInvoice } from '../accounts/invoices.js';
 import { cancelTeamInvite, inviteToTeam, removeMember, TEAM_LIMIT, TeamError, teamOf } from '../accounts/team.js';
 import { opsCustomers } from '../accounts/ops.js';
@@ -198,7 +198,8 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
       billingReady: ready,
       access: accessAll(db, workspaceId),
       checkout: ready ? checkoutUrl(workspaceId, env) : null,
-      contact: payContact(env, SETUP.billingSupportText(name)),
+      // With the owner's payment details, the button sends the receipt of the transfer; else it asks about paying.
+      contact: payContact(env, payHow(env) ? SETUP.billingReceiptText(name) : SETUP.billingSupportText(name)),
     });
   };
   // Deleting a workspace: the products' parts first (src/web/erase.js), then ours (src/accounts/erase.js).
@@ -255,13 +256,22 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
     try {
       const subs = subscriptionsOf(db, workspace.id);
       const products = enabledProducts(db, workspace.id);
+      // The first payment: each product's month and setup fee, with VAT (payTotal), and the months after it.
+      const owed = [];
+      const months = [];
       const prices = products.map((p) => {
         const list = listPrice(p, subs[p]?.plan);
         const setupFee = subs[p]?.setup ?? list.setup;
-        return MAIL.welcomePrice(P.productLabel(p, subs[p]?.plan), ils(subs[p]?.monthly ?? list.monthly), ils(setupFee), p === 'teder' && setupFee > 0);
+        const monthly = subs[p]?.monthly ?? list.monthly;
+        const vat = subs[p]?.vat ?? list.vat;
+        owed.push({ sum: monthly, vat }, ...(setupFee ? [{ sum: setupFee, vat }] : []));
+        months.push({ sum: monthly, vat });
+        return MAIL.welcomePrice(P.productLabel(p, subs[p]?.plan), ils(monthly), ils(setupFee), p === 'teder' && setupFee > 0);
       });
+      const now = payTotal(owed);
+      const total = owed.length ? [MAIL.payNow(ils(now.total), ils(now.net), now.vat ? ils(now.vat) : ''), ...(owed.length > months.length ? [MAIL.payThen(ils(payTotal(months).total))] : [])] : [];
       const opens = opensAfter(payment, products.map((p) => PRODUCT_NAMES[p]).join(SIGNUP.and), products.length > 1);
-      mailer.send(welcomeMail(user.email, { business: workspace.name, link: `${base}/setup`, payment, opens, prices, payHow: payHow(env), wa: supportWa(env) }));
+      mailer.send(welcomeMail(user.email, { business: workspace.name, link: `${base}/setup`, payment, opens, prices, total, payHow: payHow(env), wa: supportWa(env) }));
     } catch (e) {
       log(`[accounts] the welcome email for workspace ${workspace.id} failed: ${e.message}`);
     }

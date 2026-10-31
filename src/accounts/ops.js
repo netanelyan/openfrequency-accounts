@@ -1,6 +1,6 @@
 import { nowIso } from '../core/clock.js';
 import { PRODUCTS } from '../db/schema.js';
-import { addDays, describe, israelToday, subscriptionsOf } from './subscriptions.js';
+import { addDays, describe, israelToday, subscriptionsOf, VAT } from './subscriptions.js';
 
 // The customers and the money, for the operator's dashboard on /admin (opsMoney and opsCustomersStage, below) and
 // for Toran (GET /internal/ops/customers, docs/internal-ops.md). Read-only: every workspace, newest first, with what
@@ -56,8 +56,8 @@ export function opsCustomers(db, today = israelToday()) {
 
 // ---- the operator's dashboard on /admin: the money and the funnels' last stage, from the same rows
 
-/** VAT in Israel, for a price recorded with it included. */
-export const VAT = 0.18;
+/** VAT in Israel (subscriptions.js), for a price recorded with it included. */
+export { VAT };
 
 /**
  * The money, from opsCustomers()' workspaces on `today`: the monthly revenue before VAT (paid and ending, a price

@@ -172,10 +172,15 @@ test("manual with the owner's details (OF_PAYMENT_METHOD): the welcome email, /s
     for (const line of [
       'קודם התשלום על המנוי, לפי פרטי התשלום שכאן למטה. תדר נפתח אחרי שהתשלום מגיע אלינו.',
       'תדר, החבילה הקטנה: 490 ₪ לחודש ועוד מע״מ, ודמי הקמה של 990 ₪ פעם אחת. דמי ההקמה לא מוחזרים.',
+      // 490 + 990 = 1,480 before VAT; with 18%, 1,746.40. The months after: 490 with VAT, 578.20.
+      'סך הכול לתשלום עכשיו: 1,746.40 ₪, כולל מע״מ (1,480 ₪ ועוד 266.40 ₪ מע״מ).',
+      'אחר כך 578.20 ₪ לחודש, כולל מע״מ.',
       'איך משלמים: העברה בנקאית או ביט',
+      'אחרי ההעברה, שלחו לנו את האסמכתא בוואטסאפ ל-050-000-0100. ככה נמצא את ההעברה ונרשום את התשלום.',
       'יש שאלה על התשלום? ענו למייל הזה, או כתבו לנו בוואטסאפ ל-050-000-0100.',
     ])
       assert.ok(welcome.text.includes(line), line);
+    assert.ok(welcome.text.indexOf('סך הכול לתשלום עכשיו') < welcome.text.indexOf('איך משלמים') && welcome.text.indexOf('איך משלמים') < welcome.text.indexOf('האסמכתא'), 'the total, how to pay, then the receipt');
     assert.doesNotMatch(welcome.text, /בקרוב|ונשלח לכם פרטים|נשלח לכם במייל|כרטיס אשראי/);
 
     // The owner: the plan and its price, and that the details are already with the customer.
@@ -184,12 +189,13 @@ test("manual with the owner's details (OF_PAYMENT_METHOD): the welcome email, /s
     assert.ok(notice.text.includes('פרטי התשלום כבר אצל noa@example.com, במייל הפתיחה. כשהתשלום מגיע, רושמים אותו בקונסולה ("התקבל תשלום לחודש"), ורק אז תדר נפתח ללקוח.'), notice.text);
     assert.doesNotMatch(notice.text, /צריך לשלוח/);
 
-    // /setup: the details, no button to start, a quiet one to ask us on WhatsApp.
+    // /setup: the details, the total with VAT, no button to start, a quiet one sending the receipt to us on WhatsApp.
     const billing = billingOf(setup);
-    assert.match(billing, /<small>משלמים לפי פרטי התשלום שכאן למטה\. תדר נפתח אחרי שהתשלום מגיע אלינו\.<\/small><\/span><a class="button quiet" href="https:\/\/wa\.me\/972500000100\?text=[^"]+">כתבו לנו בוואטסאפ<\/a>/);
-    assert.ok(billing.includes(encodeURIComponent('היי, כותבים מ״Noa Ceramics״. יש לנו שאלה על התשלום.')));
+    assert.match(billing, /<small>משלמים לפי פרטי התשלום שכאן למטה\. תדר נפתח אחרי שהתשלום מגיע אלינו\.<\/small><\/span><a class="button quiet" href="https:\/\/wa\.me\/972500000100\?text=[^"]+">לשלוח אסמכתא בוואטסאפ<\/a>/);
+    assert.ok(billing.includes(encodeURIComponent('היי, כותבים מ״Noa Ceramics״. העברנו את התשלום, והאסמכתא מצורפת.')));
     assert.match(billing, /<li>תדר, החבילה הקטנה: 490 ₪ לחודש, לא כולל מע״מ, ודמי הקמה של 990 ₪ פעם אחת<\/li>/);
-    assert.match(billing, /<p>איך משלמים: העברה בנקאית או ביט<\/p>/);
+    assert.match(billing, /<p class="pay-total"><b>סך הכול לתשלום עכשיו: 1,746\.40 ₪, כולל מע״מ \(1,480 ₪ ועוד 266\.40 ₪ מע״מ\)\.<\/b> אחר כך 578\.20 ₪ לחודש, כולל מע״מ\.<\/p>/);
+    assert.match(billing, /<p>איך משלמים: העברה בנקאית או ביט<\/p>\n<p class="pay-receipt">אחרי ההעברה, שלחו לנו את האסמכתא בוואטסאפ\. ככה נמצא את ההעברה ונרשום את התשלום\.<\/p>/);
     assert.match(billing, /<p class="muted">יש שאלה על התשלום\? כתבו לנו בוואטסאפ, או ענו לאחד המיילים שקיבלתם מאיתנו\.<\/p>/);
     assert.doesNotMatch(billing, /button primary|בקרוב|ונשלח לכם פרטים|כרטיס אשראי/);
   } finally {
@@ -270,7 +276,7 @@ test("the billing emails: manual gives the owner's details (without them, points
       (soon, due, stopped) => {
         for (const m of [soon, due]) {
           // The owner's details are in the email itself; nothing points to an earlier one.
-          assert.match(m.text, /איך משלמים: העברה בנקאית או ביט\n\nיש שאלה על התשלום\? ענו למייל הזה, או כתבו לנו בוואטסאפ ל-050-000-0100\./);
+          assert.match(m.text, /איך משלמים: העברה בנקאית או ביט\n\nאחרי ההעברה, שלחו לנו את האסמכתא בוואטסאפ ל-050-000-0100\. ככה נמצא את ההעברה ונרשום את התשלום\.\n\nיש שאלה על התשלום\? ענו למייל הזה, או כתבו לנו בוואטסאפ ל-050-000-0100\./);
           assert.doesNotMatch(m.text, /ששלחנו לכם במייל/);
           assert.equal(m.link, `${BASE}/setup`);
           assert.match(m.html, />לחשבון<\/a>/);

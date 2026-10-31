@@ -1,11 +1,23 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { addMonths, describe, israelToday } from '../src/accounts/subscriptions.js';
+import { addMonths, describe, israelToday, payTotal, withVat } from '../src/accounts/subscriptions.js';
 import { homePage } from '../src/web/html.js';
 
 // What a customer's dashboard says of a subscription, worked out from the days OpenFrequency records.
 
 const S = { monthly: 449, vat: 'excluded', setup: 990, started_on: '2026-10-01', paid_until: null, ends_on: null };
+
+test('what a payment comes to with VAT (18%), to the agora: a price recorded before VAT gets it added, one with it included stays', () => {
+  assert.equal(withVat(790, 'excluded'), 932.2);
+  assert.equal(withVat(449, 'excluded'), 529.82);
+  assert.equal(withVat(932.2, 'included'), 932.2);
+  // Teder's plans, their first payment: the month and the setup fee.
+  assert.deepEqual(payTotal([{ sum: 790, vat: 'excluded' }, { sum: 1490, vat: 'excluded' }]), { total: 2690.4, net: 2280, vat: 410.4 });
+  assert.deepEqual(payTotal([{ sum: 490, vat: 'excluded' }, { sum: 990, vat: 'excluded' }]), { total: 1746.4, net: 1480, vat: 266.4 });
+  // Recorded with VAT in it: as it is, and no VAT to add.
+  assert.deepEqual(payTotal([{ sum: 1000, vat: 'included' }]), { total: 1000, net: 0, vat: 0 });
+  assert.deepEqual(payTotal([{ sum: 1000, vat: 'included' }, { sum: 100, vat: 'excluded' }]), { total: 1118, net: 100, vat: 18 });
+});
 
 test('a month on is the same day, or the month\'s last day when it has none', () => {
   assert.equal(addMonths('2026-10-22'), '2026-11-22');

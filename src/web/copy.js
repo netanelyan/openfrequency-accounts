@@ -469,6 +469,11 @@ export const MAIL = {
   // `noRefund`: Teder's setup fee, which its terms say is not refunded (Toran's terms say it otherwise).
   welcomePrice: (product, monthly, setup, noRefund = false) => `${product}: ${monthly} לחודש ועוד מע״מ, ודמי הקמה של ${setup} פעם אחת.${noRefund ? ' דמי ההקמה לא מוחזרים.' : ''}`,
   welcomePayHow: (how) => `איך משלמים: ${how}`,
+  /** The first payment with VAT (payTotal(): its total, and the part before VAT with the VAT on it), and the month after. */
+  payNow: (total, net, vat) => payNowLine(total, net, vat),
+  payThen: (monthly) => payThenLine(monthly),
+  /** After a transfer: the receipt (אסמכתא) to our WhatsApp (OF_SUPPORT_WA), else in a reply. */
+  receipt: (wa) => `אחרי ההעברה, שלחו לנו את האסמכתא ${wa ? `בוואטסאפ ל-${phoneHe(wa)}` : 'בתשובה למייל הזה'}. ככה נמצא את ההעברה ונרשום את התשלום.`,
   /** Whom to ask about paying, in an email: a reply, or our WhatsApp (OF_SUPPORT_WA, international digits) when it is set. */
   payAsk: (wa) => (wa ? `יש שאלה על התשלום? ענו למייל הזה, או כתבו לנו בוואטסאפ ל-${phoneHe(wa)}.` : 'יש שאלה על התשלום? ענו למייל הזה.'),
 
@@ -506,7 +511,8 @@ export const MAIL = {
     { link },
   ],
   payButton: 'לחשבון',
-  amount: (sum, plusVat) => (plusVat ? `${sum} ועוד מע״מ` : sum),
+  // `total`: the sum with VAT, when VAT is added to it.
+  amount: (sum, plusVat, total = '') => (plusVat ? `${sum} ועוד מע״מ${total ? `, ${total} בסך הכול` : ''}` : sum),
   // With a provider, the email's button is its payment page (OF_PAYMENT_URL), "לתשלום"; in manual mode, the account.
   payByProvider: 'משלמים בכרטיס אשראי, בדף התשלום:',
   payOnlineButton: 'לתשלום',
@@ -689,6 +695,13 @@ export const SETUP = {
   billingPaidUntil: (product, d) => `${product}: שולם עד ${d}`,
   billingDue: (product, d) => `${product}: התשלום על החודש הנוכחי עוד לא הגיע. המנוי עובד עד ${d}, ואחרי זה נעצר עד שישולם.`,
   billingHow: (how) => `איך משלמים: ${how}`,
+  billingNow: (total, net, vat) => payNowLine(total, net, vat),
+  billingThen: (monthly) => payThenLine(monthly),
+  // With the owner's payment details (OF_PAYMENT_METHOD): the receipt (אסמכתא) to us, and the card's button for it,
+  // our WhatsApp with the words written.
+  billingReceipt: (wa) => `אחרי ההעברה, שלחו לנו את האסמכתא ${wa ? 'בוואטסאפ' : 'בתשובה לאחד המיילים שקיבלתם מאיתנו'}. ככה נמצא את ההעברה ונרשום את התשלום.`,
+  billingSendReceipt: 'לשלוח אסמכתא בוואטסאפ',
+  billingReceiptText: (business) => `היי, כותבים מ״${business}״. העברנו את התשלום, והאסמכתא מצורפת.`,
   billingSupportText: (business) => `היי, כותבים מ״${business}״. יש לנו שאלה על התשלום.`,
   locked: 'נפתח אחרי התשלום',
   lockedChip: 'אחרי התשלום',
@@ -797,6 +810,11 @@ export const phoneHe = (digits) => {
 };
 
 /** Shekels, as the site writes them: "1,490 ₪", or "1,762.82 ₪" when there are agorot. */
+/** One payment with VAT: "סך הכול לתשלום עכשיו: 2,690.40 ₪, כולל מע״מ (2,280 ₪ ועוד 410.40 ₪ מע״מ)." (all formatted). */
+const payNowLine = (total, net, vat) => `סך הכול לתשלום עכשיו: ${total}, כולל מע״מ${vat ? ` (${net} ועוד ${vat} מע״מ)` : ''}.`;
+/** The months after a first payment that had a setup fee in it. */
+const payThenLine = (monthly) => `אחר כך ${monthly} לחודש, כולל מע״מ.`;
+
 export const ils = (n) => `${Number(n).toLocaleString('he-IL', Number.isInteger(Number(n)) ? {} : { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ₪`;
 
 // ---- the operator's dashboard, /admin (Toran's docs/operator.md, section 4)

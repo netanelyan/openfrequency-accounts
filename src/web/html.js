@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { ROOT } from '../core/paths.js';
-import { addDays, addMonths, describe, israelToday, LIST_PRICES, PLANS, plansOf } from '../accounts/subscriptions.js';
+import { addDays, addMonths, describe, israelToday, LIST_PRICES, payTotal, PLANS, plansOf } from '../accounts/subscriptions.js';
 import { total } from '../accounts/invoices.js';
 import { KINDS } from '../accounts/notify.js';
 import { AUDIT_NAMES, CANCEL, ERASE, NOTIFY, OPS, PLAN_NAMES, PRODUCT_NAMES, ROLE_NAMES, SETUP, SIGNUP, T, dayHe, hourHe, ils, opensAfter, phoneHe, planGives, when } from './copy.js';
@@ -451,6 +451,8 @@ function stepRow(s, { readOnly, first, locked = false }) {
  * follows the payment mode (OF_PAYMENT): with a provider, "לתשלום" opens its payment page and the closed products open
  * once the payment is confirmed; in manual mode we email the payment details, the closed products open once the
  * payment reaches us, and the button (quiet: there is nothing to start here) is for questions, to us.
+ * Under the prices, what the payment comes to with VAT (the setup fee in it until the first payment), and the months
+ * after; in manual mode with the owner's payment details, the receipt (אסמכתא) to us, the button sending it.
  */
 function billingCard(b, { readOnly, first, products, access, prices, payHow = '' }) {
   const done = b.status === 'done';
@@ -458,24 +460,41 @@ function billingCard(b, { readOnly, first, products, access, prices, payHow = ''
   const opens = closed.length ? opensAfter(b.checkout ? 'provider' : 'manual', closed.map((p) => PRODUCT_NAMES[p]).join(SIGNUP.and), closed.length > 1) : '';
   const detail = done ? (b.comp ? SETUP.billingComp : SETUP.billingDone) : b.checkout ? SETUP.billingTodo(opens) : SETUP.billingManual(opens, payHow);
   const wa = /^https:\/\/wa\.me\//.test(b.href || '');
-  const label = b.checkout ? SETUP.billingPay : wa ? SETUP.billingWrite : SETUP.billingContact;
+  const label = b.checkout ? SETUP.billingPay : wa ? (payHow ? SETUP.billingSendReceipt : SETUP.billingWrite) : SETUP.billingContact;
   const btn = !done && b.href && !readOnly ? `<a class="button ${b.checkout && first() ? 'primary' : 'quiet'}" href="${esc(b.href)}">${esc(label)}</a>` : '';
+  // What is to pay now, product by product (a month, and the setup fee until the first payment), and the months after.
+  const owed = [];
+  const months = [];
   const lines = products
     .map((p) => {
       const a = access[p];
       const s = prices[p] || {};
       if (a?.access === 'comp') return '';
-      if (a?.access === 'due') return `<li>${esc(SETUP.billingDue(productLabel(p, s.plan), dayHe(a.graceUntil)))}</li>`;
+      if (a?.access === 'due') {
+        if (s.monthly != null) {
+          owed.push({ sum: s.monthly, vat: s.vat });
+          months.push({ sum: s.monthly, vat: s.vat });
+        }
+        return `<li>${esc(SETUP.billingDue(productLabel(p, s.plan), dayHe(a.graceUntil)))}</li>`;
+      }
       if (a?.allowed && a.paidUntil) return `<li>${esc(SETUP.billingPaidUntil(productLabel(p, s.plan), dayHe(a.paidUntil)))}</li>`;
       if (s.monthly == null) return '';
       const vat = s.vat === 'included' ? T.vatIncluded : T.vatExcluded;
-      return `<li>${esc(SETUP.billingPrice(productLabel(p, s.plan), ils(s.monthly), vat, !s.paid_until && s.setup ? ils(s.setup) : ''))}</li>`;
+      const setupFee = !s.paid_until && s.setup ? s.setup : 0;
+      owed.push({ sum: s.monthly, vat: s.vat });
+      months.push({ sum: s.monthly, vat: s.vat });
+      if (setupFee) owed.push({ sum: setupFee, vat: s.vat });
+      return `<li>${esc(SETUP.billingPrice(productLabel(p, s.plan), ils(s.monthly), vat, setupFee ? ils(setupFee) : ''))}</li>`;
     })
     .join('');
+  const now = owed.length ? payTotal(owed) : null;
+  const then = months.length && owed.length > months.length ? payTotal(months).total : null;
   return `<section class="card setup-p" id="setup-billing"><header><div><h2>${esc(SETUP.billingTitle)}</h2></div><span class="tag${done ? '' : ' off'}">${esc(done ? SETUP.ready : SETUP.notReady)}</span></header>
 <ol class="steps"><li class="step st-${done ? 'done' : 'todo'}"><span class="chip">${esc(SETUP.status[done ? 'done' : 'todo'])}</span><span class="what"><b>${esc(SETUP.billingStep)}</b><small>${esc(detail)}</small></span>${btn}</li></ol>
 ${lines ? `<ul class="prices">${lines}</ul>` : ''}
+${!done && now ? `<p class="pay-total"><b>${esc(SETUP.billingNow(ils(now.total), ils(now.net), now.vat ? ils(now.vat) : ''))}</b>${then ? ` ${esc(SETUP.billingThen(ils(then)))}` : ''}</p>` : ''}
 ${!done && payHow ? `<p>${esc(SETUP.billingHow(payHow))}</p>` : ''}
+${!done && payHow && !b.checkout ? `<p class="pay-receipt">${esc(SETUP.billingReceipt(wa))}</p>` : ''}
 ${!done && !b.checkout ? `<p class="muted">${esc(SETUP.billingAsk(wa))}</p>` : ''}
 </section>`;
 }

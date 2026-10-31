@@ -1,7 +1,7 @@
 import { DAY, HOUR, now, nowIso } from '../core/clock.js';
 import { audit } from '../core/audit.js';
 import { j } from '../db/index.js';
-import { addDays, addMonths, graceLast, israelToday } from '../accounts/subscriptions.js';
+import { addDays, addMonths, graceLast, israelToday, withVat } from '../accounts/subscriptions.js';
 import { eraseWorkspace, productsEver } from '../accounts/erase.js';
 import { checkoutUrl, payHow, paymentMode, supportWa } from '../accounts/billing.js';
 import { signupNotify } from '../accounts/signup.js';
@@ -66,7 +66,7 @@ function billing(db, { mailer, env, base, notifyTo, today }) {
   );
   const provider = paymentMode(env) === 'provider';
   // With the owner's details (OF_PAYMENT_METHOD) the email gives them; without, it points to the ones we emailed.
-  const pay = provider ? MAIL.payByProvider : [...(payHow(env) ? [MAIL.welcomePayHow(payHow(env))] : [MAIL.payByUs]), MAIL.payAsk(supportWa(env))];
+  const pay = provider ? MAIL.payByProvider : [...(payHow(env) ? [MAIL.welcomePayHow(payHow(env)), MAIL.receipt(supportWa(env))] : [MAIL.payByUs]), MAIL.payAsk(supportWa(env))];
   const sent = { soon7: 0, soon1: 0, due: 0, stopped: 0 };
   for (const s of rows) {
     const kind = billingKind(s.paid_until, today);
@@ -75,7 +75,7 @@ function billing(db, { mailer, env, base, notifyTo, today }) {
     const fresh = db.run('INSERT INTO billing_notices (workspace_id, product, kind, due_on, sent_at, recipients) VALUES (?, ?, ?, ?, ?, 0) ON CONFLICT DO NOTHING', s.workspace_id, s.product, kind, dueOn, nowIso());
     if (Number(fresh.changes) !== 1) continue;
     const to = ownersOf(db, s.workspace_id);
-    const fields = { kind, business: s.business, product: s.product, dueOn, graceUntil: graceLast(s.paid_until), amount: MAIL.amount(ils(s.monthly ?? 0), s.vat !== 'included'), pay, link: `${base}/setup` };
+    const fields = { kind, business: s.business, product: s.product, dueOn, graceUntil: graceLast(s.paid_until), amount: MAIL.amount(ils(s.monthly ?? 0), s.vat !== 'included', ils(withVat(s.monthly ?? 0, s.vat))), pay, link: `${base}/setup` };
     const online = provider ? { payLink: checkoutUrl(s.workspace_id, env), payButton: MAIL.payOnlineButton } : {};
     for (const email of to) mailer.send(billingMail(email, { ...fields, ...online }));
     db.run('UPDATE billing_notices SET recipients = ? WHERE workspace_id = ? AND product = ? AND kind = ? AND due_on = ?', to.length, s.workspace_id, s.product, kind, dueOn);

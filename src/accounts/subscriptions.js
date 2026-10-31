@@ -44,6 +44,23 @@ export function listPrice(product, plan = null) {
 
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
 
+/** VAT in Israel. */
+export const VAT = 0.18;
+/** What a price comes to with VAT, to the agora: as recorded when VAT is included in it ('included'), else with VAT added. */
+export const withVat = (sum, vat) => (vat === 'included' ? Number(sum) : Math.round(Number(sum) * (1 + VAT) * 100) / 100);
+
+/**
+ * What one payment comes to, for the customer to transfer: `items` are { sum, vat } (a month, a setup fee), each as
+ * recorded. { total } with VAT, { net, vat } the part recorded before VAT and the VAT on it (0 when every price
+ * already includes it).
+ */
+export function payTotal(items) {
+  const total = Math.round(items.reduce((a, i) => a + withVat(i.sum, i.vat), 0) * 100) / 100;
+  const excluded = items.filter((i) => i.vat !== 'included');
+  const net = excluded.reduce((a, i) => a + Number(i.sum), 0);
+  return { total, net, vat: Math.round((excluded.reduce((a, i) => a + withVat(i.sum, i.vat), 0) - net) * 100) / 100 };
+}
+
 /** Today in Israel, YYYY-MM-DD. */
 export const israelToday = (t = now()) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jerusalem', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(t));
 

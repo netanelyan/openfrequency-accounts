@@ -121,10 +121,12 @@ export const signupNoticeMail = (to, { name, email, business, products, prices =
  * is how customers pay (OF_PAYMENT) and `opens` when the products open (opensAfter()). In manual mode, `payHow` is how
  * they pay (OF_PAYMENT_METHOD), said when it is set, and questions go to a reply or to our WhatsApp (`wa`, digits).
  */
-export const welcomeMail = (to, { business, link, payment = 'manual', opens = '', prices = [], payHow = '', wa = null }) => {
+// What the first payment comes to (`total`, its lines), in either mode; in manual mode then how to pay, the receipt
+// (אסמכתא) to us once the owner's payment details are in it, and whom to ask.
+export const welcomeMail = (to, { business, link, payment = 'manual', opens = '', prices = [], total = [], payHow = '', wa = null }) => {
   const b = plain(business, 80);
   const how = plain(payHow, 200);
-  const manual = payment !== 'provider' ? [...(how ? [MAIL.welcomePayHow(how)] : []), MAIL.payAsk(wa)] : [];
+  const manual = [...[].concat(total), ...(payment !== 'provider' ? [...(how ? [MAIL.welcomePayHow(how), MAIL.receipt(wa)] : []), MAIL.payAsk(wa)] : [])];
   return { to, ...build(MAIL.welcomeSubject(b), MAIL.welcomeLines(b, link, payment, opens, [...[].concat(prices), ...manual], payment !== 'provider' && Boolean(how)), MAIL.welcomeButton) };
 };
 

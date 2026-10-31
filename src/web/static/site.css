@@ -735,6 +735,9 @@ ol.steps .button { min-height: 40px; padding: 0 18px; font-size: 15px; }
 .card.setup-p.locked > header .mark { filter: grayscale(1); opacity: 0.6; }
 .card.setup-p.locked > .muted { margin: 0 0 12px; }
 ul.prices { list-style: none; padding: 0; margin: 12px 0 0; display: grid; gap: 4px; font-weight: 500; }
+/* What the payment comes to, with VAT, and the receipt (אסמכתא) to send after a transfer: both read before the rest. */
+.setup-p p.pay-total { margin: 10px 0 0; }
+.setup-p p.pay-receipt { font-weight: 600; }
 .card.setup-p#setup-billing > .muted { margin: 10px 0 0; }
 label.product-pick small.price { color: var(--ink-2); }
 /* The console: a product's access, and the form that deletes a workspace. */
