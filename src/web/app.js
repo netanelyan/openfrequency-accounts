@@ -8,7 +8,7 @@ import { PRODUCTS } from '../db/schema.js';
 import { clientIp, cookies, csrfFor, csrfOk, isHttps, sessionSecret } from '../auth/http.js';
 import { createLimiter, ipKey, LIMITS, signupMailDaily } from '../auth/limiter.js';
 import { safeNext } from '../auth/next.js';
-import { finishGoogle, GoogleError, googleConfig, openFlow, sameState, sealFlow, startGoogle, FLOW_TTL } from '../auth/google.js';
+import { finishGoogle, GOOGLE, GoogleError, googleConfig, openFlow, sameState, sealFlow, startGoogle, FLOW_TTL } from '../auth/google.js';
 import { bindGoogle, googleMatch, mailbox, userForGoogle } from '../accounts/google.js';
 import { chooseWorkspace, createSession, describeSession, enabledProducts, findSession, LIFETIME, memberships, revokeAllSessions, revokeSession, sessionCookie, sessionFromJar } from '../auth/sessions.js';
 import { acceptInvite, consumeMagicLink, createInvite, InviteError, normEmail, peekInvite, peekMagicLink, requestMagicLink, revokeInvite, validEmail } from '../accounts/links.js';
@@ -284,7 +284,10 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
   };
   const support = supportUrl(env);
   const waNumber = assistantWa(env);
-  const formAction = `'self' https://*.openfrequency.co.il${dev ? ' http://localhost:* http://127.0.0.1:*' : ''}`;
+  // Where a form may go, redirects included: a browser checks each hop. /signup's "continue with Google" is a submit
+  // that answers with a redirect to Google, so while Google is set up its sign-in page is one of them; without it the
+  // browser stopped there and the button span on (2026-10-31).
+  const formAction = `'self' https://*.openfrequency.co.il${google ? ` ${new URL(GOOGLE.auth).origin}` : ''}${dev ? ' http://localhost:* http://127.0.0.1:*' : ''}`;
   // Our own script files only (load.js on every page, admin.js on /admin), from the fixed list in FILES, and nothing
   // inline: no script anyone could put in a page runs.
   const CSP = `default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action ${formAction}`;

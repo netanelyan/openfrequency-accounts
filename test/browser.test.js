@@ -209,6 +209,35 @@ run("sign-up on a phone, in dark mode: Teder starts unticked with its plans clos
   }
 });
 
+run('sign-up with Google in a real browser: the form goes on to Google\'s sign-in page, with the choices kept on our side', async () => {
+  // The button is a submit answered with a redirect to Google; the browser checks the redirect against form-action, and
+  // until Google was in it the browser stopped there, the button spinning (2026-10-31).
+  const t = await setup({ env: { OF_SIGNUP: '1', OF_SIGNUP_PRODUCTS: 'teder', GOOGLE_CLIENT_ID: 'client-123.apps.googleusercontent.com', GOOGLE_CLIENT_SECRET: 'not-a-real-secret' } });
+  // Google's name resolves to nothing in this browser, so nothing leaves the machine: the browser going there at all is
+  // what counts (a request routed in the test is not seen on a redirect, so it cannot stand in for Google).
+  const browser = await chromium.launch({ args: ['--host-resolver-rules=MAP accounts.google.com ~NOTFOUND'] });
+  try {
+    const page = await browser.newPage({ viewport: { width: 375, height: 812 } });
+    const refused = [];
+    page.on('console', (m) => /Content Security Policy/.test(m.text()) && refused.push(m.text()));
+    await page.goto(`${t.base}/signup?p=teder`);
+    await page.fill('#su-name', 'Noa Levi');
+    await page.fill('#su-business', 'Noa Ceramics');
+    await page.check('input[name="products"][value="teder"]');
+    await page.check('input[name="terms"]');
+    const going = page.waitForEvent('request', { predicate: (r) => r.url().startsWith('https://accounts.google.com/'), timeout: 5000 });
+    await page.click('button.google');
+    const to = new URL((await going).url());
+    assert.equal(to.origin + to.pathname, 'https://accounts.google.com/o/oauth2/v2/auth');
+    assert.equal(to.searchParams.get('client_id'), 'client-123.apps.googleusercontent.com');
+    assert.doesNotMatch(to.href, /Noa|teder|small|full/, 'the choices stay on our side');
+    assert.deepEqual(refused, []);
+  } finally {
+    await browser.close();
+    await t.done();
+  }
+});
+
 run("the operator's dashboard on a phone and on a desktop: nothing runs off the screen, copy copies the edited message and opens the chat, and the buttons take the card away", async () => {
   const { startToran, sampleOps, SAID } = await import('./toran-fake.js');
   const { makeUser } = await import('./helpers.js');
