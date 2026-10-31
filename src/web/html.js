@@ -7,9 +7,9 @@ import { KINDS } from '../accounts/notify.js';
 import { AUDIT_NAMES, CANCEL, ERASE, NOTIFY, OPS, PLAN_NAMES, PRODUCT_NAMES, ROLE_NAMES, SETUP, SIGNUP, T, dayHe, hourHe, ils, opensAfter, phoneHe, planGives, when } from './copy.js';
 import { PRIVACY_URL, TERMS_URL } from '../accounts/signup.js';
 
-// Server-rendered pages: Hebrew, right to left, one stylesheet. No script, except
-// the operator's dashboard on /admin (dashboard.js), which loads static/admin.js
-// to copy a message and to post its buttons in the background; every one of them
+// Server-rendered pages: Hebrew, right to left, one stylesheet. Our own script files only: static/a11y.js (the
+// accessibility panel) and static/load.js (the loading state) on every page, and on the operator's dashboard on /admin
+// (dashboard.js) static/admin.js, to copy a message and to post its buttons in the background; every one of them
 // works without it. Everything shown is escaped here; nothing reaches the page
 // raw. The look is Teder's (see the head of static/site.css).
 
@@ -36,6 +36,20 @@ export const productMark = (p) => tile(p, GLYPHS[p]);
 /** The accessibility statement (openfrequency.co.il), linked from the foot of every page here, as IS 5568 asks. */
 export const ACCESSIBILITY_URL = 'https://openfrequency.co.il/accessibility';
 
+// The accessibility panel, the website's own (openfrequency-web src/layout.mjs), on every page: four switches and the
+// statement, which lives on the website. static/a11y.js shows it and keeps the switches; without script it stays
+// hidden. The button comes before the panel, so Tab from the open button goes into the switches; the panel sits above
+// it on the screen (site.css).
+const A11Y = [['big', 'טקסט גדול יותר'], ['contrast', 'ניגודיות גבוהה'], ['links', 'קו מתחת לקישורים'], ['still', 'לעצור תנועה']];
+export const a11yPanel = () => `<div class="a11y-w" data-a11y hidden>
+<button class="a11y-btn" type="button" aria-expanded="false" aria-controls="a11y-p"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="4.5" r="1.8"/><path d="M5 8.5l7 1.5 7-1.5M12 10v4.5M12 14.5l-3 6M12 14.5l3 6"/></svg><span class="sr">נגישות</span></button>
+<div class="a11y-p" id="a11y-p" role="group" aria-labelledby="a11y-h" hidden>
+<h2 id="a11y-h">נגישות</h2>
+${A11Y.map(([k, label]) => `<button type="button" data-a="${k}" aria-pressed="false">${label}</button>`).join('\n')}
+<div class="a11y-end"><button type="button" class="a11y-reset" data-a11y-reset>לאפס</button><a href="${ACCESSIBILITY_URL}">הצהרת הנגישות</a></div>
+</div>
+</div>`;
+
 /** A product's label with its plan when it has one: "תדר, החבילה הקטנה". */
 export const productLabel = (p, plan) => (plan && PLAN_NAMES[plan] ? `${PRODUCT_NAMES[p]}, ${PLAN_NAMES[plan]}` : PRODUCT_NAMES[p]);
 
@@ -54,6 +68,7 @@ export function layout({ title, body, banner = '', flash = '', wide = false, v =
 <meta name="theme-color" content="#eeeff2" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#111113" media="(prefers-color-scheme: dark)">
 <title>${esc(title)} · ${esc(T.brand)}</title>
+<script src="/static/a11y.js?v=${esc(v)}"></script>
 <link rel="stylesheet" href="/static/site.css?v=${esc(v)}">
 <link rel="icon" href="/static/icon.svg?v=${esc(v)}" type="image/svg+xml">
 <link rel="apple-touch-icon" href="/static/icon-180.png?v=${esc(v)}">
@@ -68,6 +83,7 @@ ${flash && !wide ? `<p class="flash" role="status">${esc(flash)}</p>` : ''}
 ${body}
 </main>
 <footer class="site-foot"><a href="${esc(ACCESSIBILITY_URL)}">${esc(T.accessibility)}</a></footer>
+${a11yPanel()}
 </body>
 </html>`;
 }

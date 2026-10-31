@@ -46,9 +46,10 @@ import * as P from './html.js';
 //   - /admin needs a superadmin session
 //   - /admin/toran/* is Toran's, handed to it as it came (admin-toran.js), after the superadmin's session and
 //     before anything here reads the body; its answer goes back with Toran's headers, not ours
-// Server-rendered HTML; the only scripts are our own files: static/load.js (the loading state) on every page and
-// static/admin.js on the operator's dashboard (/admin), nothing inline. Referrer-Policy is same-origin: a token in a
-// URL (magic links, invites) is never sent to another site as a Referer, Teder
+// Server-rendered HTML; the only scripts are our own files: static/a11y.js (the accessibility panel) and
+// static/load.js (the loading state) on every page and static/admin.js on the operator's dashboard (/admin), nothing
+// inline. Referrer-Policy is same-origin: a token in a URL (magic links, invites) is never sent to another site as a
+// Referer, Teder
 // and Toran included. Not no-referrer: with that, browsers send "Origin: null"
 // on our own forms and the Origin check above would refuse every one of them.
 
@@ -59,6 +60,7 @@ const FILES = {
   '/static/site.css': [readFileSync(path.join(STATIC, 'site.css')), 'text/css; charset=utf-8'],
   '/static/admin.js': [readFileSync(path.join(STATIC, 'admin.js')), 'text/javascript; charset=utf-8'],
   '/static/load.js': [readFileSync(path.join(STATIC, 'load.js')), 'text/javascript; charset=utf-8'],
+  '/static/a11y.js': [readFileSync(path.join(STATIC, 'a11y.js')), 'text/javascript; charset=utf-8'],
   '/static/icon.svg': [readFileSync(path.join(BRAND, 'svg', 'openfrequency-small.svg')), 'image/svg+xml'],
   '/static/icon-180.png': [readFileSync(path.join(BRAND, 'png', 'openfrequency-180.png')), 'image/png'],
 };
@@ -298,8 +300,8 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
   // that answers with a redirect to Google, so while Google is set up its sign-in page is one of them; without it the
   // browser stopped there and the button span on (2026-10-31).
   const formAction = `'self' https://*.openfrequency.co.il${google ? ` ${new URL(GOOGLE.auth).origin}` : ''}${dev ? ' http://localhost:* http://127.0.0.1:*' : ''}`;
-  // Our own script files only (load.js on every page, admin.js on /admin), from the fixed list in FILES, and nothing
-  // inline: no script anyone could put in a page runs.
+  // Our own script files only (a11y.js and load.js on every page, admin.js on /admin), from the fixed list in FILES,
+  // and nothing inline: no script anyone could put in a page runs.
   const CSP = `default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action ${formAction}`;
   const CSP_SCRIPT = CSP;
   const toranAt = toranBase(env);
