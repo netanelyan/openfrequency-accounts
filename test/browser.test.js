@@ -95,14 +95,17 @@ run('the home page on a phone, in dark mode: the bar fills from the right, the i
   // Paid for, below: the month's bar is what this looks at.
   const t = await setup({ comp: false });
   try {
-    const { payMonth } = await import('../src/accounts/subscriptions.js');
+    const { payMonth, paidMonth, daysBetween } = await import('../src/accounts/subscriptions.js');
     const { addInvoice } = await import('../src/accounts/invoices.js');
     const ws = t.db.get("SELECT id FROM workspaces WHERE slug = 'dana-shop'").id;
     const admin = t.db.get("SELECT * FROM users WHERE email = 'admin@example.com'");
     const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jerusalem' }).format(new Date());
     t.db.run("UPDATE subscriptions SET paid_until = NULL WHERE workspace_id = ?", ws);
     t.db.run("INSERT INTO subscriptions (workspace_id, product, monthly, vat, setup, started_on, updated_at) VALUES (?, 'teder', 790, 'excluded', 1490, ?, ?) ON CONFLICT DO NOTHING", ws, today, new Date().toISOString());
-    payMonth(t.db, ws, 'teder', { by: admin });
+    // The month's length and its first day depend on today's date (30 or 31 days; paid on the 31st, the bar starts on
+    // the 30th): subscriptions.test.js holds the arithmetic, this the words on the page.
+    const paidUntil = payMonth(t.db, ws, 'teder', { by: admin });
+    const month = paidMonth(paidUntil, today);
     addInvoice(t.db, ws, { product: 'teder', number: 'INV-2026-001042', issued_on: today, period_from: today, period_to: today, amount: '790', vat: '142.2' }, Buffer.from('%PDF-1.7\n%%EOF\n'), { by: admin });
 
     const context = await t.browser.newContext({ viewport: { width: 375, height: 812 }, colorScheme: 'dark' });
@@ -118,7 +121,7 @@ run('the home page on a phone, in dark mode: the bar fills from the right, the i
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), 'no sideways scroll');
     // The bar: a progressbar to a screen reader, with its words; its filled part starts at the right edge.
     const bar = page.locator('progress');
-    assert.equal(await bar.getAttribute('aria-valuetext'), 'יום 1 מתוך 31. נשארו 31 ימים בחודש ששולם');
+    assert.equal(await bar.getAttribute('aria-valuetext'), `יום ${month.day} מתוך ${month.days}. נשארו ${daysBetween(today, paidUntil) + 1} ימים בחודש ששולם`);
     assert.equal(await bar.evaluate((el) => getComputedStyle(el).direction), 'rtl');
     assert.equal(await page.getByRole('progressbar').count(), 1);
     // Dark: the tiles are dark glass, the words light.
