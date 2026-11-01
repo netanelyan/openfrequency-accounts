@@ -5,7 +5,7 @@ import { makeWorkspace, tempHome } from './helpers.js';
 import { startSite } from './site.js';
 import { setNow } from '../src/core/clock.js';
 import { ensureSubscription, payMonth, setSubscription } from '../src/accounts/subscriptions.js';
-import { setComp } from '../src/accounts/entitlement.js';
+import { cancelSubscription, setComp } from '../src/accounts/entitlement.js';
 import { setDisabled, setProduct } from '../src/accounts/workspaces.js';
 import { amountDue, PAY_AHEAD_DAYS } from '../src/accounts/billing.js';
 import { checkFile, openPayCode, PAY_CODE, payCodeFor, PayError, sniff } from '../src/accounts/pay.js';
@@ -230,6 +230,44 @@ test('GET /internal/pay: what the code\'s workspace owes, in numbers and in word
     assert.equal((await u.pay(payCodeFor(u.db, u.noa.id).code)).json.payHow, null);
   } finally {
     await u.done();
+  }
+});
+
+test('a cancelled product is never owed once it has stopped, by the customer or a last day on /admin; a cancellation still running is never asked for the month after its last day', async () => {
+  const t = await site();
+  try {
+    // Paid until 21.11, then cancelled: it works to that day, and the week before it asks for nothing.
+    payMonth(t.db, t.noa.id, 'teder', { by: null });
+    cancelSubscription(t.db, t.noa.id, 'teder', { by: null });
+    const { code } = payCodeFor(t.db, t.noa.id);
+    setNow('2026-11-18T10:00:00.000Z');
+    assert.deepEqual(amountDue(t.db, t.noa.id, undefined, { ahead: 7 }).items, []);
+    const running = (await t.pay(code)).json;
+    assert.deepEqual([running.items, running.total, running.summary, running.paidThrough], [[], 0, [], '2026-11-21']);
+    // Its last day passed: ended, nothing owed now or ahead, the setup fee neither.
+    setNow('2026-11-25T10:00:00.000Z');
+    const after = amountDue(t.db, t.noa.id, undefined, { ahead: 7 });
+    assert.deepEqual([after.items, after.total, after.lines.map((l) => [l.kind, l.lastDay])], [[], 0, [['ended', '2026-11-21']]]);
+    const ended = (await t.pay(code)).json;
+    assert.deepEqual([ended.items, ended.total, ended.summary, ended.paidThrough], [[], 0, [], null]);
+
+    // Cancelled with nothing paid: it stopped that day, and nothing is owed, not even the setup fee.
+    const gal = makeWorkspace(t.db, 'gal-shop', { name: 'Gal Shop', products: ['teder'] });
+    ensureSubscription(t.db, gal.id, 'teder', '2026-11-25', 'small');
+    assert.equal(amountDue(t.db, gal.id).total, 1746.4, 'owed before the cancellation');
+    cancelSubscription(t.db, gal.id, 'teder', { by: null });
+    assert.deepEqual(((d) => [d.items, d.lines[0].kind])(amountDue(t.db, gal.id, undefined, { ahead: 7 })), [[], 'ended']);
+    assert.deepEqual((await t.pay(payCodeFor(t.db, gal.id).code)).json.items, []);
+
+    // A last day set on /admin, past, with paid days after it: the same.
+    const ron = makeWorkspace(t.db, 'ron-shop', { name: 'Ron Shop', products: ['teder'] });
+    setSubscription(t.db, ron.id, 'teder', { plan: 'full', monthly: '790', setup: '1490', vat: 'excluded', started_on: '2026-10-01', paid_until: '2026-11-30', ends_on: '2026-11-20' }, { by: null });
+    assert.deepEqual(((d) => [d.items, d.lines[0].kind])(amountDue(t.db, ron.id, undefined, { ahead: 7 })), [[], 'ended']);
+    // ... and one still ahead (ends 28.11, paid to 30.11): working, and not asked for December.
+    setSubscription(t.db, ron.id, 'teder', { plan: 'full', monthly: '790', setup: '1490', vat: 'excluded', started_on: '2026-10-01', paid_until: '2026-11-30', ends_on: '2026-11-28' }, { by: null });
+    assert.deepEqual(((d) => [d.items, d.lines[0].kind])(amountDue(t.db, ron.id, undefined, { ahead: 7 })), [[], 'paid']);
+  } finally {
+    await t.done();
   }
 });
 

@@ -139,7 +139,9 @@ export function setupClient({ env = process.env, fetchImpl = globalThis.fetch, l
 
 /**
  * The page's model, from the products' answers (in the order of `products`), each product's access (the paywall,
- * src/accounts/entitlement.js accessFor()) and the payment hook. Pure.
+ * src/accounts/entitlement.js accessFor()) and the payment hook. Pure. A product whose cancellation has run its course
+ * (cancelled and stopped, billing.js dueOf() 'ended') asks for no payment: it is left out of the payment step and of
+ * what is left to do, and its section says it ended.
  *   billing     the payment step, first and required, or null with no product on. "done" once every product is
  *               allowed (paid for, or complimentary) and none is in its grace (due); until then "todo", leading to the
  *               provider's payment page with OF_PAYMENT=provider (billingReady, `checkout`) and, in manual mode, to us
@@ -153,14 +155,16 @@ export function setupClient({ env = process.env, fetchImpl = globalThis.fetch, l
  */
 export function setupState(results, products, { billingReady = false, access = {}, checkout = null, contact = null } = {}) {
   const allowed = (p) => Boolean(access[p]?.allowed);
+  const ended = (p) => access[p]?.access === 'cancelled' && !allowed(p);
+  const payable = products.filter((p) => !ended(p));
   // A product in its grace (due) still works, but its payment is owed: the payment step is not done.
-  const paidAll = products.length > 0 && products.every((p) => allowed(p) && access[p]?.access !== 'due');
-  const billing = products.length
+  const paidAll = payable.length > 0 && payable.every((p) => allowed(p) && access[p]?.access !== 'due');
+  const billing = payable.length
     ? {
         key: 'billing',
         status: paidAll ? 'done' : 'todo',
         mode: billingReady ? 'provider' : 'contact',
-        comp: products.every((p) => access[p]?.access === 'comp'),
+        comp: payable.every((p) => access[p]?.access === 'comp'),
         // Provider mode with no payment page to send them to (the service does not start so) still leaves a way to us.
         href: paidAll ? null : (billingReady && checkout) || contact,
         checkout: Boolean(!paidAll && billingReady && checkout),
@@ -170,12 +174,13 @@ export function setupState(results, products, { billingReady = false, access = {
   const sections = products.map((p) => {
     const r = results[p];
     const locked = !allowed(p);
-    if (!r?.ok) return { product: p, ok: false, locked };
-    return { product: p, ok: true, locked, ready: r.ready, done: !locked && productDone(r), required: r.steps.filter((s) => s.required), optional: r.steps.filter((s) => !s.required) };
+    if (!r?.ok) return { product: p, ok: false, locked, ended: ended(p) };
+    return { product: p, ok: true, locked, ended: ended(p), ready: r.ready, done: !locked && productDone(r), required: r.steps.filter((s) => s.required), optional: r.steps.filter((s) => !s.required) };
   });
-  const counted = [...(billing ? [billing] : []), ...sections.flatMap((s) => (s.ok ? [...s.required, ...s.optional] : []))].filter((s) => s.status !== 'soon');
-  // With no product turned on there is nothing to set up, and nothing to pay for.
-  const incomplete = products.length > 0 && (!paidAll || sections.some((s) => s.ok && !s.done));
+  const live = sections.filter((s) => !s.ended);
+  const counted = [...(billing ? [billing] : []), ...live.flatMap((s) => (s.ok ? [...s.required, ...s.optional] : []))].filter((s) => s.status !== 'soon');
+  // With no product turned on, or only ended ones, there is nothing to set up, and nothing to pay for.
+  const incomplete = payable.length > 0 && (!paidAll || live.some((s) => s.ok && !s.done));
   const unknown = sections.some((s) => !s.ok);
   return { billing, sections, paid: paidAll, done: counted.filter((s) => s.status === 'done').length, total: counted.length, incomplete, unknown, complete: !incomplete && !unknown };
 }

@@ -4,7 +4,8 @@ import { makeUser, makeWorkspace, tempHome } from './helpers.js';
 import { pathOf, signedIn, startSite, tokenOf } from './site.js';
 import { setNow } from '../src/core/clock.js';
 import { ensureSubscription, payMonth } from '../src/accounts/subscriptions.js';
-import { startViewAs } from '../src/accounts/workspaces.js';
+import { cancelSubscription } from '../src/accounts/entitlement.js';
+import { setProduct, startViewAs } from '../src/accounts/workspaces.js';
 import { eraseWorkspace } from '../src/accounts/erase.js';
 import { dueForPay, openPayCode, PAY_CODE, payCodeFor } from '../src/accounts/pay.js';
 import { payAnswer } from '../src/web/pay.js';
@@ -168,6 +169,61 @@ test('the billing emails with both settings: soon and due lead to "לתשלום 
     const stopped = to('תדר נעצר עד שהתשלום יגיע');
     assert.equal(stopped.link, `${BASE}/setup`);
     assert.equal(h.db.get('SELECT COUNT(*) AS n FROM pay_codes').n, 1, 'one code for all of them');
+  } finally {
+    h.cleanup();
+  }
+});
+
+test('a product cancelled and stopped is never asked for: /setup says it ended and totals only the other, Toran quotes only the other; with nothing else, no payment step at all', async () => {
+  const t = await site();
+  try {
+    setProduct(t.db, t.ws.id, 'toran', true, { by: null });
+    ensureSubscription(t.db, t.ws.id, 'toran', '2026-10-22');
+    cancelSubscription(t.db, t.ws.id, 'teder', { by: null }); // nothing paid: it stops today
+    const b = signedIn(t, t.db, t.noa);
+    const page = (await b.get('/setup')).body;
+    const billing = billingOf(page);
+    assert.match(billing, /<li>תדר, החבילה הקטנה: המנוי הסתיים ב-22\.10\.2026, ואין עליו מה לשלם<\/li><li>תורן: 590 ₪ לחודש, לא כולל מע״מ, ודמי הקמה של 990 ₪ פעם אחת<\/li>/);
+    assert.match(billing, /סך הכול לתשלום עכשיו: 1,864\.40 ₪, כולל מע״מ \(1,580 ₪ ועוד 284\.40 ₪ מע״מ\)\./);
+    assert.match(billing, /<small>משלמים לפי פרטי התשלום שכאן למטה\. תורן נפתח אחרי שהתשלום מגיע אלינו\.<\/small>/);
+    const { code } = t.db.get('SELECT code FROM pay_codes WHERE workspace_id = ?', t.ws.id);
+    const answer = (await t.owners('GET', `/internal/pay?code=${code}`)).json;
+    assert.deepEqual([answer.items.map((i) => i.product), answer.total], [['toran'], 1864.4]);
+    // Its own section: ended, no steps, nothing about a payment.
+    const teder = page.slice(page.indexOf('id="setup-teder"'), page.indexOf('</section>', page.indexOf('id="setup-teder"')));
+    assert.match(teder, /<span class="tag off">הסתיים<\/span>/);
+    assert.match(teder, /<p class="muted">המנוי לתדר הסתיים, אז הצעדים שלו סגורים\.<\/p>/);
+    assert.doesNotMatch(teder, /class="steps"|אחרי התשלום/);
+
+    // Toran cancelled too: nothing to pay for anywhere, so no payment step, no button, no code made for it.
+    const only = makeWorkspace(t.db, 'gal-shop', { name: 'Gal Shop', products: ['teder'], members: { 'gal@example.com': 'client_owner' } });
+    ensureSubscription(t.db, only.id, 'teder', '2026-10-22', 'small');
+    cancelSubscription(t.db, only.id, 'teder', { by: null });
+    const gal = (await signedIn(t, t.db, t.db.get("SELECT * FROM users WHERE email = 'gal@example.com'")).get('/setup')).body;
+    assert.doesNotMatch(gal, /id="setup-billing"|לתשלום בוואטסאפ|התשלום על המנוי|לשלוח אסמכתא/);
+    assert.equal(t.db.get('SELECT COUNT(*) AS n FROM pay_codes WHERE workspace_id = ?', only.id).n, 0);
+  } finally {
+    await t.done();
+  }
+});
+
+test('the billing email a week before one product\'s payment, beside another cancelled and stopped: its button leads Toran to that month, not to the ended one', async () => {
+  const h = tempHome();
+  try {
+    setNow('2026-10-22T07:00:00.000Z');
+    const ws = makeWorkspace(h.db, 'noa-shop', { name: 'Noa Shop', products: ['teder', 'toran'], members: { 'noa@example.com': 'client_owner' } });
+    for (const p of ['teder', 'toran']) ensureSubscription(h.db, ws.id, p);
+    payMonth(h.db, ws.id, 'teder', { by: null }); // paid until 21.11.2026
+    cancelSubscription(h.db, ws.id, 'toran', { by: null }); // never paid: stopped today
+    const mails = [];
+    const env = { PUBLIC_HOST: 'accounts.openfrequency.co.il', ...WA };
+    setNow('2026-11-15T08:00:00.000Z');
+    await runDaily(h.db, { env, mailer: { send: (m) => mails.push(m) }, eraser: { erase: async () => ({ results: {}, ok: true, failed: [] }) }, log: () => {} });
+    assert.deepEqual(mails.map((m) => m.subject), ['התשלום הבא על תדר: 22.11.2026'], 'nothing about Toran');
+    const { code } = h.db.get('SELECT code FROM pay_codes WHERE workspace_id = ?', ws.id);
+    assert.equal(mails[0].link, `https://wa.me/${ASSISTANT}?text=${encodeURIComponent(PAY_TEXT('Noa Shop', code))}`);
+    const answer = payAnswer(openPayCode(h.db, code), dueForPay(h.db, ws.id), env);
+    assert.deepEqual([answer.items.map((i) => [i.product, i.setup]), answer.total], [[['teder', 0]], 932.2]);
   } finally {
     h.cleanup();
   }

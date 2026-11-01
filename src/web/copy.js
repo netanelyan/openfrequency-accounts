@@ -699,6 +699,10 @@ export const SETUP = {
   billingAsk: (wa) => (wa ? 'יש שאלה על התשלום? כתבו לנו בוואטסאפ, או ענו לאחד המיילים שקיבלתם מאיתנו.' : 'יש שאלה על התשלום? ענו לאחד המיילים שקיבלתם מאיתנו.'),
   billingPrice: (product, monthly, vat, setup) => `${product}: ${monthly} לחודש, ${vat}${setup ? `, ודמי הקמה של ${setup} פעם אחת` : ''}`,
   billingPaidUntil: (product, d) => `${product}: שולם עד ${d}`,
+  // A product cancelled and stopped: nothing to pay for it.
+  billingEnded: (product, d) => `${product}: המנוי הסתיים ב-${d}, ואין עליו מה לשלם`,
+  endedTag: 'הסתיים',
+  endedLead: (product) => `המנוי ל${product} הסתיים, אז הצעדים שלו סגורים.`,
   billingDue: (product, d) => `${product}: התשלום על החודש הנוכחי עוד לא הגיע. המנוי עובד עד ${d}, ואחרי זה נעצר עד שישולם.`,
   billingHow: (how) => `איך משלמים: ${how}`,
   billingNow: (total, net, vat) => payNowLine(total, net, vat),

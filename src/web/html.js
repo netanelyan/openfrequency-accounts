@@ -493,7 +493,8 @@ function stepRow(s, { readOnly, first, locked = false }) {
  */
 function billingCard(b, { readOnly, first, products, access, prices, payHow = '', payWa = null }) {
   const done = b.status === 'done';
-  const closed = products.filter((p) => !access[p]?.allowed);
+  // A product whose cancellation has run its course is not waiting for a payment (dueOf() 'ended').
+  const closed = products.filter((p) => !access[p]?.allowed && access[p]?.access !== 'cancelled');
   const opens = closed.length ? opensAfter(b.checkout ? 'provider' : 'manual', closed.map((p) => PRODUCT_NAMES[p]).join(SIGNUP.and), closed.length > 1) : '';
   const detail = done ? (b.comp ? SETUP.billingComp : SETUP.billingDone) : b.checkout ? SETUP.billingTodo(opens) : SETUP.billingManual(opens, payHow);
   const wa = /^https:\/\/wa\.me\//.test(b.href || '');
@@ -513,6 +514,7 @@ function billingCard(b, { readOnly, first, products, access, prices, payHow = ''
       const name = productLabel(l.product, l.plan);
       if (l.kind === 'due') return `<li>${esc(SETUP.billingDue(name, dayHe(l.graceUntil)))}</li>`;
       if (l.kind === 'paid') return `<li>${esc(SETUP.billingPaidUntil(name, dayHe(l.paidUntil)))}</li>`;
+      if (l.kind === 'ended') return `<li>${esc(SETUP.billingEnded(name, dayHe(l.lastDay)))}</li>`;
       if (l.kind !== 'owed') return '';
       return `<li>${esc(SETUP.billingPrice(name, ils(l.monthly), l.vat === 'included' ? T.vatIncluded : T.vatExcluded, l.setup ? ils(l.setup) : ''))}</li>`;
     })
@@ -543,9 +545,11 @@ export function setupPage({ state, productUrls, readOnly = false, flash = '', ac
   const sections = state.sections
     .map((sec) => {
       const p = sec.product;
-      const tag = sec.locked ? `<span class="tag off">${esc(SETUP.locked)}</span>` : sec.ok ? `<span class="tag${sec.done ? '' : ' off'}">${esc(sec.done ? SETUP.ready : SETUP.notReady)}</span>` : '';
+      const tag = sec.ended ? `<span class="tag off">${esc(SETUP.endedTag)}</span>` : sec.locked ? `<span class="tag off">${esc(SETUP.locked)}</span>` : sec.ok ? `<span class="tag${sec.done ? '' : ' off'}">${esc(sec.done ? SETUP.ready : SETUP.notReady)}</span>` : '';
       const head = `<header>${productMark(p)}<div><h2>${esc(PRODUCT_NAMES[p])}</h2><small>${esc(SIGNUP.productWhat[p])}</small></div>${tag}</header>`;
-      const lockedLead = sec.locked ? `<p class="muted">${esc(SETUP.lockedLead(PRODUCT_NAMES[p]))}</p>` : '';
+      const lockedLead = sec.locked ? `<p class="muted">${esc((sec.ended ? SETUP.endedLead : SETUP.lockedLead)(PRODUCT_NAMES[p]))}</p>` : '';
+      // Ended: its name and that it ended, and no steps (nothing there opens with a payment).
+      if (sec.ended) return `<section class="card setup-p locked" id="setup-${p}">${head}${lockedLead}</section>`;
       if (!sec.ok) {
         if (sec.locked) return `<section class="card setup-p locked" id="setup-${p}">${head}${lockedLead}</section>`;
         return `<section class="card setup-p" id="setup-${p}">${head}<p class="warn">${esc(SETUP.failed)}</p><p><a class="button quiet" href="${esc(productUrls[p])}">${esc(SETUP.failedLink(PRODUCT_NAMES[p]))}</a></p></section>`;

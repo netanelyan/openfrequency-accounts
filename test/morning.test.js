@@ -120,7 +120,9 @@ test('the check on the receipt\'s page and in the operator\'s email: its lines, 
     const page = (await t.op.get(`/admin/receipts/${id}`)).body;
     assert.match(page, /<h3>מה תורן קרא בצילום<\/h3>\n<ul class="check"><li>הסכום בצילום: 1,700 ₪ \(לא תואם, צריך 1,746\.40 ₪\)<\/li><li>התאריך בצילום: 21\.10\.2026 \(תקין\)<\/li><li>החשבון שהועבר אליו: מסתיים ב-6789 \(תואם\)<\/li><li>שם המקבל בצילום: &lt;script&gt;alert\(1\)&lt;\/script&gt;<\/li><li>האסמכתא בצילום: REF &quot;77&quot; &amp; co<\/li><\/ul>\n<p class="warn">בדקו בבנק שההעברה הגיעה לפני שמאשרים\.<\/p>/);
     assert.ok(!page.includes('<script>alert'), 'escaped on the page');
-    for (const href of page.match(/href="[^"]*"/g)) assert.doesNotMatch(href, /script|REF|77/, href);
+    // Every link on the receipt's card (the head's links carry a build stamp, which may hold any digits).
+    const card = page.slice(page.indexOf('<section class="card receipt">'), page.indexOf('</section>', page.indexOf('<section class="card receipt">')));
+    for (const href of card.match(/href="[^"]*"/g)) assert.doesNotMatch(href, /script|REF|77/, href);
     // It decides nothing: the buttons are the same as without it.
     assert.match(page, /<button class="primary">התשלום הגיע<\/button>/);
     // Without a check: no lines, the bank all the same; an unreadable one says so.

@@ -47,13 +47,16 @@ message's words, encoded); the text part has it, as it has every link.
 
 One function answers it for the card and for Toran: `amountDue()` in `src/accounts/billing.js`
 (`dueOf()`, pure, is what `/setup`'s card renders from). For each product turned on:
-complimentary, nothing; in its 14 days of grace (`due`), a month; paid for today (cancelled ones
-too, until their last day), nothing; no price recorded, nothing; anything else (never paid, or the
+complimentary, nothing; in its 14 days of grace (`due`), a month; cancelled and stopped (its last
+day passed, or it was cancelled with nothing paid; by the customer or a last day set on `/admin`),
+nothing, ever, and `/setup` says it ended and asks no payment for it; paid for today (cancelled
+ones too, until their last day), nothing; no price recorded, nothing; anything else (never paid, or the
 grace is over), a month and, until the first payment, the setup fee. VAT is added to each price
 recorded without it and rounded to the agora (`payTotal()`).
 
 Toran is told one thing more than the card shows: **when nothing is owed today, a month that falls
-due within 7 days** (`PAY_AHEAD_DAYS`). That is what the billing emails a week and a day before
+due within 7 days** (`PAY_AHEAD_DAYS`), never for a product that is cancelled or has a last day, so
+never a month after its end. That is what the billing emails a week and a day before
 ask for, so their button leads to that month and not to "nothing to pay". The card shows today's
 answer, so whenever the card has a button, Toran's amount is the card's.
 

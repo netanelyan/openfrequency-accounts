@@ -81,11 +81,14 @@ export function assistantWa(env = process.env) {
 // against (src/accounts/pay.js). Product by product, among the products turned on:
 //   comp     complimentary: nothing
 //   due      the paid month is over, in its 14 days of grace: a month (no setup fee)
+//   ended    cancelled (by the customer, or a last day set on /admin) and stopped: its last day has passed, or it
+//            was cancelled with nothing paid. Nothing, ever: a customer who cancelled is never asked to pay for a
+//            service that has ended
 //   paid     a recorded payment covers today (cancelled ones included, until their last day): nothing
 //   none     no price recorded: nothing
 //   owed     anything else (never paid, or the grace is over): a month, and the setup fee until the first payment
 // With `ahead` (days) and nothing owed now, a product paid for whose next payment falls due within that many days is
-// owed too, a month ahead: what the billing emails a week and a day before ask for (src/web/daily.js), so the button
+// owed too, a month ahead (never one that is cancelled or has a last day, so never a month after its end): what the billing emails a week and a day before ask for (src/web/daily.js), so the button
 // in them leads to that month and not to "nothing to pay". The card asks without it, so it shows what is owed today.
 
 /** How many days before a payment falls due Toran quotes it: the week of the first billing email (daily.js soon7). */
@@ -102,7 +105,7 @@ export const PAY_AHEAD_DAYS = 7;
  *   vatIncluded true when every price in it was recorded with VAT in it (nothing added on top)
  *   monthsAfter with a setup fee in it, the months after it, with VAT; else null
  *   lines       one per product: { product, kind (above, or 'ahead'), plan, monthly, vat, setup, paidUntil,
- *               graceUntil, item } for the card's lines and the receipt page
+ *               graceUntil, lastDay, item } for the card's lines and the receipt page
  */
 export function dueOf({ products, access = {}, prices = {}, today = israelToday(), ahead = 0 }) {
   const item = (p, s, setup, extra = {}) => {
@@ -112,9 +115,10 @@ export function dueOf({ products, access = {}, prices = {}, today = israelToday(
   const lines = products.map((p) => {
     const a = access[p];
     const s = prices[p] || {};
-    const base = { product: p, plan: s.plan ?? null, monthly: s.monthly ?? null, vat: s.vat ?? null, setup: 0, paidUntil: a?.paidUntil ?? null, graceUntil: a?.graceUntil ?? null, access: a?.access ?? null, item: null };
+    const base = { product: p, plan: s.plan ?? null, monthly: s.monthly ?? null, vat: s.vat ?? null, setup: 0, paidUntil: a?.paidUntil ?? null, graceUntil: a?.graceUntil ?? null, lastDay: a?.lastDay ?? null, access: a?.access ?? null, item: null };
     if (a?.access === 'comp') return { ...base, kind: 'comp' };
     if (a?.access === 'due') return { ...base, kind: 'due', item: s.monthly != null ? item(p, s, 0) : null };
+    if (a?.access === 'cancelled' && !a.allowed) return { ...base, kind: 'ended' };
     if (a?.allowed && a.paidUntil) return { ...base, kind: 'paid' };
     if (s.monthly == null) return { ...base, kind: 'none' };
     const setup = !s.paid_until && s.setup ? s.setup : 0;
@@ -123,7 +127,7 @@ export function dueOf({ products, access = {}, prices = {}, today = israelToday(
   if (ahead > 0 && !lines.some((l) => l.item)) {
     for (const l of lines) {
       const s = prices[l.product] || {};
-      if (l.kind === 'paid' && l.access === 'paid' && s.monthly != null && addDays(l.paidUntil, 1 - ahead) <= today) Object.assign(l, { kind: 'ahead', item: item(l.product, s, 0) });
+      if (l.kind === 'paid' && l.access === 'paid' && !s.cancelled_at && !s.ends_on && s.monthly != null && addDays(l.paidUntil, 1 - ahead) <= today) Object.assign(l, { kind: 'ahead', item: item(l.product, s, 0) });
     }
   }
   const owed = lines.filter((l) => l.item).map((l) => l.item);
