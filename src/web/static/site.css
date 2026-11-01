@@ -740,6 +740,15 @@ ul.prices { list-style: none; padding: 0; margin: 12px 0 0; display: grid; gap: 
 .setup-p p.pay-receipt { font-weight: 600; }
 .card.setup-p#setup-billing > .muted { margin: 10px 0 0; }
 label.product-pick small.price { color: var(--ink-2); }
+/* A transfer's receipt from Toran (/admin/receipts/<id>): the picture at the width of the card, never past the screen's
+   height, then its facts, what was owed and the two buttons (.row keeps them apart). */
+.card.receipt img.receipt-shot { display: block; max-width: 100%; max-height: 70vh; height: auto; margin: 4px 0 16px; border-radius: var(--r-m); box-shadow: 0 0 0 1px var(--line); }
+.card.receipt h3 { margin: 22px 0 6px; }
+.card.receipt dl.facts { margin-top: 4px; }
+.card.receipt .warn { margin: 12px 0 0; color: var(--warn); background: var(--warn-bg); border-radius: var(--r-m); padding: 10px 12px; }
+.card.receipt .notice { margin: 0 0 16px; }
+.card.receipt p.pay-total { margin: 10px 0 0; }
+.card.receipt-list ul.people .who { overflow-wrap: anywhere; }
 /* The console: a product's access, and the form that deletes a workspace. */
 p.access { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin: 6px 0 0; flex: 1 0 100%; }
 details.ws-delete { margin-top: 12px; }

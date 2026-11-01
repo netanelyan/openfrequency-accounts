@@ -1,5 +1,5 @@
 import { opsCustomersStage, opsMoney } from '../accounts/ops.js';
-import { OPS, PRODUCT_NAMES, agoHe, dayHe, ils, stampHe } from './copy.js';
+import { OPS, PAY, PRODUCT_NAMES, agoHe, dayHe, ils, stampHe } from './copy.js';
 import { adminTop, csrfField, esc, productMark } from './html.js';
 import { LOST_REASONS } from './toran.js';
 
@@ -218,10 +218,23 @@ ${list(OPS.renewTitle, m.renewals.map((x) => line(OPS.renewLine, dayHe(x.on), { 
 }
 
 /**
- * The page. `toran` is toranClient().ops() with its base: { ok, data } or { ok: false, why, base }. `customers` is
- * opsCustomers(db). `at` is now, in ms.
+ * The transfers' receipts customers sent Toran that nobody has decided on yet (src/accounts/pay.js receiptsWaiting()),
+ * newest first: the business, what was owed when it came, when, each to its page. Nothing while there are none.
  */
-export function dashboardPage({ csrf, flash = '', flashBad = false, toran, customers, at, viewAs = false }) {
+function receiptsSection(list, at) {
+  if (!list?.length) return '';
+  return `<section id="receipts"><div class="list-h"><h2>${esc(PAY.waitingTitle)}</h2><p class="muted">${esc(PAY.waitingLead)}</p></div>
+<div class="card receipt-list"><ul class="people">${list
+    .map((r) => `<li><a class="who" href="/admin/receipts/${esc(r.id)}">${esc(r.business)}</a><span class="muted">${esc(r.due?.total ? ils(r.due.total) : PAY.waitingNothing)}</span><span class="muted end">${esc(agoHe(r.created_at, at))}</span></li>`)
+    .join('')}</ul></div>
+</section>`;
+}
+
+/**
+ * The page. `toran` is toranClient().ops() with its base: { ok, data } or { ok: false, why, base }. `customers` is
+ * opsCustomers(db). `at` is now, in ms. `receipts`, the transfers waiting for a decision, show near the top.
+ */
+export function dashboardPage({ csrf, flash = '', flashBad = false, toran, customers, at, viewAs = false, receipts = [] }) {
   const top = `${adminTop({ csrf, tab: 'today' })}
 ${flash ? `<p class="flash${flashBad ? ' bad' : ''}" role="${flashBad ? 'alert' : 'status'}">${esc(flash)}</p>` : ''}
 <p class="toast" id="toast" role="status" aria-live="polite" data-offline="${esc(OPS.offline)}" data-unexpected="${esc(OPS.unexpected)}"></p>`;
@@ -263,6 +276,7 @@ ${d.noContact.length ? `<details class="card no-contact"><summary>${esc(OPS.noCo
 
   return `${top}
 ${d ? numberLine(d.demoLine) : ''}
+${receiptsSection(receipts, at)}
 ${kpis}
 ${d && !d.teder.ok ? `<p class="muted note">${esc(OPS.tederStale)}</p>` : ''}
 <section id="contact"><div class="list-h"><h2>${esc(OPS.contactTitle)}</h2><p class="muted">${esc(OPS.contactOrder)}</p></div>

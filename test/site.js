@@ -34,10 +34,13 @@ export async function startSite(db, { env = {}, limiters, ...opts } = {}) {
 function call(port, method, path, headers = {}, body = null) {
   return new Promise((resolve, reject) => {
     const req = request({ host: '127.0.0.1', port, method, path, headers: { ...headers, ...(body != null ? { 'content-length': Buffer.byteLength(body) } : {}) } }, (res) => {
-      let b = '';
-      res.setEncoding('utf8');
-      res.on('data', (c) => (b += c));
-      res.on('end', () => resolve({ status: res.statusCode, headers: res.headers, body: b }));
+      // `raw` is the body as bytes, for a file (a receipt's picture); `body` is it as text.
+      const chunks = [];
+      res.on('data', (c) => chunks.push(c));
+      res.on('end', () => {
+        const raw = Buffer.concat(chunks);
+        resolve({ status: res.statusCode, headers: res.headers, body: raw.toString('utf8'), raw });
+      });
     });
     req.on('error', reject);
     if (body != null) req.write(body);

@@ -1,10 +1,11 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { ROOT } from '../core/paths.js';
-import { addDays, addMonths, describe, israelToday, LIST_PRICES, payTotal, PLANS, plansOf } from '../accounts/subscriptions.js';
+import { addDays, addMonths, describe, israelToday, LIST_PRICES, PLANS, plansOf } from '../accounts/subscriptions.js';
+import { dueOf } from '../accounts/billing.js';
 import { total } from '../accounts/invoices.js';
 import { KINDS } from '../accounts/notify.js';
-import { AUDIT_NAMES, CANCEL, ERASE, NOTIFY, OPS, PLAN_NAMES, PRODUCT_NAMES, ROLE_NAMES, SETUP, SIGNUP, T, dayHe, hourHe, ils, opensAfter, phoneHe, planGives, when } from './copy.js';
+import { AUDIT_NAMES, CANCEL, ERASE, NOTIFY, OPS, PAY, PLAN_NAMES, PRODUCT_NAMES, ROLE_NAMES, SETUP, SIGNUP, T, dayHe, hourHe, ils, opensAfter, phoneHe, planGives, when } from './copy.js';
 import { PRIVACY_URL, TERMS_URL } from '../accounts/signup.js';
 
 // Server-rendered pages: Hebrew, right to left, one stylesheet. Our own script files only: static/a11y.js (the
@@ -52,6 +53,19 @@ ${A11Y.map(([k, label]) => `<button type="button" data-a="${k}" aria-pressed="fa
 
 /** A product's label with its plan when it has one: "תדר, החבילה הקטנה". */
 export const productLabel = (p, plan) => (plan && PLAN_NAMES[plan] ? `${PRODUCT_NAMES[p]}, ${PLAN_NAMES[plan]}` : PRODUCT_NAMES[p]);
+
+/**
+ * What a payment is for, in Hebrew lines (`due` is billing.js dueOf()'s answer, or one kept with a receipt): a line
+ * for each product, as /setup lists it (a month paid ahead with the day it starts), then the total with VAT. [] when
+ * nothing is owed. GET /internal/pay gives these to Toran, and the receipt page shows them.
+ */
+export function paySummary(due) {
+  if (!due?.items?.length) return [];
+  const lines = (due.lines || [])
+    .filter((l) => l.item)
+    .map((l) => PAY.summaryItem(productLabel(l.product, l.plan), ils(l.item.monthly), l.vat === 'included' ? T.vatIncluded : T.vatExcluded, l.item.setup ? ils(l.item.setup) : '', l.kind === 'ahead' && l.paidUntil ? dayHe(addDays(l.paidUntil, 1)) : ''));
+  return [...lines, PAY.summaryTotal(ils(due.total), ils(due.net), due.vat ? ils(due.vat) : '')];
+}
 
 /** A plan in one line: its name and what a month gives. */
 const planLine = (p, plan) => (plan && PLANS[p]?.[plan] ? T.subPlan(PLAN_NAMES[plan], planGives(PLANS[p][plan].slideshows, PLANS[p][plan].redos)) : '');
@@ -469,48 +483,47 @@ function stepRow(s, { readOnly, first, locked = false }) {
  * payment reaches us, and the button (quiet: there is nothing to start here) is for questions, to us.
  * Under the prices, what the payment comes to with VAT (the setup fee in it until the first payment), and the months
  * after; in manual mode with the owner's payment details, the receipt (אסמכתא) to us, the button sending it.
+ * What is owed is billing.js dueOf(), the same answer Toran gives on WhatsApp. Paying over WhatsApp (`payWa`, from
+ * src/web/pay.js payOverWa(): manual mode with the owner's payment details and OF_ASSISTANT_WA both set) changes only
+ * this, and only while something is owed: the one blue button is "לתשלום בוואטסאפ", to our owner line with the
+ * message written, and the line under the details says to send it as it is, in place of the receipt's line. Read-only
+ * (view-as) shows the card the customer sees, without its button.
  */
-function billingCard(b, { readOnly, first, products, access, prices, payHow = '' }) {
+function billingCard(b, { readOnly, first, products, access, prices, payHow = '', payWa = null }) {
   const done = b.status === 'done';
   const closed = products.filter((p) => !access[p]?.allowed);
   const opens = closed.length ? opensAfter(b.checkout ? 'provider' : 'manual', closed.map((p) => PRODUCT_NAMES[p]).join(SIGNUP.and), closed.length > 1) : '';
   const detail = done ? (b.comp ? SETUP.billingComp : SETUP.billingDone) : b.checkout ? SETUP.billingTodo(opens) : SETUP.billingManual(opens, payHow);
   const wa = /^https:\/\/wa\.me\//.test(b.href || '');
-  const label = b.checkout ? SETUP.billingPay : wa ? (payHow ? SETUP.billingSendReceipt : SETUP.billingWrite) : SETUP.billingContact;
-  const btn = !done && b.href && !readOnly ? `<a class="button ${b.checkout && first() ? 'primary' : 'quiet'}" href="${esc(b.href)}">${esc(label)}</a>` : '';
   // What is to pay now, product by product (a month, and the setup fee until the first payment), and the months after.
-  const owed = [];
-  const months = [];
-  const lines = products
-    .map((p) => {
-      const a = access[p];
-      const s = prices[p] || {};
-      if (a?.access === 'comp') return '';
-      if (a?.access === 'due') {
-        if (s.monthly != null) {
-          owed.push({ sum: s.monthly, vat: s.vat });
-          months.push({ sum: s.monthly, vat: s.vat });
-        }
-        return `<li>${esc(SETUP.billingDue(productLabel(p, s.plan), dayHe(a.graceUntil)))}</li>`;
-      }
-      if (a?.allowed && a.paidUntil) return `<li>${esc(SETUP.billingPaidUntil(productLabel(p, s.plan), dayHe(a.paidUntil)))}</li>`;
-      if (s.monthly == null) return '';
-      const vat = s.vat === 'included' ? T.vatIncluded : T.vatExcluded;
-      const setupFee = !s.paid_until && s.setup ? s.setup : 0;
-      owed.push({ sum: s.monthly, vat: s.vat });
-      months.push({ sum: s.monthly, vat: s.vat });
-      if (setupFee) owed.push({ sum: setupFee, vat: s.vat });
-      return `<li>${esc(SETUP.billingPrice(productLabel(p, s.plan), ils(s.monthly), vat, setupFee ? ils(setupFee) : ''))}</li>`;
+  const due = dueOf({ products, access, prices });
+  const overWa = Boolean(payWa && payHow && !b.checkout && !done && due.items.length);
+  const label = b.checkout ? SETUP.billingPay : wa ? (payHow ? SETUP.billingSendReceipt : SETUP.billingWrite) : SETUP.billingContact;
+  const btn = overWa
+    ? payWa.href && !readOnly
+      ? `<a class="button ${first() ? 'primary' : 'quiet'}" href="${esc(payWa.href)}">${esc(PAY.button)}</a>`
+      : ''
+    : !done && b.href && !readOnly
+      ? `<a class="button ${b.checkout && first() ? 'primary' : 'quiet'}" href="${esc(b.href)}">${esc(label)}</a>`
+      : '';
+  const lines = due.lines
+    .map((l) => {
+      const name = productLabel(l.product, l.plan);
+      if (l.kind === 'due') return `<li>${esc(SETUP.billingDue(name, dayHe(l.graceUntil)))}</li>`;
+      if (l.kind === 'paid') return `<li>${esc(SETUP.billingPaidUntil(name, dayHe(l.paidUntil)))}</li>`;
+      if (l.kind !== 'owed') return '';
+      return `<li>${esc(SETUP.billingPrice(name, ils(l.monthly), l.vat === 'included' ? T.vatIncluded : T.vatExcluded, l.setup ? ils(l.setup) : ''))}</li>`;
     })
     .join('');
-  const now = owed.length ? payTotal(owed) : null;
-  const then = months.length && owed.length > months.length ? payTotal(months).total : null;
+  const now = due.items.length ? due : null;
+  const then = due.monthsAfter;
+  const after = `<p class="pay-receipt">${esc(overWa ? PAY.explain : SETUP.billingReceipt(wa))}</p>`;
   return `<section class="card setup-p" id="setup-billing"><header><div><h2>${esc(SETUP.billingTitle)}</h2></div><span class="tag${done ? '' : ' off'}">${esc(done ? SETUP.ready : SETUP.notReady)}</span></header>
 <ol class="steps"><li class="step st-${done ? 'done' : 'todo'}"><span class="chip">${esc(SETUP.status[done ? 'done' : 'todo'])}</span><span class="what"><b>${esc(SETUP.billingStep)}</b><small>${esc(detail)}</small></span>${btn}</li></ol>
 ${lines ? `<ul class="prices">${lines}</ul>` : ''}
 ${!done && now ? `<p class="pay-total"><b>${esc(SETUP.billingNow(ils(now.total), ils(now.net), now.vat ? ils(now.vat) : ''))}</b>${then ? ` ${esc(SETUP.billingThen(ils(then)))}` : ''}</p>` : ''}
 ${!done && payHow ? `<p>${esc(SETUP.billingHow(payHow))}</p>` : ''}
-${!done && payHow && !b.checkout ? `<p class="pay-receipt">${esc(SETUP.billingReceipt(wa))}</p>` : ''}
+${!done && payHow && !b.checkout ? after : ''}
 ${!done && !b.checkout ? `<p class="muted">${esc(SETUP.billingAsk(wa))}</p>` : ''}
 </section>`;
 }
@@ -520,11 +533,11 @@ ${!done && !b.checkout ? `<p class="muted">${esc(SETUP.billingAsk(wa))}</p>` : '
  * workspace has turned on, and nothing about one it has not. A product the paywall keeps closed shows its steps
  * locked, "נפתח אחרי התשלום".
  */
-export function setupPage({ state, productUrls, readOnly = false, flash = '', access = {}, prices = {}, payHow = '' }) {
+export function setupPage({ state, productUrls, readOnly = false, flash = '', access = {}, prices = {}, payHow = '', payWa = null }) {
   let used = false;
   const first = () => (used ? false : (used = true));
   const steps = (list, locked) => `<ol class="steps">${list.map((s) => stepRow(s, { readOnly, first, locked })).join('')}</ol>`;
-  const billing = state.billing ? billingCard(state.billing, { readOnly, first, products: state.sections.map((s) => s.product), access, prices, payHow }) : '';
+  const billing = state.billing ? billingCard(state.billing, { readOnly, first, products: state.sections.map((s) => s.product), access, prices, payHow, payWa }) : '';
   const sections = state.sections
     .map((sec) => {
       const p = sec.product;
@@ -815,4 +828,56 @@ ${workspaces.length ? workspaces.map((w) => workspaceTile(w, csrf)).join('') : `
     .map((a) => `<tr><td>${esc(auditLabel(a))}</td><td class="ltr">${esc(a.actor)}</td><td>${esc(a.workspace_name || '')}</td><td class="when">${esc(when(a.at))}</td></tr>`)
     .join('')}</tbody></table>
 </section>`;
+}
+
+// ---- a transfer's receipt, from Toran (src/accounts/pay.js, docs/internal-pay.md)
+
+/** What was owed, as the receipt page shows it: the summary's lines (the last, the total, in bold), or `nothing`. */
+const owedList = (due, nothing) => {
+  const lines = paySummary(due);
+  if (!lines.length) return `<p class="muted">${esc(nothing)}</p>`;
+  const total = lines.pop();
+  return `<ul class="prices">${lines.map((l) => `<li>${esc(l)}</li>`).join('')}</ul><p class="pay-total"><b>${esc(total)}</b></p>`;
+};
+
+/**
+ * A receipt (/admin/receipts/<id>): the picture (a PDF as a link; nothing once the file is deleted), the business, the
+ * number it came from and when, what was owed when it came and what is owed today, a line for each product paid for
+ * since it came (`moved`), and until it is decided the two buttons side by side: "התשלום הגיע", which records a month
+ * for each of `record.products` with the paid-until day shown here (`expects`), and "לא הגיע", which records nothing.
+ */
+export function receiptPage({ csrf, r, now, record, expects = {}, moved = [], error = '' }) {
+  const base = `/admin/receipts/${esc(r.id)}`;
+  const file = !r.file
+    ? `<p class="muted">${esc(PAY.fileGone)}</p>`
+    : r.type === 'application/pdf'
+      ? `<p><a class="button quiet" href="${base}/file" target="_blank" rel="noopener">${esc(PAY.openPdf)}</a></p>`
+      : `<p><a href="${base}/file" target="_blank" rel="noopener"><img class="receipt-shot" src="${base}/file" alt="${esc(PAY.imageAlt(r.business))}"></a></p>`;
+  const names = record.products.map((p) => PRODUCT_NAMES[p]).join(SIGNUP.and);
+  const decided = r.decided_at ? `<p class="notice" role="status">${esc((r.decision === 'paid' ? PAY.decidedPaid : PAY.decidedNotPaid)(when(r.decided_at)))}${r.decided_by_email ? ` <bdi class="ltr">${esc(r.decided_by_email)}</bdi>` : ''}</p>` : '';
+  const fields = Object.fromEntries(record.products.map((p) => [`expect_${p}`, expects[p] ?? '']));
+  const actions = r.decided_at
+    ? ''
+    : `${record.products.length ? `${record.from === 'now' ? `<p class="muted">${esc(PAY.fromNow)}</p>` : ''}<p class="muted">${esc(PAY.recordHint(names))}</p>` : `<p class="muted">${esc(PAY.nothingToRecord)} <a href="/admin/accounts#ws-${esc(r.workspace_id)}">${esc(PAY.toConsole)}</a></p>`}
+<div class="row">${record.products.length ? button(`${base}/paid`, PAY.paid, csrf, { fields, kind: 'primary' }) : ''}${button(`${base}/not-paid`, PAY.notPaid, csrf, { kind: 'quiet' })}</div>`;
+  return `
+${adminTop({ csrf, tab: 'today' })}
+<section class="card receipt">
+<h2>${esc(PAY.title(r.business))}</h2>
+${error ? `<p class="error" role="alert">${esc(error)}</p>` : ''}
+${decided}
+${file}
+<dl class="facts">
+<div><dt>${esc(PAY.factBusiness)}</dt><dd><a href="/admin/accounts#ws-${esc(r.workspace_id)}">${esc(r.business)}</a></dd></div>
+<div><dt>${esc(PAY.factPhone)}</dt><dd><bdi class="ltr">${esc(phoneHe(r.phone))}</bdi></dd></div>
+<div><dt>${esc(PAY.factAt)}</dt><dd>${esc(when(r.created_at))}</dd></div>
+</dl>
+<h3>${esc(PAY.thenTitle)}</h3>
+${owedList(r.due, PAY.nothingThen)}
+<h3>${esc(PAY.nowTitle)}</h3>
+${owedList(now, PAY.nothingNow)}
+${moved.map((m) => `<p class="warn">${esc(PAY.moved(PRODUCT_NAMES[m.product], dayHe(m.paidUntil)))}</p>`).join('')}
+${actions}
+</section>
+${links([['/admin', PAY.back]])}`;
 }

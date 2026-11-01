@@ -6,9 +6,10 @@ import { eraseWorkspace, productsEver } from '../accounts/erase.js';
 import { checkoutUrl, payHow, paymentMode, supportWa } from '../accounts/billing.js';
 import { signupNotify } from '../accounts/signup.js';
 import { billingMail, billingNoticeMail, idleMail, idleNoticeMail } from '../mail/messages.js';
-import { MAIL, ils } from './copy.js';
+import { MAIL, PAY, ils } from './copy.js';
 import { eraseClient } from './erase.js';
 import { accountsBase } from './internal.js';
+import { payOverWa } from './pay.js';
 
 // The daily jobs, once an Israel day from 09:00 (startDaily(), which scripts/web.js runs; `npm run daily` runs them by
 // hand). Each run is kept in daily_runs, and what it did is logged with its counts.
@@ -23,20 +24,26 @@ import { accountsBase } from './internal.js';
 //    The operator (OF_SIGNUP_NOTIFY) hears of each due and stopped. A recorded payment moves paid_until on, and the
 //    next period's emails follow it. How to pay follows the payment mode (OF_PAYMENT, src/accounts/billing.js): with a
 //    provider, soon and due lead to its payment page ("לתשלום"); in manual mode, they say to pay by the details we
-//    emailed (and how, OF_PAYMENT_METHOD, when set) and whom to ask, and lead to the account.
+//    emailed (and how, OF_PAYMENT_METHOD, when set) and whom to ask, and lead to the account. In manual mode with
+//    OF_PAYMENT_METHOD and OF_ASSISTANT_WA both set, soon and due lead instead to "לתשלום בוואטסאפ" (src/web/pay.js):
+//    our owner line, with the message and the workspace's payment code written, where Toran gives the amount.
 //
 // 2. Retention (ACC-07, PRA-DB-005), the periods the privacy policy states:
 //      sign-ups never confirmed                       deleted 30 days after the form was sent
-//      links and codes (magic, invites, WhatsApp)     deleted 30 days after they ended
+//      links and codes (magic, invites, WhatsApp,     deleted 30 days after they ended
+//      payment codes)
 //      sessions                                       deleted 90 days after they ended (expired or signed out)
 //      the notification log                           90 days
+//      a transfer's picture sent to Toran             the file deleted 90 days after it came (src/accounts/pay.js);
+//                                                     the row (who sent it, when, what was owed, the operator's
+//                                                     answer) is kept, as the record of the payment
 //      a workspace never paid for, not complimentary, with no invoice, that nobody has used for 6 months (no sign-in,
 //      no page seen): its owners are emailed, and 14 days later it is deleted the normal way, every product asked
 //      first (src/web/erase.js, src/accounts/erase.js). Someone signing in, a payment or comp takes it off the list.
 //    Kept on purpose: invoices (7 years, the tax law), the audit log (the security record), and the opt-in and
 //    opt-out records of WhatsApp numbers while the number is linked.
 
-export const RETENTION = { signupDays: 30, linkDays: 30, sessionDays: 90, notifyLogDays: 90, billingNoticeDays: 400, idleMonths: 6, idleWarnDays: 14 };
+export const RETENTION = { signupDays: 30, linkDays: 30, sessionDays: 90, notifyLogDays: 90, billingNoticeDays: 400, receiptFileDays: 90, idleMonths: 6, idleWarnDays: 14 };
 /** The Israel hour the run starts at, or after: emails go out in the morning, not at midnight. */
 export const RUN_HOUR = 9;
 
@@ -67,6 +74,9 @@ function billing(db, { mailer, env, base, notifyTo, today }) {
   const provider = paymentMode(env) === 'provider';
   // With the owner's details (OF_PAYMENT_METHOD) the email gives them; without, it points to the ones we emailed.
   const pay = provider ? MAIL.payByProvider : [...(payHow(env) ? [MAIL.welcomePayHow(payHow(env)), MAIL.receipt(supportWa(env))] : [MAIL.payByUs]), MAIL.payAsk(supportWa(env))];
+  // Paying over WhatsApp (src/web/pay.js): the same details, the line that says to send the message as it is in place
+  // of the receipt's, and the button to our owner line with the message written.
+  const payWa = [MAIL.welcomePayHow(payHow(env)), PAY.explain, MAIL.payAsk(supportWa(env))];
   const sent = { soon7: 0, soon1: 0, due: 0, stopped: 0 };
   for (const s of rows) {
     const kind = billingKind(s.paid_until, today);
@@ -75,8 +85,9 @@ function billing(db, { mailer, env, base, notifyTo, today }) {
     const fresh = db.run('INSERT INTO billing_notices (workspace_id, product, kind, due_on, sent_at, recipients) VALUES (?, ?, ?, ?, ?, 0) ON CONFLICT DO NOTHING', s.workspace_id, s.product, kind, dueOn, nowIso());
     if (Number(fresh.changes) !== 1) continue;
     const to = ownersOf(db, s.workspace_id);
-    const fields = { kind, business: s.business, product: s.product, dueOn, graceUntil: graceLast(s.paid_until), amount: MAIL.amount(ils(s.monthly ?? 0), s.vat !== 'included', ils(withVat(s.monthly ?? 0, s.vat))), pay, link: `${base}/setup` };
-    const online = provider ? { payLink: checkoutUrl(s.workspace_id, env), payButton: MAIL.payOnlineButton } : {};
+    const wa = !provider && kind !== 'stopped' ? payOverWa(db, { env, workspaceId: s.workspace_id, business: s.business, today }) : null;
+    const fields = { kind, business: s.business, product: s.product, dueOn, graceUntil: graceLast(s.paid_until), amount: MAIL.amount(ils(s.monthly ?? 0), s.vat !== 'included', ils(withVat(s.monthly ?? 0, s.vat))), pay: wa?.href ? payWa : pay, link: `${base}/setup` };
+    const online = provider ? { payLink: checkoutUrl(s.workspace_id, env), payButton: MAIL.payOnlineButton } : wa?.href ? { payLink: wa.href, payButton: PAY.button } : {};
     for (const email of to) mailer.send(billingMail(email, { ...fields, ...online }));
     db.run('UPDATE billing_notices SET recipients = ? WHERE workspace_id = ? AND product = ? AND kind = ? AND due_on = ?', to.length, s.workspace_id, s.product, kind, dueOn);
     if (kind === 'due' || kind === 'stopped') for (const op of notifyTo) mailer.send(billingNoticeMail(op, { ...fields, link: `${base}/admin/accounts#ws-${s.workspace_id}` }));
@@ -114,6 +125,8 @@ async function retention(db, { mailer, base, notifyTo, eraser, log, today, t }) 
     sessions: n(db.run('DELETE FROM sessions WHERE expires_at < ? OR (revoked_at IS NOT NULL AND revoked_at < ?)', isoBefore(RETENTION.sessionDays, t), isoBefore(RETENTION.sessionDays, t))),
     notifyLog: n(db.run('DELETE FROM notify_log WHERE at < ?', isoBefore(RETENTION.notifyLogDays, t))),
     billingNotices: n(db.run('DELETE FROM billing_notices WHERE sent_at < ?', isoBefore(RETENTION.billingNoticeDays, t))),
+    payCodes: n(db.run('DELETE FROM pay_codes WHERE expires_at < ?', isoBefore(RETENTION.linkDays, t))),
+    receiptFiles: n(db.run('UPDATE pay_receipts SET file = NULL WHERE file IS NOT NULL AND created_at < ?', isoBefore(RETENTION.receiptFileDays, t))),
     idleWarned: 0,
     idleDeleted: 0,
     idleFailed: 0,

@@ -8,8 +8,9 @@ import { WorkspaceError, getWorkspace } from './workspaces.js';
 // deleted its part (or said it had nothing, with a 2xx) does eraseWorkspace() below delete ours, in one transaction:
 //
 //   deleted   the people's memberships, the invites, the products and their subscriptions, the WhatsApp numbers and
-//             link codes, the notification choices and log, the sign-up that opened it, and every person who was in
-//             this workspace and no other (their email, name, sessions and links). Everyone else's sessions leave it.
+//             link codes, the payment codes and the transfers' pictures sent to Toran (src/accounts/pay.js), the
+//             notification choices and log, the sign-up that opened it, and every person who was in this workspace
+//             and no other (their email, name, sessions and links). Everyone else's sessions leave it.
 //   kept      the invoices, with their PDFs: the law asks us to keep them. Each is marked detached, with the business
 //             it was for written on it. The audit log (who did what, when) stays as the security record it is.
 //   the row   stays, emptied (no name, slug deleted-<id>-, disabled, deleted_at), so its id is never given to another
@@ -35,7 +36,7 @@ export function eraseWorkspace(db, workspaceId, { by, ip = null, source = 'owner
     const t = nowIso();
     const people = db.all('SELECT u.id, u.email, u.is_superadmin FROM memberships m JOIN users u ON u.id = m.user_id WHERE m.workspace_id = ?', w.id);
     const invoicesKept = Number(db.run('UPDATE invoices SET customer_name = ?, detached_at = ? WHERE workspace_id = ?', w.name, t, w.id).changes);
-    for (const table of ['signups', 'tokens', 'phone_links', 'user_phones', 'notify_prefs', 'notify_log', 'billing_notices', 'retention_notices', 'subscriptions', 'workspace_products', 'memberships'])
+    for (const table of ['signups', 'tokens', 'phone_links', 'user_phones', 'notify_prefs', 'notify_log', 'billing_notices', 'retention_notices', 'pay_codes', 'pay_receipts', 'subscriptions', 'workspace_products', 'memberships'])
       db.run(`DELETE FROM ${table} WHERE workspace_id = ?`, w.id);
     db.run('UPDATE sessions SET workspace_id = NULL WHERE workspace_id = ?', w.id);
     db.run('UPDATE sessions SET view_as_workspace_id = NULL, view_as_since = NULL WHERE view_as_workspace_id = ?', w.id);

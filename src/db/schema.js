@@ -307,4 +307,41 @@ export const MIGRATIONS = [
     detail_json     TEXT
   );
   `,
+  `
+  -- Paying over WhatsApp (src/accounts/pay.js, docs/internal-pay.md). The customer's "לתשלום בוואטסאפ" opens our
+  -- number with a message that carries the workspace's payment code; Toran asks us what that workspace owes
+  -- (GET /internal/pay) and answers with the amount and the transfer details. The code is kept as it is, not hashed:
+  -- it signs nobody in and records nothing, it only names the workspace for that conversation. One stays the
+  -- workspace's for 60 days and is used again while 14 days or more are left on it. Deleted 30 days after it ends.
+  CREATE TABLE pay_codes (
+    code            TEXT PRIMARY KEY,              -- PAY-XXXXXX
+    workspace_id    INTEGER NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+    created_at      TEXT NOT NULL,
+    expires_at      TEXT NOT NULL
+  );
+  CREATE INDEX pay_codes_workspace ON pay_codes(workspace_id, expires_at);
+
+  -- A picture (or PDF) of a transfer the customer sent Toran on WhatsApp (POST /internal/pay/receipt), waiting for
+  -- the operator: "התשלום הגיע" on /admin/receipts/<id> records the months (subscriptions.js payMonth), "לא הגיע"
+  -- only closes it. Nothing is recorded without that press. items_json is what was owed when it came
+  -- (billing.js amountDue). The file is deleted 90 days after it came (src/web/daily.js), and the row is kept.
+  CREATE TABLE pay_receipts (
+    id              INTEGER PRIMARY KEY,
+    workspace_id    INTEGER NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+    code            TEXT NOT NULL,                 -- the PAY- code it came with
+    phone           TEXT NOT NULL,                 -- the WhatsApp number that sent it, international digits
+    created_at      TEXT NOT NULL,
+    name            TEXT NOT NULL,                 -- the file's name, as WhatsApp gave it
+    type            TEXT NOT NULL CHECK (type IN ('image/jpeg', 'image/png', 'image/webp', 'application/pdf')),
+    size            INTEGER NOT NULL,              -- bytes
+    file            BLOB,                          -- NULL once deleted
+    items_json      TEXT NOT NULL,
+    decided_at      TEXT,
+    decided_by      INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    decision        TEXT CHECK (decision IS NULL OR decision IN ('paid', 'not_paid')),
+    CHECK ((decided_at IS NULL) = (decision IS NULL))
+  );
+  CREATE INDEX pay_receipts_open ON pay_receipts(decided_at, created_at);
+  CREATE INDEX pay_receipts_code ON pay_receipts(code, created_at);
+  `,
 ];

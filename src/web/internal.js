@@ -5,7 +5,10 @@ import { opsCustomers } from '../accounts/ops.js';
 import { claimPhone, ownerOf, ownersOf, PhoneError, setConsent, validPhone } from '../accounts/phones.js';
 import { entitlement } from '../accounts/entitlement.js';
 import { checkNotify, logNotify, NOTIFY_PER_DAY, NotifyError, recipients, sentToday } from '../accounts/notify.js';
-import { productNoticeMail } from '../mail/messages.js';
+import { addReceipt, dueForPay, openPayCode, PayError } from '../accounts/pay.js';
+import { signupNotify } from '../accounts/signup.js';
+import { productNoticeMail, receiptNoticeMail } from '../mail/messages.js';
+import { payAnswer } from './pay.js';
 
 // The internal listener, for Teder and Toran on this machine:
 //   GET  /internal/session              who a browser is (docs/internal-session.md)
@@ -16,6 +19,8 @@ import { productNoticeMail } from '../mail/messages.js';
 //   GET  /internal/ops/customers        every workspace and its money, for Toran (docs/internal-ops.md)
 //   GET  /internal/entitlement          may a workspace use a product today: the paywall (docs/setup.md)
 //   POST /internal/notify               email a workspace's people for a product, as each of them chose (docs/setup.md)
+//   GET  /internal/pay                  what a payment code's workspace owes now, for Toran (docs/internal-pay.md)
+//   POST /internal/pay/receipt          a picture of a transfer a customer sent Toran, for the operator to check
 //
 // The other direction, /admin calling Toran's /internal/ops for the operator's dashboard, is src/web/toran.js.
 //
@@ -53,11 +58,15 @@ const ROUTES = {
   '/internal/ops/customers': 'GET',
   '/internal/entitlement': 'GET',
   '/internal/notify': 'POST',
+  '/internal/pay': 'GET',
+  '/internal/pay/receipt': 'POST',
 };
 const BODY_LIMIT = 4096;
 // A notification's body is larger: its text (5,000 characters) and its html (50,000), in UTF-8.
 const NOTIFY_BODY_LIMIT = 256_000;
-const STATUS = { bad_phone: 400, not_linked: 404, unknown_code: 404, expired: 410, used: 409, phone_taken: 409 };
+// A receipt's is larger still: its file, up to 5 MB, in base64 (a third more), and the rest.
+const RECEIPT_BODY_LIMIT = 7_500_000;
+const STATUS = { bad_phone: 400, not_linked: 404, unknown_code: 404, expired: 410, used: 409, phone_taken: 409, too_large: 413, bad_type: 415, rate_limited: 429 };
 const SOURCE = /^[a-z][a-z0-9_]{0,31}$/;
 
 class Refused extends Error {
@@ -164,10 +173,27 @@ export function internalHandler(db, { env = process.env, log = console.error, ma
           logNotify(db, n, to.length);
           return json(res, 202, { ok: true, sent: to.length });
         }
+        case '/internal/pay': {
+          const open = openPayCode(db, url.searchParams.get('code') ?? '');
+          return json(res, 200, payAnswer(open, dueForPay(db, open.workspace.id), env));
+        }
+        case '/internal/pay/receipt': {
+          const body = await readJson(req, RECEIPT_BODY_LIMIT);
+          const r = addReceipt(db, { code: body.code, phone: body.phone, file: body.file });
+          // The operator hears of it with a link to its page. The mailer queues and never waits; a failure here is
+          // logged, and the receipt is kept either way.
+          try {
+            for (const to of signupNotify(env)) mailer?.send(receiptNoticeMail(to, { business: r.workspace.name, total: r.due.total, phone: body.phone, at: r.createdAt, link: `${base}/admin/receipts/${r.id}` }));
+          } catch (e) {
+            log(`[accounts] the receipt notice for receipt ${r.id} failed: ${e.message}`);
+          }
+          return json(res, 201, { id: r.id, workspace: r.workspace });
+        }
       }
     } catch (e) {
       if (e instanceof Refused) return json(res, e.status, { error: e.code });
       if (e instanceof NotifyError) return json(res, 400, { error: e.code });
+      if (e instanceof PayError) return json(res, STATUS[e.code] || 400, { error: e.code });
       if (e instanceof PhoneError) return json(res, STATUS[e.code] || 400, { error: e.code });
       log(`[accounts] internal ${req.method} ${url.pathname}: ${e.stack || e.message}`);
       return json(res, 500, { error: 'server_error' });

@@ -21,6 +21,7 @@ deleted, and the settings that turn each part on.
 | `OF_TORAN_INTERNAL` | `http://127.0.0.1:4710` | Where `/setup` reaches Toran's (the same address `/admin` uses), and the same for deleting. |
 | `OF_INTERNAL_TOKEN` | unset | The bearer token for both directions. Unset or shorter than 32 characters, no product is asked (each says "לא הצלחנו לבדוק כרגע", and deleting a workspace stops), and our internal routes answer 503. |
 | `OF_SUPPORT_WA` | unset | Our WhatsApp, where the payment step's button leads in manual mode, for questions about paying; the welcome and billing emails give the number. Unset, the button leads to an email to `MAIL_REPLY_TO`, and without that to `https://openfrequency.co.il/join`. |
+| `OF_ASSISTANT_WA` | unset | The owner line's number (the home page's link codes, docs/internal-owner-phone.md). In manual mode with `OF_PAYMENT_METHOD` set too, the customer pays over WhatsApp: the payment step's button and the welcome and billing emails' become "לתשלום בוואטסאפ", to this number with the message and the workspace's payment code written (docs/internal-pay.md). |
 
 `OF_BILLING_PROVIDER`, the hook before `OF_PAYMENT`, is no longer read; the service says so in its log when it is set.
 
@@ -89,6 +90,7 @@ customer pays, and every place that describes paying follows it (`src/accounts/b
 | The welcome email | the same, with "איך משלמים: ..." (`OF_PAYMENT_METHOD`, when set) and questions to a reply or our WhatsApp's number | pay by card on the setup page, "לתשלום"; the products open once the payment is confirmed |
 | `/setup`'s payment step | the same; its button (quiet: nothing to start) asks us on WhatsApp, "יש לנו שאלה על התשלום" written | "לתשלום", the one blue button, opens `OF_PAYMENT_URL` |
 | The billing emails (soon, due) | pay by the details we emailed, how, and whom to ask; the button goes to the account | pay by card on the payment page; the button "לתשלום" goes to `OF_PAYMENT_URL` |
+| With `OF_PAYMENT_METHOD` and `OF_ASSISTANT_WA` both set | `/setup`'s button, the welcome email's and the billing emails' (soon, due) are "לתשלום בוואטסאפ", to the owner line with the message written; Toran answers with the amount (docs/internal-pay.md) | the same as above: the setting is manual mode's |
 | The home page | no next-payment line | "התשלום הבא: <amount>, ב-<date>" |
 | The owner's sign-up notice | email the payment details to the customer's address, then record the payment | record the payment once it has gone through |
 
@@ -256,7 +258,8 @@ the token is unset or short here, `405` for any other method.
 "התקבל תשלום לחודש" sends the paid-until date the console showed with it. When the subscription
 has moved on since (the button pressed twice, or the page left open after a payment), nothing is
 recorded and the console says so ("התשלום הזה כבר נרשם"). Each owner gets "קיבלנו את התשלום על
-<product>" with the day it is now paid until.
+<product>" with the day it is now paid until. A transfer's picture sent to Toran (paying over
+WhatsApp, docs/internal-pay.md) is recorded the same way, from its page, `/admin/receipts/<id>`.
 
 ### The daily jobs
 
@@ -269,8 +272,10 @@ run today's again) and keeps each run in `daily_runs`:
   the last two. Not for a product that is complimentary, cancelled, off or never paid, nor in a
   disabled workspace.
 - **Retention**, the periods the privacy policy states: a sign-up never confirmed, 30 days after
-  the form; magic links, invites and WhatsApp link codes, 30 days after they ended; sessions, 90
-  days after they expired or were signed out; the notification log, 90 days. A workspace never
+  the form; magic links, invites, WhatsApp link codes and payment codes, 30 days after they
+  ended; sessions, 90 days after they expired or were signed out; the notification log, 90 days;
+  a transfer's picture sent to Toran, its file 90 days after it came (the row stays, as the record
+  of the payment). A workspace never
   paid for, not complimentary, with no invoice, that nobody in it has signed in to or used for six
   months: its owners are emailed ("החשבון של <business> יימחק ב-14 הימים הקרובים"), and 14 days
   later it is deleted the same way an owner deletes it (every product asked first; a product that
@@ -317,8 +322,8 @@ The superadmin can do the same from each workspace on `/admin/accounts`. Then:
    `200` for a workspace it never saw, and again for one it already deleted
    (`docs/contracts/workspaces-delete.json`).
 2. Then ours, in one transaction: the memberships, the invites, the products and subscriptions,
-   the WhatsApp numbers and link codes, the notification choices and log, the sign-up that opened
-   it, and every person who was in this workspace and no other (their email, name, sessions and
+   the WhatsApp numbers and link codes, the payment codes and the transfers' pictures sent to
+   Toran, the notification choices and log, the sign-up that opened it, and every person who was in this workspace and no other (their email, name, sessions and
    links). Everyone else's sessions leave it. The person who deleted it is signed out everywhere.
 3. Kept: the invoices, with their PDFs, as the law asks; each is marked detached
    (`detached_at`) with the business it was for (`customer_name`). The audit log stays too. The

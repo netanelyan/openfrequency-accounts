@@ -12,6 +12,7 @@ import { createSession } from '../src/auth/sessions.js';
 import { ensureSubscription, payMonth, setSubscription } from '../src/accounts/subscriptions.js';
 import { cancelSubscription, setComp } from '../src/accounts/entitlement.js';
 import { createLinkCode } from '../src/accounts/phones.js';
+import { payCodeFor } from '../src/accounts/pay.js';
 import { startViewAs } from '../src/accounts/workspaces.js';
 import { operatorAssertion } from '../src/web/admin-toran.js';
 import { readSetup } from '../src/web/setup.js';
@@ -53,7 +54,7 @@ export function shapeProblems(actual, example, nullable = [], at = '$') {
 }
 
 test('every contract file is complete: who serves it, who calls it, and every answer with a status and an example', () => {
-  assert.deepEqual(Object.keys(contracts).sort(), ['admin-toran-operator', 'entitlement', 'notify', 'ops-customers', 'owner-phone', 'session', 'setup', 'toran-ops', 'workspaces-delete']);
+  assert.deepEqual(Object.keys(contracts).sort(), ['admin-toran-operator', 'entitlement', 'notify', 'ops-customers', 'owner-phone', 'pay', 'session', 'setup', 'toran-ops', 'workspaces-delete']);
   for (const [name, c] of Object.entries(contracts)) {
     assert.equal(c.name, name);
     assert.ok(c.doc && c.servedBy.length && c.calledBy.length, name);
@@ -86,6 +87,15 @@ const fresh = (w, slug, products = ['teder']) => {
 };
 const noToken = (w, method, p, body) => w.call(method, p, body, { authorization: 'Bearer wrong-token-wrong-token-wrong-token-x' });
 const NOTIFY = { product: 'teder', kind: 'posts_waiting', subject: 'שלושה פוסטים מחכים', text: 'יש פוסטים חדשים.', link: 'https://teder.openfrequency.co.il/review' };
+// A receipt as Toran posts it: a PNG's first bytes, which is all the check reads.
+const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13]).toString('base64');
+const receipt = (code, extra = {}) => ({ code, phone: '972500000123', file: { name: 'shot.png', type: 'image/png', data: PNG }, ...extra });
+const pay = (w, code) => w.call('GET', `/internal/pay?code=${encodeURIComponent(code)}`);
+const expiredCode = (w) => {
+  const { code } = payCodeFor(w.db, w.dana.id);
+  setNow('2026-12-22T10:00:00.000Z');
+  return code;
+};
 
 // Each case, by "<contract> <path> :: <case>", made and asked. 503 (no token here) is asked of a site started without one.
 const RUN = {
@@ -190,6 +200,33 @@ const RUN = {
     return w.call('GET', '/internal/ops/customers');
   },
   'ops-customers /internal/ops/customers :: no token, or the wrong one': (w) => noToken(w, 'GET', '/internal/ops/customers'),
+
+  'pay /internal/pay :: owed: the first month and the setup fee': (w) => {
+    setSubscription(w.db, w.dana.id, 'teder', { plan: 'small', monthly: '490', setup: '990', vat: 'excluded', started_on: '2026-10-22' }, { by: w.admin });
+    return pay(w, payCodeFor(w.db, w.dana.id).code.toLowerCase());
+  },
+  'pay /internal/pay :: nothing owed: paid more than a week ahead, or complimentary': (w) => {
+    const ws = fresh(w, 'paid-shop');
+    payMonth(w.db, ws.id, 'teder', { by: w.admin });
+    return pay(w, payCodeFor(w.db, ws.id).code);
+  },
+  'pay /internal/pay :: no such code, or its workspace is disabled or deleted': (w) => pay(w, 'PAY-ABCDEF'),
+  "pay /internal/pay :: the code's 60 days are over": (w) => pay(w, expiredCode(w)),
+  'pay /internal/pay :: no token, or the wrong one': (w) => noToken(w, 'GET', '/internal/pay?code=PAY-ABCDEF'),
+  'pay /internal/pay/receipt :: kept, and the operator emailed a link to it': (w) => w.call('POST', '/internal/pay/receipt', receipt(payCodeFor(w.db, w.dana.id).code)),
+  'pay /internal/pay/receipt :: the phone is not international digits': (w) => w.call('POST', '/internal/pay/receipt', receipt(payCodeFor(w.db, w.dana.id).code, { phone: '0500000123' })),
+  'pay /internal/pay/receipt :: not that shape: no file object, or its data is not base64': (w) => w.call('POST', '/internal/pay/receipt', receipt(payCodeFor(w.db, w.dana.id).code, { file: null })),
+  'pay /internal/pay/receipt :: no such code, or its workspace is disabled or deleted': (w) => w.call('POST', '/internal/pay/receipt', receipt('PAY-ABCDEF')),
+  "pay /internal/pay/receipt :: the code's 60 days are over": (w) => w.call('POST', '/internal/pay/receipt', receipt(expiredCode(w))),
+  'pay /internal/pay/receipt :: the file is over 5 MB, or the body over 7,500,000 bytes': (w) =>
+    w.call('POST', '/internal/pay/receipt', receipt(payCodeFor(w.db, w.dana.id).code, { file: { type: 'image/png', data: Buffer.concat([Buffer.from(PNG, 'base64'), Buffer.alloc(5 * 1024 * 1024)]).toString('base64') } })),
+  'pay /internal/pay/receipt :: not a JPEG, PNG, WebP or PDF, or its first bytes are not the type it says': (w) => w.call('POST', '/internal/pay/receipt', receipt(payCodeFor(w.db, w.dana.id).code, { file: { type: 'image/jpeg', data: PNG } })),
+  'pay /internal/pay/receipt :: a sixth receipt from one code in an Israel day': async (w) => {
+    const { code } = payCodeFor(w.db, w.dana.id);
+    for (let i = 0; i < 5; i++) assert.equal((await w.call('POST', '/internal/pay/receipt', receipt(code))).status, 201);
+    return w.call('POST', '/internal/pay/receipt', receipt(code));
+  },
+  'pay /internal/pay/receipt :: no token, or the wrong one': (w) => noToken(w, 'POST', '/internal/pay/receipt', receipt('PAY-ABCDEF')),
 };
 
 for (const [name, c] of Object.entries(contracts)) {

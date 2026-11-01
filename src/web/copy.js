@@ -381,6 +381,9 @@ export const AUDIT_NAMES = {
   billing_due: 'תשלום לא הגיע, תקופת החסד התחילה',
   billing_stopped: 'נעצר אחרי תקופת החסד',
   idle_warned: 'נשלחה הודעה על מחיקה של חשבון בלי שימוש',
+  pay_receipt_received: 'אישור העברה הגיע בוואטסאפ',
+  pay_receipt_paid: 'אישור העברה: התשלום הגיע',
+  pay_receipt_not_paid: 'אישור העברה: התשלום לא הגיע',
 };
 
 // ---- emails
@@ -715,6 +718,74 @@ export const SETUP = {
   cardButton: 'להמשך ההגדרה',
   nav: 'הגדרה',
   navLabel: 'החשבון',
+};
+
+// ---- paying over WhatsApp (src/accounts/pay.js, docs/internal-pay.md)
+//
+// The customer sees one button and one line under it; the code rides in the message the button writes, and nothing
+// on the page or in an email explains it. The operator's lines (the email, /admin and its receipt page) speak to the
+// operator as אתם, like the console.
+
+export const PAY = {
+  // The customer: /setup's payment card, the welcome email and the billing emails.
+  button: 'לתשלום בוואטסאפ',
+  explain: 'לוחצים על הכפתור ושולחים את ההודעה כמו שהיא. תורן עונה בוואטסאפ עם הסכום ופרטי ההעברה.',
+  /** The message the button writes, with the workspace's code at its end. */
+  waText: (business, code) => `היי, אני רוצה לשלם על המנוי של ${business}. ${code}`,
+
+  // What GET /internal/pay says is paid for, for Toran to tell the customer: a line for each product, as /setup
+  // lists it, then the total. `from`, for a month paid ahead, the day it starts.
+  summaryItem: (product, monthly, vat, setup, from = '') => `${SETUP.billingPrice(product, monthly, vat, setup)}${from ? `, על החודש שמתחיל ב-${from}` : ''}.`,
+  summaryTotal: (total, net, vat) => payNowLine(total, net, vat),
+
+  // To the operator (OF_SIGNUP_NOTIFY), when a receipt comes in.
+  noticeSubject: (business) => `אישור העברה מ״${business}״`,
+  noticeLines: (business, amount, phone, at, link) => [
+    'לקוח שלח לתורן בוואטסאפ צילום של העברה. התשלום נרשם רק אחרי שלוחצים "התשלום הגיע" בדף של האישור.',
+    `עסק: ${business}`,
+    `סכום: ${amount}`,
+    `טלפון: ${phone}`,
+    `מתי: ${at}`,
+    { link },
+  ],
+  noticeAmount: (total) => `${total}, כולל מע״מ`,
+  noticeNothing: 'כשהאישור הגיע, לא היה מה לשלם',
+  noticeButton: 'לבדוק ולאשר',
+
+  // /admin: the receipts nobody has decided on yet.
+  waitingTitle: 'אישורי העברה שמחכים',
+  waitingLead: 'צילומים של העברות שלקוחות שלחו לתורן. לפני שמאשרים, בודקים בבנק שהכסף נכנס.',
+  waitingNothing: 'בלי סכום',
+
+  // /admin/receipts/<id>
+  title: (business) => `אישור העברה מ״${business}״`,
+  factBusiness: 'עסק',
+  factPhone: 'נשלח מהמספר',
+  factAt: 'מתי',
+  imageAlt: (business) => `צילום ההעברה מ״${business}״`,
+  openPdf: 'לפתוח את הקובץ (PDF)',
+  fileGone: 'הקובץ נמחק, 90 יום אחרי שהגיע. שאר הפרטים נשארו כאן.',
+  thenTitle: 'מה היה לתשלום כשהאישור הגיע',
+  nowTitle: 'מה לתשלום היום',
+  nothingThen: 'לא היה מה לשלם.',
+  nothingNow: 'היום אין מה לשלם.',
+  moved: (product, d) => `מאז שהאישור הגיע נרשם תשלום על ${product}, ועכשיו הוא שולם עד ${d}.`,
+  recordHint: (names) => `"התשלום הגיע" רושם חודש על ${names} ושולח לבעלי החשבון מייל שהתשלום התקבל. "לא הגיע" רק סוגר את האישור, ושום דבר לא נרשם.`,
+  fromNow: 'כשהאישור הגיע לא היה מה לשלם, אז "התשלום הגיע" ירשום את מה שלתשלום היום.',
+  nothingToRecord: 'אין מה לרשום מהאישור הזה. אם צריך לרשום תשלום, רושמים אותו בדף החשבונות.',
+  toConsole: 'לחשבון בקונסולה',
+  paid: 'התשלום הגיע',
+  notPaid: 'לא הגיע',
+  decidedPaid: (at) => `סימנתם ב-${at} שהתשלום הגיע.`,
+  decidedNotPaid: (at) => `סימנתם ב-${at} שהתשלום לא הגיע.`,
+  back: 'חזרה ללוח',
+  flashPaid: (business, lines) => `${business}: התשלום נרשם. ${lines}`,
+  flashPaidLine: (product, d) => `${product} שולם עד ${d}.`,
+  flashNotPaid: (business) => `סימנו שהתשלום מ״${business}״ לא הגיע. שום דבר לא נרשם.`,
+  errors: {
+    decided: 'כבר החלטתם על האישור הזה, אז שום דבר לא השתנה.',
+    nothing_due: 'אין מה לרשום מהאישור הזה. אם צריך לרשום תשלום, רושמים אותו בדף החשבונות.',
+  },
 };
 
 // ---- cancelling a subscription online, /subscription/<product>/cancel

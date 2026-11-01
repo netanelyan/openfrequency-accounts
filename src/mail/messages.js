@@ -1,4 +1,4 @@
-import { MAIL, NOTIFY, PRODUCT_NAMES, dayHe, when } from '../web/copy.js';
+import { MAIL, NOTIFY, PAY, PRODUCT_NAMES, dayHe, ils, phoneHe, when } from '../web/copy.js';
 import { esc } from '../web/html.js';
 
 // The emails (a sign-in link, an invite, a sign-up to confirm, billing, a product's notice), as plain text and as
@@ -21,8 +21,14 @@ const FONT = "-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif";
 // to right inside a Hebrew line: without it a narrow screen breaks it at a dash, and the bidi order moves the pieces.
 const ltrNumbers = (html) => html.replace(/\d+(?:[-.:/]\d+)+/g, (n) => `<span dir="ltr" style="white-space:nowrap">${n}</span>`);
 
+// A WhatsApp link with its message written (paying over WhatsApp, src/web/pay.js): its button is enough, and the
+// address is not printed under it in the HTML, where it would show the message's words encoded. The text part keeps
+// it, as it keeps every link.
+const WA_TEXT = /^https:\/\/wa\.me\/\d+\?text=/;
+
 // `footer`, when there is one: { text, href, label }, a small line under the card (where to turn the email off).
-// `brand`: openfrequency, teder or toran.
+// `brand`: openfrequency, teder or toran. A line { link } is a button labelled `button`; { link, label } has its own,
+// for an email with two (the welcome email's payment and setup).
 function build(subject, lines, button, footer = null, brand = 'openfrequency') {
   const b = BRAND[brand] || BRAND.openfrequency;
   const link = lines.find((l) => typeof l === 'object')?.link;
@@ -34,8 +40,8 @@ function build(subject, lines, button, footer = null, brand = 'openfrequency') {
   const body = lines
     .map((l) =>
       typeof l === 'object'
-        ? `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:26px 0 12px"><tr><td bgcolor="${b.button}" style="background:${b.button};border-radius:12px"><a href="${esc(l.link)}" style="display:inline-block;padding:13px 30px;font:600 16px/1.25 ${FONT};color:#ffffff;text-decoration:none;border-radius:12px">${esc(button)}</a></td></tr></table>
-<p class="of-muted" style="margin:0 0 22px;font-size:13px;line-height:1.5;color:#636368;direction:ltr;text-align:right;word-break:break-all">${esc(l.link)}</p>`
+        ? `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:26px 0 12px"><tr><td bgcolor="${b.button}" style="background:${b.button};border-radius:12px"><a href="${esc(l.link)}" style="display:inline-block;padding:13px 30px;font:600 16px/1.25 ${FONT};color:#ffffff;text-decoration:none;border-radius:12px">${esc(l.label || button)}</a></td></tr></table>
+${WA_TEXT.test(l.link) ? '' : `<p class="of-muted" style="margin:0 0 22px;font-size:13px;line-height:1.5;color:#636368;direction:ltr;text-align:right;word-break:break-all">${esc(l.link)}</p>`}`
         : `<p class="of-ink" style="margin:0 0 16px;color:#1d1d1f">${ltrNumbers(esc(l)).replace(/\n/g, '<br>')}</p>`
     )
     .join('\n');
@@ -122,11 +128,15 @@ export const signupNoticeMail = (to, { name, email, business, products, prices =
  * they pay (OF_PAYMENT_METHOD), said when it is set, and questions go to a reply or to our WhatsApp (`wa`, digits).
  */
 // What the first payment comes to (`total`, its lines), in either mode; in manual mode then how to pay, the receipt
-// (אסמכתא) to us once the owner's payment details are in it, and whom to ask.
-export const welcomeMail = (to, { business, link, payment = 'manual', opens = '', prices = [], total = [], payHow = '', wa = null }) => {
+// (אסמכתא) to us once the owner's payment details are in it, and whom to ask. With `payLink` (paying over WhatsApp,
+// src/web/pay.js), the receipt's line gives way to the line that says to send the message as it is, and the button
+// `payButton` to that link, before the setup's.
+export const welcomeMail = (to, { business, link, payment = 'manual', opens = '', prices = [], total = [], payHow = '', wa = null, payLink = null, payButton = PAY.button }) => {
   const b = plain(business, 80);
   const how = plain(payHow, 200);
-  const manual = [...[].concat(total), ...(payment !== 'provider' ? [...(how ? [MAIL.welcomePayHow(how), MAIL.receipt(wa)] : []), MAIL.payAsk(wa)] : [])];
+  const overWa = payment !== 'provider' && how && payLink;
+  const receipt = overWa ? [PAY.explain, { link: payLink, label: payButton }] : [MAIL.receipt(wa)];
+  const manual = [...[].concat(total), ...(payment !== 'provider' ? [...(how ? [MAIL.welcomePayHow(how), ...receipt] : []), MAIL.payAsk(wa)] : [])];
   return { to, ...build(MAIL.welcomeSubject(b), MAIL.welcomeLines(b, link, payment, opens, [...[].concat(prices), ...manual], payment !== 'provider' && Boolean(how)), MAIL.welcomeButton) };
 };
 
@@ -159,6 +169,16 @@ export const billingNoticeMail = (to, { kind, business, product, dueOn, graceUnt
   return kind === 'stopped'
     ? { to, ...build(MAIL.stoppedNoticeSubject(b, p), MAIL.stoppedNoticeLines(b, p, link), MAIL.noticeButton) }
     : { to, ...build(MAIL.dueNoticeSubject(b, p), MAIL.dueNoticeLines(b, p, dayHe(dueOn), dayHe(graceUntil), link), MAIL.noticeButton) };
+};
+
+/**
+ * To the operator (OF_SIGNUP_NOTIFY): a customer sent Toran a picture of a transfer (POST /internal/pay/receipt). The
+ * business, what was owed when it came (with VAT), the number it came from, when, and one button to its page on
+ * /admin, where the payment is recorded or not. Nothing of the file is in the email.
+ */
+export const receiptNoticeMail = (to, { business, total, phone, at, link }) => {
+  const b = plain(business, 80);
+  return { to, ...build(PAY.noticeSubject(b), PAY.noticeLines(b, total ? PAY.noticeAmount(ils(total)) : PAY.noticeNothing, phoneHe(phone), when(at), link), PAY.noticeButton) };
 };
 
 /** To each owner of a workspace nobody used and nothing was paid for, 14 days before it is deleted (src/web/daily.js). */

@@ -56,6 +56,10 @@ console.log(
     ? 'Payment: provider (OF_PAYMENT): customers pay on OF_PAYMENT_URL, and each payment is still recorded on /admin before a product opens.'
     : 'Payment: manual (OF_PAYMENT unset or manual): customers are told we email them the payment details; the sign-up notice says to send them.'
 );
+// Paying over WhatsApp (docs/internal-pay.md): manual mode with both the payment details and the owner line's number.
+if (payment === 'manual' && String(env.OF_PAYMENT_METHOD || '').trim() && String(env.OF_ASSISTANT_WA || '').trim()) {
+  console.log('Paying over WhatsApp: on (OF_PAYMENT_METHOD and OF_ASSISTANT_WA): /setup and the emails lead to our owner line, Toran answers from GET /internal/pay, and the operator records each receipt on /admin.');
+}
 if (String(env.OF_BILLING_PROVIDER || '').trim()) console.log('OF_BILLING_PROVIDER is no longer read: OF_PAYMENT=provider with OF_PAYMENT_URL replaces it.');
 // What a stranger who signs up needs from us (docs/deploy.md, ACC-02, ACC-03): a way to ask about paying, a reply
 // address that reaches a person, and someone told of each sign-up (in manual mode, the one who sends the details).

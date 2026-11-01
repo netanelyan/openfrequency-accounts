@@ -15,17 +15,19 @@ import { acceptInvite, consumeMagicLink, createInvite, InviteError, normEmail, p
 import { verifySuperadmin } from '../accounts/superadmin.js';
 import { createWorkspace, getWorkspace, listWorkspaces, recentAudit, setDisabled, setProduct, startViewAs, stopViewAs, WorkspaceError } from '../accounts/workspaces.js';
 import { checkSignup, completeSignup, CONTACT_URL, dropSignup, peekSignup, requestSignup, SignupError, signupNotify, signupOpen, signupProducts } from '../accounts/signup.js';
-import { billingReady, checkoutUrl, payHow, paymentMode, supportWa } from '../accounts/billing.js';
+import { assistantWa, billingReady, checkoutUrl, payHow, paymentMode, supportWa } from '../accounts/billing.js';
 import { accessAll, accessFor, BillingError, cancelSubscription, resumeSubscription, setComp } from '../accounts/entitlement.js';
 import { eraseWorkspace, productsEver, sameName } from '../accounts/erase.js';
 import { prefsOf, savePrefs } from '../accounts/notify.js';
 import { cancelMail, cancelNoticeMail, deleteNoticeMail, existingAccountMail, inviteMail, magicLinkMail, paidMail, signupMail, signupNoticeMail, welcomeMail } from '../mail/messages.js';
-import { CANCEL, ERASE, MAIL, NOTIFY, OPS, PRODUCT_NAMES, SETUP, SIGNUP, T, dayHe, ils, opensAfter, phoneHe } from './copy.js';
+import { CANCEL, ERASE, MAIL, NOTIFY, OPS, PAY, PRODUCT_NAMES, SETUP, SIGNUP, T, dayHe, ils, opensAfter, phoneHe } from './copy.js';
+import { payOverWa } from './pay.js';
 import { setupClient, setupState } from './setup.js';
 import { eraseClient } from './erase.js';
-import { createLinkCode, openLinkCode, phoneIn, phonesFor, PHONE, removePhone, setConsent } from '../accounts/phones.js';
+import { createLinkCode, openLinkCode, phoneIn, phonesFor, removePhone, setConsent } from '../accounts/phones.js';
 import { describe, listPrice, payMonth, payTotal, setSubscription, subscriptionsOf } from '../accounts/subscriptions.js';
 import { addInvoice, invoiceIn, invoicesOf, PDF_MAX, removeInvoice } from '../accounts/invoices.js';
+import { decideReceipt, PayError, RECEIPT_TYPES, receiptById, receiptProducts, receiptsWaiting } from '../accounts/pay.js';
 import { cancelTeamInvite, inviteToTeam, removeMember, TEAM_LIMIT, TeamError, teamOf } from '../accounts/team.js';
 import { opsCustomers } from '../accounts/ops.js';
 import { now } from '../core/clock.js';
@@ -104,11 +106,8 @@ export function payContact(env = process.env, text = '') {
   return CONTACT_URL;
 }
 
-/** The owner line's WhatsApp number in international digits (OF_ASSISTANT_WA), or null while it is unset. */
-export function assistantWa(env = process.env) {
-  const digits = String(env.OF_ASSISTANT_WA || '').replace(/[\s+-]/g, '');
-  return PHONE.test(digits) ? digits : null;
-}
+/** The owner line's WhatsApp number (OF_ASSISTANT_WA): src/accounts/billing.js, where the billing emails read it too. */
+export { assistantWa };
 
 class Refused extends Error {
   constructor(status, message) {
@@ -273,7 +272,9 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
       const now = payTotal(owed);
       const total = owed.length ? [MAIL.payNow(ils(now.total), ils(now.net), now.vat ? ils(now.vat) : ''), ...(owed.length > months.length ? [MAIL.payThen(ils(payTotal(months).total))] : [])] : [];
       const opens = opensAfter(payment, products.map((p) => PRODUCT_NAMES[p]).join(SIGNUP.and), products.length > 1);
-      mailer.send(welcomeMail(user.email, { business: workspace.name, link: `${base}/setup`, payment, opens, prices, total, payHow: payHow(env), wa: supportWa(env) }));
+      // Paying over WhatsApp (src/web/pay.js): with OF_PAYMENT_METHOD and OF_ASSISTANT_WA, the payment's own button.
+      const wa = payOverWa(db, { env, workspaceId: workspace.id, business: workspace.name });
+      mailer.send(welcomeMail(user.email, { business: workspace.name, link: `${base}/setup`, payment, opens, prices, total, payHow: payHow(env), wa: supportWa(env), payLink: wa?.href || null, payButton: PAY.button }));
     } catch (e) {
       log(`[accounts] the welcome email for workspace ${workspace.id} failed: ${e.message}`);
     }
@@ -529,7 +530,9 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
         else if (d.status !== 200) return redirect('/');
         const wsId = d.body.workspace.id;
         const state = await setupFor(wsId);
-        return page(200, SETUP.title, P.setupPage({ state, productUrls: urls, readOnly: d.body.readOnly, flash, access: accessAll(db, wsId), prices: subscriptionsOf(db, wsId), payHow: payHow(env) }), { wide: true, banner });
+        // Paying over WhatsApp: the button's link with the workspace's code; read-only (view-as) makes no code.
+        const payWa = state.paid ? null : payOverWa(db, { env, workspaceId: wsId, business: d.body.workspace.name, mint: !d.body.readOnly });
+        return page(200, SETUP.title, P.setupPage({ state, productUrls: urls, readOnly: d.body.readOnly, flash, access: accessAll(db, wsId), prices: subscriptionsOf(db, wsId), payHow: payHow(env), payWa }), { wide: true, banner });
       }
 
       // The account, for a customer in their own workspace: cancelling a product's subscription (a confirmation page,
@@ -993,6 +996,22 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
           page(status, T.adminTitle, P.adminPage({ csrf, workspaces: listWorkspaces(db).map((w) => ({ ...w, access: accessAll(db, w.id) })), audit: recentAudit(db), flash, ...extra }), { wide: true, banner });
         // The console's actions come back to the console, the dashboard's to the dashboard.
         const toConsole = () => redirect('/admin/accounts');
+        // A receipt's page: what was owed then and what is owed now, the paid-until day of each product its button
+        // records (sent back with it, as the console's button does), and a line for each paid for since it came.
+        const receiptView = (r, status = 200, error = '') => {
+          const fresh = receiptById(db, r.id);
+          const record = receiptProducts(db, fresh);
+          const subs = subscriptionsOf(db, fresh.workspace_id);
+          const expects = Object.fromEntries(record.products.map((pr) => [pr, subs[pr]?.paid_until ?? '']));
+          const since = (l) => !fresh.decided_at && l.item && subs[l.product]?.paid_until && subs[l.product].paid_until !== (l.paidUntil ?? null);
+          const moved = (fresh.due.lines || []).filter(since).map((l) => ({ product: l.product, paidUntil: subs[l.product].paid_until }));
+          return page(status, PAY.title(fresh.business), P.receiptPage({ csrf, r: fresh, now: record.now, record, expects, moved, error }), { wide: true, banner });
+        };
+        // The file, as it came, of a type we checked by its bytes: never cached, never framed, nothing sniffed.
+        const receiptFile = (r) => {
+          res.writeHead(200, headers({ 'content-type': r.type, 'content-disposition': `inline; filename="receipt-${r.id}.${RECEIPT_TYPES[r.type]}"`, 'content-security-policy': "default-src 'none'; frame-ancestors 'none'" }));
+          return res.end(Buffer.from(r.file));
+        };
         const by = { by: me, ip };
         const problem = (e, form_) => {
           if (e instanceof WorkspaceError || e instanceof InviteError) return console_(400, { error: T.errors[e.code] || e.code, form: form_ });
@@ -1003,7 +1022,7 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
         if (p === '/admin' && req.method === 'GET') {
           const viewAs = Boolean(session.view_as_workspace_id);
           const t = viewAs ? null : { ...(await toran.ops()), base: toran.base };
-          const body = dashboardPage({ csrf, flash, flashBad, toran: t, customers: viewAs ? null : opsCustomers(db), at: now(), viewAs });
+          const body = dashboardPage({ csrf, flash, flashBad, toran: t, customers: viewAs ? null : opsCustomers(db), at: now(), viewAs, receipts: viewAs ? [] : receiptsWaiting(db) });
           return send(200, P.layout({ title: OPS.title, body, v: V, wide: true, banner, script: true }), { 'content-security-policy': CSP_SCRIPT });
         }
         if (p === '/admin/accounts' && req.method === 'GET') return console_(200);
@@ -1011,6 +1030,13 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
         if (m && req.method === 'GET') {
           const inv = db.get('SELECT * FROM invoices WHERE id = ?', Number(m[1]));
           if (inv) return pdf(inv);
+        }
+        // A transfer's receipt from Toran (src/accounts/pay.js): its page, and its file as it came.
+        m = /^\/admin\/receipts\/(\d+)(\/file)?$/.exec(p);
+        if (m && req.method === 'GET') {
+          const r = receiptById(db, m[1]);
+          if (r && m[2] && r.file) return receiptFile(r);
+          if (r && !m[2]) return receiptView(r);
         }
         if (req.method !== 'POST') return page(404, T.notFound, P.messagePage({ title: T.notFound, lead: '', links: [['/admin', T.adminTitle]] }), { banner });
 
@@ -1048,6 +1074,28 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
           audit(db, { actor: me, action: 'ops_action', ip, detail: { product: kind, id, action, ok: r.ok } });
           if (r.ok) return answer(true, r.message);
           return answer(false, r.error || (r.status ? OPS.toranFailed(r.status) : OPS.toranNoAnswer));
+        }
+
+        // The operator's answer to a receipt: the payment came (a month recorded for each product, guarded by the
+        // paid-until days the page showed, and each owner told), or it did not (nothing recorded).
+        m = /^\/admin\/receipts\/(\d+)\/(paid|not-paid)$/.exec(p);
+        if (m) {
+          const r = receiptById(db, m[1]);
+          if (!r) return page(404, T.notFound, P.messagePage({ title: T.notFound, lead: '', links: [['/admin', T.adminTitle]] }), { banner });
+          const expects = Object.fromEntries(PRODUCTS.map((pr) => [pr, f(`expect_${pr}`)]));
+          try {
+            const { recorded } = decideReceipt(db, r.id, m[2] === 'paid' ? 'paid' : 'not_paid', { ...by, expects });
+            if (m[2] === 'paid') {
+              const owners = db.all("SELECT u.email FROM memberships m JOIN users u ON u.id = m.user_id WHERE m.workspace_id = ? AND m.role = 'client_owner' AND u.disabled_at IS NULL", r.workspace_id);
+              for (const x of recorded) for (const o of owners) mailer.send(paidMail(o.email, { business: r.business, product: x.product, until: x.until, link: `${base}/` }));
+              setFlash(PAY.flashPaid(r.business, recorded.map((x) => PAY.flashPaidLine(PRODUCT_NAMES[x.product], dayHe(x.until))).join(' ')));
+            } else setFlash(PAY.flashNotPaid(r.business));
+            return redirect('/admin');
+          } catch (e) {
+            if (e instanceof PayError) return receiptView(r, 409, PAY.errors[e.code] || e.code);
+            if (e instanceof WorkspaceError) return receiptView(r, 409, T.errors[e.code] || e.code);
+            throw e;
+          }
         }
 
         if (p === '/admin/workspaces') {
