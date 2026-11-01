@@ -607,7 +607,10 @@ export const SIGNUP = {
   /** How paying works, by the payment mode (OF_PAYMENT), and cancelling. */
   pricesNote: (mode) =>
     `${mode === 'provider' ? 'אחרי שהחשבון נפתח, משלמים בו בכרטיס אשראי' : 'אחרי שהחשבון נפתח, נשלח לכם במייל את פרטי התשלום'}, ו${opensAfter(mode, 'המוצרים', true)} אפשר לבטל את המנוי מהדף הראשי, והוא עובד עד סוף התקופה ששולמה.`,
-  termsPre: 'מסכימים ל',
+  // The box's words are the ones the contracts name: כשמסמנים בהרשמה "קראתי והסכמתי" (openfrequency-web legal.mjs).
+  termsPre: 'קראתי והסכמתי ל',
+  contractLink: (product) => `הסכם של ${product}`,
+  contractSep: ', ל',
   termsLink: 'תנאי השימוש',
   termsMid: ' ול',
   privacyLink: 'מדיניות הפרטיות',
@@ -625,7 +628,7 @@ export const SIGNUP = {
     bad_email: 'הכתובת הזאת לא נראית כמו כתובת מייל. בדקו אותה ונסו שוב.',
     no_products: 'צריך לבחור לפחות מוצר אחד.',
     product_closed: 'ההרשמה לאחד המוצרים שבחרתם עוד לא נפתחה. אפשר להירשם עכשיו למוצרים שפתוחים.',
-    no_terms: 'כדי לפתוח חשבון צריך להסכים לתנאי השימוש ולמדיניות הפרטיות.',
+    no_terms: 'כדי לפתוח חשבון צריך להסכים להסכם של המוצר, לתנאי השימוש ולמדיניות הפרטיות.',
     bad_plan: 'צריך לבחור אחת מהחבילות של תדר.',
   },
   busy: 'היום נשלחו מכאן הרבה מיילים של הרשמה, אז עצרנו אותם עד מחר. אפשר לנסות שוב מחר, או לכתוב לנו.',

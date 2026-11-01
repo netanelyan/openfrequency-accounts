@@ -8,7 +8,7 @@ import { now as clockNow } from '../core/clock.js';
 import { total } from '../accounts/invoices.js';
 import { KINDS } from '../accounts/notify.js';
 import { AUDIT_NAMES, CANCEL, ERASE, MORNING, NOTIFY, OPS, PAY, PLAN_NAMES, PRODUCT_NAMES, ROLE_NAMES, SETUP, SIGNUP, T, dayHe, hourHe, ils, opensAfter, phoneHe, planGives, when } from './copy.js';
-import { PRIVACY_URL, TERMS_URL } from '../accounts/signup.js';
+import { CONTRACT_URLS, PRIVACY_URL, TERMS_URL } from '../accounts/signup.js';
 
 // Server-rendered pages: Hebrew, right to left, one stylesheet. Our own script files only: static/a11y.js (the
 // accessibility panel) and static/load.js (the loading state) on every page, and on the operator's dashboard on /admin
@@ -409,6 +409,9 @@ export function signupPage({ csrf, form = {}, error = '', google = false, open =
       ? `<label class="product-pick"><input type="checkbox" name="products" value="${p}"${chosen.includes(p) ? ' checked' : ''}>${productMark(p)}<span><b>${esc(PRODUCT_NAMES[p])}</b><small>${esc(SIGNUP.productWhat[p])}</small>${PLANS[p] ? '' : `<small class="price">${esc(SIGNUP.price(ils(LIST_PRICES[p].monthly), ils(LIST_PRICES[p].setup)))}</small>`}</span></label>${plans(p)}`
       : `<label class="product-pick soon"><input type="checkbox" disabled aria-describedby="su-soon-${p}">${productMark(p)}<span><b>${esc(PRODUCT_NAMES[p])}</b><small id="su-soon-${p}">${esc(SIGNUP.productSoon)}</small></span><span class="tag off">${esc(SIGNUP.soon)}</span></label>`;
   const order = ['toran', 'teder'].sort((a, b) => Number(!open.includes(a)) - Number(!open.includes(b)));
+  // The box: the short contract of each product the form sells, then the terms and the privacy policy, each in a tab.
+  const newTab = (href, words) => `<a href="${esc(href)}" target="_blank" rel="noopener">${esc(words)}</a>`;
+  const contracts = order.filter((p) => open.includes(p)).map((p) => newTab(CONTRACT_URLS[p], SIGNUP.contractLink(PRODUCT_NAMES[p])));
   return `
 <section class="card signup">
 <h1>${esc(SIGNUP.heading)}</h1>
@@ -425,7 +428,7 @@ ${order.map(product).join('\n')}
 ${open.length > 1 ? `<small>${esc(SIGNUP.productsHint)}</small>` : ''}
 <small>${esc(SIGNUP.pricesNote(payment))}</small>
 </fieldset>
-<label class="check terms"><input type="checkbox" name="terms" value="1" required${form.terms ? ' checked' : ''}> <span>${esc(SIGNUP.termsPre)}<a href="${esc(TERMS_URL)}" target="_blank" rel="noopener">${esc(SIGNUP.termsLink)}</a>${esc(SIGNUP.termsMid)}<a href="${esc(PRIVACY_URL)}" target="_blank" rel="noopener">${esc(SIGNUP.privacyLink)}</a></span></label>
+<label class="check terms"><input type="checkbox" name="terms" value="1" required${form.terms ? ' checked' : ''}> <span>${esc(SIGNUP.termsPre)}${contracts.map((c) => `${c}${esc(SIGNUP.contractSep)}`).join('')}${newTab(TERMS_URL, SIGNUP.termsLink)}${esc(SIGNUP.termsMid)}${newTab(PRIVACY_URL, SIGNUP.privacyLink)}</span></label>
 <div class="hp" aria-hidden="true"><label for="su-website">${esc(SIGNUP.honeypot)}</label><input id="su-website" name="website" tabindex="-1" autocomplete="off"></div>
 <label for="su-email">${esc(SIGNUP.emailLabel)}</label>
 <input id="su-email" name="email" type="email" inputmode="email" autocomplete="email" dir="ltr" required maxlength="254" placeholder="name@example.com" value="${esc(form.email || '')}">

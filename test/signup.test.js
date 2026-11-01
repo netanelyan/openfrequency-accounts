@@ -82,6 +82,8 @@ test('open: the form asks for the name, the business, the products with a line e
     assert.match(page.body, /מצגות בעברית לטיקטוק, לאינסטגרם ולפייסבוק/);
     assert.match(page.body, /href="https:\/\/openfrequency\.co\.il\/terms"/);
     assert.match(page.body, /href="https:\/\/openfrequency\.co\.il\/privacy"/);
+    // The box names each product's short contract first, in the words the contracts use (קראתי והסכמתי).
+    assert.match(page.body, /<span>קראתי והסכמתי ל<a href="https:\/\/openfrequency\.co\.il\/toran\/contract" target="_blank" rel="noopener">הסכם של תורן<\/a>, ל<a href="https:\/\/openfrequency\.co\.il\/teder\/contract" target="_blank" rel="noopener">הסכם של תדר<\/a>, ל<a href="https:\/\/openfrequency\.co\.il\/terms"/);
     // No Google button while Google is not set up, and no script on the page.
     assert.doesNotMatch(page.body, /value="google"/);
     assert.doesNotMatch(withoutLoadJs(page.body), /<script/);
@@ -108,7 +110,7 @@ test("the form's checks: each mistake is said, the answers are kept (escaped), a
       [{ business: 'b'.repeat(81) }, /צריך את שם העסק/],
       [{ products: [] }, /צריך לבחור לפחות מוצר אחד/],
       [{ products: ['other'] }, /צריך לבחור לפחות מוצר אחד/],
-      [{ terms: '' }, /צריך להסכים לתנאי השימוש ולמדיניות הפרטיות/],
+      [{ terms: '' }, /צריך להסכים להסכם של המוצר, לתנאי השימוש ולמדיניות הפרטיות/],
       [{ email: 'not an email' }, /לא נראית כמו כתובת מייל/],
       [{ email: 'a@b' }, /לא נראית כמו כתובת מייל/],
     ];
