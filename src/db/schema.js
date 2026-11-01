@@ -344,4 +344,24 @@ export const MIGRATIONS = [
   CREATE INDEX pay_receipts_open ON pay_receipts(decided_at, created_at);
   CREATE INDEX pay_receipts_code ON pay_receipts(code, created_at);
   `,
+  `
+  -- What Toran read on a receipt's picture (the amount, the date, the account it went to, the payee and the reference),
+  -- checked and cut to size (src/accounts/pay.js checkOf()): shown to the operator, deciding nothing.
+  ALTER TABLE pay_receipts ADD COLUMN check_json TEXT;
+  -- What "התשלום הגיע" recorded: each product's month (from, until), its price as the customer was asked, the total
+  -- with VAT. The invoice is issued from it, the first time and on every retry, so a retry asks for the same document.
+  ALTER TABLE pay_receipts ADD COLUMN bill_json TEXT;
+  -- The invoice-receipt (חשבונית מס/קבלה, type 320) issued in Morning for it (src/accounts/morning.js): 'issuing'
+  -- while a request is out (the guard: one at a time, never a second document once there is one), then 'issued', or
+  -- 'failed' or 'blocked' (Morning's VAT settings do not match what was charged), with the reason; the document's id,
+  -- number and link; and the copy kept in invoices, for the customer's page, when its PDF could be fetched.
+  ALTER TABLE pay_receipts ADD COLUMN morning_state TEXT CHECK (morning_state IS NULL OR morning_state IN ('issuing', 'issued', 'failed', 'blocked'));
+  ALTER TABLE pay_receipts ADD COLUMN morning_at TEXT;
+  ALTER TABLE pay_receipts ADD COLUMN morning_error_json TEXT;
+  ALTER TABLE pay_receipts ADD COLUMN morning_doc_id TEXT;
+  ALTER TABLE pay_receipts ADD COLUMN morning_doc_number TEXT;
+  ALTER TABLE pay_receipts ADD COLUMN morning_url TEXT;
+  ALTER TABLE pay_receipts ADD COLUMN invoice_id INTEGER REFERENCES invoices(id) ON DELETE SET NULL;
+  CREATE UNIQUE INDEX pay_receipts_morning_doc ON pay_receipts(morning_doc_id) WHERE morning_doc_id IS NOT NULL;
+  `,
 ];

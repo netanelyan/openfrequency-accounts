@@ -384,6 +384,9 @@ export const AUDIT_NAMES = {
   pay_receipt_received: 'אישור העברה הגיע בוואטסאפ',
   pay_receipt_paid: 'אישור העברה: התשלום הגיע',
   pay_receipt_not_paid: 'אישור העברה: התשלום לא הגיע',
+  morning_issued: 'חשבונית הופקה ב-Morning',
+  morning_failed: 'חשבונית לא הופקה ב-Morning',
+  morning_blocked: 'חשבונית לא הופקה: הגדרות המע״מ ב-Morning',
 };
 
 // ---- emails
@@ -740,12 +743,15 @@ export const PAY = {
 
   // To the operator (OF_SIGNUP_NOTIFY), when a receipt comes in.
   noticeSubject: (business) => `אישור העברה מ״${business}״`,
-  noticeLines: (business, amount, phone, at, link) => [
-    'לקוח שלח לתורן בוואטסאפ צילום של העברה. התשלום נרשם רק אחרי שלוחצים "התשלום הגיע" בדף של האישור.',
+  // `check`: what Toran read on the picture (checkLines() below), then always the bank.
+  noticeLines: (business, amount, phone, at, link, check = []) => [
+    'צילום של העברה הגיע לתורן בוואטסאפ. התשלום נרשם רק אחרי שלוחצים "התשלום הגיע" בדף של האישור.',
     `עסק: ${business}`,
     `סכום: ${amount}`,
     `טלפון: ${phone}`,
     `מתי: ${at}`,
+    ...(check.length ? [`${PAY.checkTitle}:\n${check.join('\n')}`] : []),
+    PAY.checkBank,
     { link },
   ],
   noticeAmount: (total) => `${total}, כולל מע״מ`,
@@ -785,6 +791,80 @@ export const PAY = {
   errors: {
     decided: 'כבר החלטתם על האישור הזה, אז שום דבר לא השתנה.',
     nothing_due: 'אין מה לרשום מהאישור הזה. אם צריך לרשום תשלום, רושמים אותו בדף החשבונות.',
+  },
+
+  // What Toran read on the picture (src/accounts/pay.js checkOf()): lines for the operator, on the receipt's page and
+  // in its email, and always the reminder that the bank is what counts. `total` is what was owed when it came.
+  checkTitle: 'מה תורן קרא בצילום',
+  checkBank: 'בדקו בבנק שההעברה הגיעה לפני שמאשרים.',
+  checkLines: (c, total = 0) => {
+    if (!c) return [];
+    const lines = [];
+    const seenDay = (d) => (/^\d{4}-\d{2}-\d{2}$/.test(d) ? dayHe(d) : d);
+    if (c.readable === false) lines.push('תורן לא הצליח לקרוא את הצילום.');
+    if (c.isTransfer === false) lines.push('לפי תורן, זה לא נראה כמו אישור על העברה.');
+    if (c.amount) {
+      const want = total || c.amount.expected;
+      const verdict = { ok: 'תואם', mismatch: `לא תואם${want ? `, צריך ${ils(want)}` : ''}` }[c.amount.verdict];
+      lines.push(`הסכום בצילום: ${c.amount.seen != null ? ils(c.amount.seen) : 'לא ברור'}${verdict ? ` (${verdict})` : ''}`);
+    }
+    if (c.date) {
+      const verdict = { ok: 'תקין', too_old: 'ישן מדי', future: 'תאריך עתידי' }[c.date.verdict];
+      lines.push(`התאריך בצילום: ${c.date.seen ? seenDay(c.date.seen) : 'לא ברור'}${verdict ? ` (${verdict})` : ''}`);
+    }
+    if (c.account) {
+      const verdict = { ok: 'תואם', mismatch: 'לא תואם' }[c.account.verdict];
+      lines.push(`החשבון שהועבר אליו: ${c.account.seen ? `מסתיים ב-${c.account.seen}` : 'לא ברור'}${verdict ? ` (${verdict})` : ''}`);
+    }
+    if (c.payeeName) lines.push(`שם המקבל בצילום: ${c.payeeName}`);
+    if (c.reference) lines.push(`האסמכתא בצילום: ${c.reference}`);
+    return lines;
+  },
+};
+
+// ---- the invoice-receipt in Morning (src/accounts/morning.js), after "התשלום הגיע"
+//
+// The document's own words go to Morning, which prints them on the חשבונית מס/קבלה and emails it to the customer.
+// The rest is the operator's, on the receipt's page.
+
+export const MORNING = {
+  /** The document's description: the products it is for. */
+  description: (names) => `מנוי ${names}`,
+  monthRow: (product, from, until) => `מנוי ${product}, ${from} עד ${until}`,
+  setupRow: (product) => `דמי הקמה, ${product}`,
+  emailContent: 'קיבלנו את התשלום על המנוי, והחשבונית מצורפת.',
+
+  // The receipt's page, once "התשלום הגיע" was pressed.
+  off: 'החשבונית לא הופקה אוטומטית: Morning לא מחובר.',
+  issuing: 'Morning מפיק עכשיו את החשבונית. רעננו את הדף בעוד רגע.',
+  issued: (number) => `Morning הפיק חשבונית מס קבלה ${number} ושלח אותה ללקוח במייל. עותק שלה נמצא בדף של הלקוח.`,
+  issuedNoPdf: (number) => `Morning הפיק חשבונית מס קבלה ${number} ושלח אותה ללקוח במייל. את הקובץ לא הצלחנו להוריד, אז אין עותק שלה בדף של הלקוח.`,
+  openInMorning: 'לפתוח ב-Morning',
+  failed: (why, code) => `לא הצלחנו להפיק חשבונית. ${why} (קוד ${code})`,
+  morningSaid: (text) => `Morning כתב: ${text}`,
+  blocked: (why) => `לא הפקנו חשבונית. ${why} התשלום כבר נרשם.`,
+  retry: 'להפיק חשבונית שוב',
+  maybeIssued: 'ייתכן שהחשבונית בכל זאת הופקה. בדקו ב-Morning לפני שמפיקים שוב.',
+  flashIssued: (number) => `Morning הפיק חשבונית מס קבלה ${number}.`,
+  flashFailed: 'לא הצלחנו להפיק חשבונית. הפרטים בדף של האישור.',
+  why: {
+    timeout: 'Morning לא ענה בזמן.',
+    unreachable: 'לא הצלחנו להגיע ל-Morning.',
+    invalid_client: 'Morning לא קיבל את המפתחות (OF_MORNING_CLIENT_ID ו-OF_MORNING_CLIENT_SECRET).',
+    invalid_grant: 'Morning לא קיבל את המפתחות (OF_MORNING_CLIENT_ID ו-OF_MORNING_CLIENT_SECRET).',
+    unauthorized_client: 'בחבילה של Morning אין גישה ל-API. צריך חבילה שכוללת אותה.',
+    1006: 'צריך לחדש את המנוי ב-Morning.',
+    1010: 'Morning קיבל את הבקשה הזאת פעמיים. בדקו שם אם החשבונית כבר הופקה.',
+    1012: 'הפעולה הזאת צריכה חבילה גבוהה יותר ב-Morning.',
+    1018: 'Morning לא קיבל את כתובת המייל של הלקוח.',
+    1019: 'Morning לא קיבל את כתובת המייל של הלקוח.',
+    bad_answer: 'Morning ענה תשובה שלא הבנו.',
+    other: 'Morning החזיר שגיאה.',
+  },
+  blockedWhy: {
+    exempt: 'ב-Morning העסק מוגדר כפטור ממע״מ, אבל בתשלום הזה נוסף מע״מ. מתקנים את ההגדרה ב-Morning, ואז מפיקים שוב.',
+    vat_rate: (rate) => `שיעור המע״מ ב-Morning הוא ${rate}, ואצלנו 18%. מתקנים את ההגדרה ב-Morning, ואז מפיקים שוב.`,
+    vat_unknown: 'Morning לא אמר מה שיעור המע״מ אצלו, אז אי אפשר לבדוק שהחשבונית תהיה נכונה.',
   },
 };
 

@@ -24,6 +24,7 @@ if (payProblem) {
 const { openDb, closeDb, SchemaError } = await import('../src/db/index.js');
 const { listen } = await import('../src/web/server.js');
 const { startDaily } = await import('../src/web/daily.js');
+const { morningConfig, morningProblem } = await import('../src/accounts/morning.js');
 
 const env = process.env;
 let db;
@@ -60,6 +61,10 @@ console.log(
 if (payment === 'manual' && String(env.OF_PAYMENT_METHOD || '').trim() && String(env.OF_ASSISTANT_WA || '').trim()) {
   console.log('Paying over WhatsApp: on (OF_PAYMENT_METHOD and OF_ASSISTANT_WA): /setup and the emails lead to our owner line, Toran answers from GET /internal/pay, and the operator records each receipt on /admin.');
 }
+// The invoice-receipt in Morning after "התשלום הגיע" on a receipt (src/accounts/morning.js). Never a key's value.
+const morningSet = morningConfig(env);
+console.log(morningSet ? `Morning: on (${morningSet.mode}): marking a transfer's receipt paid on /admin issues its invoice-receipt there.` : 'Morning: off (OF_MORNING_CLIENT_ID and OF_MORNING_CLIENT_SECRET unset): invoices are issued by hand.');
+if (morningProblem(env)) console.log(morningProblem(env));
 if (String(env.OF_BILLING_PROVIDER || '').trim()) console.log('OF_BILLING_PROVIDER is no longer read: OF_PAYMENT=provider with OF_PAYMENT_URL replaces it.');
 // What a stranger who signs up needs from us (docs/deploy.md, ACC-02, ACC-03): a way to ask about paying, a reply
 // address that reaches a person, and someone told of each sign-up (in manual mode, the one who sends the details).

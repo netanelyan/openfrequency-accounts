@@ -58,7 +58,10 @@ WhatsApp: `/setup`, the welcome email and the billing emails have one button tha
 line with the message written; Toran answers with the amount and the details from
 `GET /internal/pay`, posts the picture of the transfer to `POST /internal/pay/receipt`, and the
 operator records it on `/admin/receipts/<id>` with one press. Toran never records a payment
-([docs/internal-pay.md](docs/internal-pay.md)).
+([docs/internal-pay.md](docs/internal-pay.md)). With Morning's API keys (`OF_MORNING_CLIENT_ID`,
+`OF_MORNING_CLIENT_SECRET`, `OF_MORNING_ENV`), that press also issues the חשבונית מס/קבלה in
+Morning, once, after the payment is recorded and only when Morning's VAT settings match what was
+charged, and its PDF goes onto the customer's page.
 Teder and Toran ask `GET /internal/entitlement?workspace=<id>&product=<p>`: `access` is `paid`,
 `comp`, `unpaid`, `cancelled` or `off`, and `allowed` says whether to open. Every workspace that
 existed before the paywall (migration 7) is complimentary for the products it had on, so nothing

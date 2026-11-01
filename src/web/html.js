@@ -3,9 +3,11 @@ import path from 'node:path';
 import { ROOT } from '../core/paths.js';
 import { addDays, addMonths, describe, israelToday, LIST_PRICES, PLANS, plansOf } from '../accounts/subscriptions.js';
 import { dueOf } from '../accounts/billing.js';
+import { ISSUING_STALE_MS } from '../accounts/morning.js';
+import { now as clockNow } from '../core/clock.js';
 import { total } from '../accounts/invoices.js';
 import { KINDS } from '../accounts/notify.js';
-import { AUDIT_NAMES, CANCEL, ERASE, NOTIFY, OPS, PAY, PLAN_NAMES, PRODUCT_NAMES, ROLE_NAMES, SETUP, SIGNUP, T, dayHe, hourHe, ils, opensAfter, phoneHe, planGives, when } from './copy.js';
+import { AUDIT_NAMES, CANCEL, ERASE, MORNING, NOTIFY, OPS, PAY, PLAN_NAMES, PRODUCT_NAMES, ROLE_NAMES, SETUP, SIGNUP, T, dayHe, hourHe, ils, opensAfter, phoneHe, planGives, when } from './copy.js';
 import { PRIVACY_URL, TERMS_URL } from '../accounts/signup.js';
 
 // Server-rendered pages: Hebrew, right to left, one stylesheet. Our own script files only: static/a11y.js (the
@@ -841,13 +843,42 @@ const owedList = (due, nothing) => {
 };
 
 /**
- * A receipt (/admin/receipts/<id>): the picture (a PDF as a link; nothing once the file is deleted), the business, the
- * number it came from and when, what was owed when it came and what is owed today, a line for each product paid for
- * since it came (`moved`), and until it is decided the two buttons side by side: "התשלום הגיע", which records a month
- * for each of `record.products` with the paid-until day shown here (`expects`), and "לא הגיע", which records nothing.
+ * The invoice, on a receipt marked paid (src/accounts/morning.js): issued (its number, and its link in Morning when its
+ * PDF could not be kept), on its way, why it was not issued (Morning's code and its own words, escaped) with "להפיק
+ * חשבונית שוב", or, with Morning off, that it was not issued automatically.
  */
-export function receiptPage({ csrf, r, now, record, expects = {}, moved = [], error = '' }) {
+function morningLine(r, csrf, morningOn) {
+  if (r.decision !== 'paid') return '';
+  if (r.morning_state === 'issued') {
+    const link = r.morning_url && /^https:\/\//i.test(r.morning_url) ? ` <a href="${esc(r.morning_url)}" target="_blank" rel="noopener">${esc(MORNING.openInMorning)}</a>` : '';
+    return `<p class="notice">${esc((r.invoice_id ? MORNING.issued : MORNING.issuedNoPdf)(r.morning_doc_number))}${link}</p>`;
+  }
+  if (!morningOn) return `<p class="muted">${esc(MORNING.off)}</p>`;
+  const stale = r.morning_state === 'issuing' && Date.parse(r.morning_at) < clockNow() - ISSUING_STALE_MS;
+  if (r.morning_state === 'issuing' && !stale) return `<p class="muted">${esc(MORNING.issuing)}</p>`;
+  const e = r.morningError || {};
+  let why = '';
+  if (r.morning_state === 'blocked') {
+    const b = MORNING.blockedWhy[e.reason] || MORNING.blockedWhy.vat_unknown;
+    why = MORNING.blocked(typeof b === 'function' ? b(e.rate || '') : b);
+  } else if (r.morning_state === 'failed') {
+    const lost = e.step === 'issue' && ['timeout', 'unreachable', 'bad_answer'].includes(e.code);
+    why = [MORNING.failed(MORNING.why[e.code] || MORNING.why.other, e.code), e.detail ? MORNING.morningSaid(e.detail) : '', lost ? MORNING.maybeIssued : ''].filter(Boolean).join(' ');
+  } else if (stale) why = MORNING.maybeIssued;
+  return `${why ? `<p class="error" role="alert">${esc(why)}</p>` : ''}<div class="row inv-retry">${button(`/admin/receipts/${esc(r.id)}/invoice`, MORNING.retry, csrf, { kind: 'quiet' })}</div>`;
+}
+
+/**
+ * A receipt (/admin/receipts/<id>): the picture (a PDF as a link; nothing once the file is deleted), the business, the
+ * number it came from and when, what Toran read on the picture (its words escaped, never in a link) and, always, that
+ * the bank is what counts; what was owed when it came and what is owed today, a line for each product paid for since
+ * it came (`moved`), and until it is decided the two buttons side by side: "התשלום הגיע", which records a month for
+ * each of `record.products` with the paid-until day shown here (`expects`), and "לא הגיע", which records nothing.
+ * Once paid, the invoice (morningLine()).
+ */
+export function receiptPage({ csrf, r, now, record, expects = {}, moved = [], error = '', flash = '', flashBad = false, morningOn = false }) {
   const base = `/admin/receipts/${esc(r.id)}`;
+  const read = PAY.checkLines(r.check, r.due?.total);
   const file = !r.file
     ? `<p class="muted">${esc(PAY.fileGone)}</p>`
     : r.type === 'application/pdf'
@@ -862,16 +893,20 @@ export function receiptPage({ csrf, r, now, record, expects = {}, moved = [], er
 <div class="row">${record.products.length ? button(`${base}/paid`, PAY.paid, csrf, { fields, kind: 'primary' }) : ''}${button(`${base}/not-paid`, PAY.notPaid, csrf, { kind: 'quiet' })}</div>`;
   return `
 ${adminTop({ csrf, tab: 'today' })}
+${flash ? `<p class="flash${flashBad ? ' bad' : ''}" role="${flashBad ? 'alert' : 'status'}">${esc(flash)}</p>` : ''}
 <section class="card receipt">
 <h2>${esc(PAY.title(r.business))}</h2>
 ${error ? `<p class="error" role="alert">${esc(error)}</p>` : ''}
 ${decided}
+${morningLine(r, csrf, morningOn)}
 ${file}
 <dl class="facts">
 <div><dt>${esc(PAY.factBusiness)}</dt><dd><a href="/admin/accounts#ws-${esc(r.workspace_id)}">${esc(r.business)}</a></dd></div>
 <div><dt>${esc(PAY.factPhone)}</dt><dd><bdi class="ltr">${esc(phoneHe(r.phone))}</bdi></dd></div>
 <div><dt>${esc(PAY.factAt)}</dt><dd>${esc(when(r.created_at))}</dd></div>
 </dl>
+${read.length ? `<h3>${esc(PAY.checkTitle)}</h3>\n<ul class="check">${read.map((l) => `<li>${esc(l)}</li>`).join('')}</ul>` : ''}
+<p class="warn">${esc(PAY.checkBank)}</p>
 <h3>${esc(PAY.thenTitle)}</h3>
 ${owedList(r.due, PAY.nothingThen)}
 <h3>${esc(PAY.nowTitle)}</h3>

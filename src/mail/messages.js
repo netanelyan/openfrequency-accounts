@@ -173,12 +173,15 @@ export const billingNoticeMail = (to, { kind, business, product, dueOn, graceUnt
 
 /**
  * To the operator (OF_SIGNUP_NOTIFY): a customer sent Toran a picture of a transfer (POST /internal/pay/receipt). The
- * business, what was owed when it came (with VAT), the number it came from, when, and one button to its page on
- * /admin, where the payment is recorded or not. Nothing of the file is in the email.
+ * business, what was owed when it came (with VAT), the number it came from, when, what Toran read on the picture
+ * (`check`, src/accounts/pay.js checkOf(): its words are the picture's, made plain here and escaped by build()), that the
+ * bank is what counts, and one button to its page on /admin, where the payment is recorded or not. Nothing of the
+ * file is in the email.
  */
-export const receiptNoticeMail = (to, { business, total, phone, at, link }) => {
+export const receiptNoticeMail = (to, { business, total, phone, at, link, check = null }) => {
   const b = plain(business, 80);
-  return { to, ...build(PAY.noticeSubject(b), PAY.noticeLines(b, total ? PAY.noticeAmount(ils(total)) : PAY.noticeNothing, phoneHe(phone), when(at), link), PAY.noticeButton) };
+  const read = PAY.checkLines(check, total).map((l) => plain(l, 200));
+  return { to, ...build(PAY.noticeSubject(b), PAY.noticeLines(b, total ? PAY.noticeAmount(ils(total)) : PAY.noticeNothing, phoneHe(phone), when(at), link, read), PAY.noticeButton) };
 };
 
 /** To each owner of a workspace nobody used and nothing was paid for, 14 days before it is deleted (src/web/daily.js). */

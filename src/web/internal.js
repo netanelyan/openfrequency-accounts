@@ -179,11 +179,11 @@ export function internalHandler(db, { env = process.env, log = console.error, ma
         }
         case '/internal/pay/receipt': {
           const body = await readJson(req, RECEIPT_BODY_LIMIT);
-          const r = addReceipt(db, { code: body.code, phone: body.phone, file: body.file });
+          const r = addReceipt(db, { code: body.code, phone: body.phone, file: body.file, check: body.check });
           // The operator hears of it with a link to its page. The mailer queues and never waits; a failure here is
           // logged, and the receipt is kept either way.
           try {
-            for (const to of signupNotify(env)) mailer?.send(receiptNoticeMail(to, { business: r.workspace.name, total: r.due.total, phone: body.phone, at: r.createdAt, link: `${base}/admin/receipts/${r.id}` }));
+            for (const to of signupNotify(env)) mailer?.send(receiptNoticeMail(to, { business: r.workspace.name, total: r.due.total, phone: body.phone, at: r.createdAt, link: `${base}/admin/receipts/${r.id}`, check: r.check }));
           } catch (e) {
             log(`[accounts] the receipt notice for receipt ${r.id} failed: ${e.message}`);
           }

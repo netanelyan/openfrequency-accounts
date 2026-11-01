@@ -5,7 +5,7 @@ import { j } from '../db/index.js';
 import { amountDue, PAY_AHEAD_DAYS } from './billing.js';
 import { endOfIsraelDay } from './entitlement.js';
 import { CODE_ALPHABET, validPhone } from './phones.js';
-import { addDays, israelToday, payMonth } from './subscriptions.js';
+import { addDays, addMonths, israelToday, payMonth, payTotal } from './subscriptions.js';
 
 // Paying over WhatsApp (docs/internal-pay.md). In manual mode, with the owner's payment details (OF_PAYMENT_METHOD)
 // and the owner line's number (OF_ASSISTANT_WA), "לתשלום בוואטסאפ" on /setup and in the billing and welcome emails
@@ -116,32 +116,66 @@ export function checkFile(file) {
   return { name, type, data: buf };
 }
 
+// What Toran read on the picture (POST /internal/pay/receipt's optional `check`). It comes from a model reading a
+// screenshot, so it is held as text for the operator to weigh and decides nothing: only these keys, each of its type
+// or dropped, every string without control or bidi characters and at most 80 characters, every verdict one of its
+// words. payeeName and reference are whatever was on the picture: the pages and the email escape them, and nothing
+// puts them in a link.
+const VERDICTS = { amount: ['ok', 'mismatch', 'unknown'], date: ['ok', 'too_old', 'future', 'unknown'], account: ['ok', 'mismatch', 'unknown'] };
+const BIDI = /[\u0000-\u001f\u007f‎‏‪-‮⁦-⁩]/g;
+const text80 = (v) => (typeof v === 'string' ? v.replace(BIDI, ' ').replace(/\s+/g, ' ').trim().slice(0, 80) || undefined : undefined);
+const sum = (v) => (typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= 10_000_000 ? Math.round(v * 100) / 100 : undefined);
+const pick = (o) => {
+  const kept = Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined));
+  return Object.keys(kept).length ? kept : undefined;
+};
+const isObj = (v) => Boolean(v) && typeof v === 'object' && !Array.isArray(v);
+
+/** Toran's reading of the picture, checked (above): { readable, isTransfer, amount, date, account, payeeName, reference }, or null. */
+export function checkOf(raw) {
+  if (!isObj(raw)) return null;
+  const verdict = (part, v) => (VERDICTS[part].includes(v) ? v : undefined);
+  return (
+    pick({
+      readable: typeof raw.readable === 'boolean' ? raw.readable : undefined,
+      isTransfer: typeof raw.isTransfer === 'boolean' ? raw.isTransfer : undefined,
+      amount: isObj(raw.amount) ? pick({ seen: sum(raw.amount.seen), expected: sum(raw.amount.expected), verdict: verdict('amount', raw.amount.verdict) }) : undefined,
+      date: isObj(raw.date) ? pick({ seen: text80(raw.date.seen), verdict: verdict('date', raw.date.verdict) }) : undefined,
+      account: isObj(raw.account) ? pick({ seen: text80(raw.account.seen), verdict: verdict('account', raw.account.verdict) }) : undefined,
+      payeeName: text80(raw.payeeName),
+      reference: text80(raw.reference),
+    }) || null
+  );
+}
+
 /** How many receipts a code brought today (an Israel day). */
 export const receiptsToday = (db, code, today = israelToday()) => db.get('SELECT COUNT(*) AS n FROM pay_receipts WHERE code = ? AND created_at > ?', code, endOfIsraelDay(addDays(today, -1))).n;
 
 /**
  * A receipt from Toran: kept with what the workspace owed at that moment, and in the audit log (never the code).
- * Returns { id, workspace: { id, name }, due, createdAt }. Throws PayError: bad_phone, unknown_code, expired, bad,
+ * `check`, what Toran read on the picture, is kept as checkOf() leaves it. Returns { id, workspace: { id, name }, due,
+ * check, createdAt }. Throws PayError: bad_phone, unknown_code, expired, bad,
  * too_large, bad_type, rate_limited (5 from one code in an Israel day).
  */
-export function addReceipt(db, { code, phone, file }) {
+export function addReceipt(db, { code, phone, file, check = null }) {
   if (!validPhone(phone)) throw new PayError('bad_phone');
   const c = openPayCode(db, code);
   const f = checkFile(file);
+  const read = checkOf(check);
   return db.tx(() => {
     if (receiptsToday(db, c.code) >= RECEIPTS_PER_DAY) throw new PayError('rate_limited');
     const due = dueForPay(db, c.workspace.id);
     const createdAt = nowIso();
-    const id = db.insert('pay_receipts', { workspace_id: c.workspace.id, code: c.code, phone, created_at: createdAt, name: f.name, type: f.type, size: f.data.length, file: f.data, items_json: due });
+    const id = db.insert('pay_receipts', { workspace_id: c.workspace.id, code: c.code, phone, created_at: createdAt, name: f.name, type: f.type, size: f.data.length, file: f.data, items_json: due, check_json: read });
     audit(db, { action: 'pay_receipt_received', workspaceId: c.workspace.id, detail: { receipt: id, phone, type: f.type, size: f.data.length, total: due.total } });
-    return { id, workspace: c.workspace, due, createdAt };
+    return { id, workspace: c.workspace, due, check: read, createdAt };
   });
 }
 
 const RECEIPT = `SELECT r.*, w.name AS business, u.email AS decided_by_email FROM pay_receipts r
   JOIN workspaces w ON w.id = r.workspace_id
   LEFT JOIN users u ON u.id = r.decided_by`;
-const out = (r) => (r ? { ...r, due: j(r.items_json, { items: [], lines: [], total: 0, net: 0, vat: 0 }) } : null);
+const out = (r) => (r ? { ...r, due: j(r.items_json, { items: [], lines: [], total: 0, net: 0, vat: 0 }), check: j(r.check_json), bill: j(r.bill_json), morningError: j(r.morning_error_json) } : null);
 
 /** One receipt, with its business and what was owed when it came (`due`), or null. */
 export const receiptById = (db, id) => out(db.get(`${RECEIPT} WHERE r.id = ?`, Number(id)));
@@ -165,7 +199,8 @@ export function receiptProducts(db, receipt, today = israelToday()) {
  * ({ product: the paid-until day the page showed, '' for none }) guarding each the way the console's button is
  * guarded, all in one transaction: an already_paid (WorkspaceError) records nothing at all. 'not_paid' records
  * nothing. Returns { recorded: [{ product, until }] }. Throws PayError: no_receipt, decided (answered already),
- * nothing_due ('paid' with nothing to record).
+ * nothing_due ('paid' with nothing to record). 'paid' also keeps what it recorded, as the invoice says it (bill_json,
+ * src/accounts/morning.js): each product's month (from, until), its price as the customer was asked, the total with VAT.
  */
 export function decideReceipt(db, id, decision, { by, ip = null, expects = {} }, today = israelToday()) {
   return db.tx(() => {
@@ -175,9 +210,16 @@ export function decideReceipt(db, id, decision, { by, ip = null, expects = {} },
     if (Number(claimed.changes) !== 1) throw new PayError('decided');
     const recorded = [];
     if (decision === 'paid') {
-      const { products } = receiptProducts(db, r, today);
+      const { products, from, now: owedNow } = receiptProducts(db, r, today);
       if (!products.length) throw new PayError('nothing_due');
       for (const p of products) recorded.push({ product: p, until: payMonth(db, r.workspace_id, p, { by, ip, expect: String(expects[p] ?? '') }, today) });
+      const lines = (from === 'then' ? r.due : owedNow).lines || [];
+      const items = recorded.map(({ product, until }) => {
+        const l = lines.find((x) => x.product === product && x.item);
+        return { product, plan: l.plan ?? null, monthly: l.item.monthly, setup: l.item.setup, vat: l.vat === 'included' ? 'included' : 'excluded', total: l.item.total, from: addMonths(addDays(until, 1), -1), until };
+      });
+      const parts = items.flatMap((i) => [{ sum: i.monthly, vat: i.vat }, ...(i.setup ? [{ sum: i.setup, vat: i.vat }] : [])]);
+      db.run('UPDATE pay_receipts SET bill_json = ? WHERE id = ?', JSON.stringify({ items, ...payTotal(parts) }), r.id);
     }
     audit(db, { actor: by, action: decision === 'paid' ? 'pay_receipt_paid' : 'pay_receipt_not_paid', workspaceId: r.workspace_id, ip, detail: { receipt: r.id, recorded } });
     return { recorded, receipt: r };

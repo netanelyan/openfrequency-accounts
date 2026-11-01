@@ -23,6 +23,9 @@ deleted, and the settings that turn each part on.
 | `OF_SUPPORT_WA` | unset | Our WhatsApp, where the payment step's button leads in manual mode, for questions about paying; the welcome and billing emails give the number. Unset, the button leads to an email to `MAIL_REPLY_TO`, and without that to `https://openfrequency.co.il/join`. |
 | `OF_ASSISTANT_WA` | unset | The owner line's number (the home page's link codes, docs/internal-owner-phone.md). In manual mode with `OF_PAYMENT_METHOD` set too, the customer pays over WhatsApp: the payment step's button and the welcome and billing emails' become "לתשלום בוואטסאפ", to this number with the message and the workspace's payment code written (docs/internal-pay.md). |
 
+| `OF_MORNING_CLIENT_ID`, `OF_MORNING_CLIENT_SECRET` | unset | The business's API keys in Morning (a plan that includes the API). Both set, "התשלום הגיע" on a transfer's receipt also issues its חשבונית מס/קבלה in Morning, and its PDF goes onto the customer's page (docs/internal-pay.md). Unset, the invoice is issued by hand, as before. |
+| `OF_MORNING_ENV` | `production` | `sandbox` sends it to Morning's sandbox. Any other value keeps Morning off, and the log says so. |
+
 `OF_BILLING_PROVIDER`, the hook before `OF_PAYMENT`, is no longer read; the service says so in its log when it is set.
 
 ## Sign-up

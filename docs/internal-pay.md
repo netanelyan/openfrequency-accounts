@@ -132,6 +132,15 @@ workspace), `410 {"error":"expired"}` once its 60 days are over.
   signature, `RIFF....WEBP`, `%PDF-`).
 - `file.name`: optional, kept for the operator, without control or bidi characters, quotes,
   slashes or angle brackets, at most 120 characters.
+- `check`: optional, what Toran read on the picture:
+  `{ readable, isTransfer, amount: { seen, expected, verdict }, date: { seen, verdict },
+  account: { seen, verdict }, payeeName, reference }`. `readable` and `isTransfer` are booleans,
+  `amount.seen` and `amount.expected` numbers (₪), the rest strings; `amount.verdict` is `ok`,
+  `mismatch` or `unknown`, `date.verdict` `ok`, `too_old`, `future` or `unknown`,
+  `account.verdict` `ok`, `mismatch` or `unknown`. Unknown keys are dropped, and so is a value of
+  the wrong type or a verdict outside its list; every string loses its control and bidi
+  characters and is cut to 80 characters (`checkOf()` in `src/accounts/pay.js`). It is never a
+  reason to refuse the receipt, and it decides nothing: the operator sees it as text (below).
 
 `201 {"id": 7, "workspace": {"id": 3, "name": "Dana Shop"}}`: kept, with what was owed at that
 moment, in the audit log (`pay_receipt_received`: the receipt, phone, type, size and total, never
@@ -146,8 +155,12 @@ token.
 - `/admin` shows "אישורי העברה שמחכים" above the day's numbers while any receipt is undecided,
   newest first: the business, what was owed when it came, when, each a link to its page.
 - `/admin/receipts/<id>`: the picture (a PDF as a link), the business, the number it came from,
-  when; what was owed when it came and what is owed today; a warning for each product paid for
-  since it came; then "התשלום הגיע" and "לא הגיע", side by side.
+  when; what Toran read on it, as plain escaped lines ("הסכום בצילום: 1,700 ₪ (לא תואם, צריך
+  1,746.40 ₪)", "התאריך בצילום: 21.10.2026 (תקין)", "החשבון שהועבר אליו: מסתיים ב-6789 (תואם)",
+  the payee and the reference as they were on the picture, never in a link), and always "בדקו
+  בבנק שההעברה הגיעה לפני שמאשרים."; what was owed when it came and what is owed today; a warning
+  for each product paid for since it came; then "התשלום הגיע" and "לא הגיע", side by side. The
+  operator's email has the same lines.
 - `/admin/receipts/<id>/file`: the file as it came, `Content-Type` its checked type, `inline`,
   `nosniff`, `no-store`, `default-src 'none'`.
 - All three are the superadmin's only (anyone else is sent to `/admin/login`, a POST is `403`),
@@ -161,15 +174,94 @@ token.
 - "לא הגיע" (`POST /admin/receipts/<id>/not-paid`) closes it and records nothing. Audit:
   `pay_receipt_not_paid`.
 
+## The invoice-receipt in Morning
+
+With Morning's keys set, "התשלום הגיע" also issues a חשבונית מס/קבלה (document type 320) in
+Morning (Green Invoice), which Morning emails to the business's owners with its PDF
+(`src/accounts/morning.js`; Morning's API as its documents at developers.morning.co described it
+on 2026-11-01). **The payment is recorded first, always**: an invoice that cannot be issued never
+undoes or holds it, and the receipt's page then says why and offers "להפיק חשבונית שוב"
+(`POST /admin/receipts/<id>/invoice`).
+
+| Setting | What it does |
+|---|---|
+| `OF_MORNING_CLIENT_ID`, `OF_MORNING_CLIENT_SECRET` | The business's API keys in Morning. Both set, it is on; either unset, it is off, the payment is recorded as before, and the receipt's page says "החשבונית לא הופקה אוטומטית: Morning לא מחובר". The secret is in `SECRET_KEYS` (check:public refuses it with a value in a tracked file). |
+| `OF_MORNING_ENV` | `production` (empty means production) or `sandbox`. Anything else keeps it off, and the log says so. |
+
+Getting the keys: in Morning, the business's API keys are made in its settings, under the
+developers' tools (the API documentation points to Morning's Hebrew help page on making them).
+The business's plan must include API access: without it the token is refused
+(`unauthorized_client`), and the page says so. UNVERIFIED: the menu's exact names in Morning
+today, and that the business's plan has API access.
+
+What happens, in order:
+
+1. **The token.** `POST https://api.morning.co/idp/v1/oauth/token` (sandbox
+   `https://api.sandbox.morning.dev/idp/v1/oauth/token`), JSON
+   `{ grant_type: "client_credentials", client_id, client_secret }`; the answer
+   `{ accessToken, tokenType: "Bearer", expiresAt }` (unix seconds) lasts an hour and is kept in
+   memory until 60 seconds before it ends. A 401 from the API forgets it. The secret and the token
+   are never logged, stored, put in an error, a page or an email.
+2. **The business.** `GET https://api.greeninvoice.co.il/api/v1/documents/info?type=320` (sandbox
+   `https://sandbox.d.greeninvoice.co.il/api/v1`). When it says `exemption: true` while VAT was
+   added to the price, or a `vatRate` other than ours (0.18; 18 is read as percent), or no rate,
+   nothing is issued: the page says what to fix in Morning, and the audit log has
+   `morning_blocked`.
+3. **The document.** `POST /documents`:
+
+   ```json
+   { "type": 320, "lang": "he", "currency": "ILS", "vatType": 0, "date": "2026-10-22",
+     "description": "מנוי תדר",
+     "client": { "name": "Noa Shop", "emails": ["noa@example.com"], "add": true },
+     "income": [
+       { "description": "מנוי תדר, החבילה הקטנה, 22.10.2026 עד 21.11.2026", "quantity": 1, "price": 490, "currency": "ILS", "vatType": 0 },
+       { "description": "דמי הקמה, תדר, החבילה הקטנה", "quantity": 1, "price": 990, "currency": "ILS", "vatType": 0 } ],
+     "payment": [ { "date": "2026-10-22", "type": 4, "price": 1746.4, "currency": "ILS" } ],
+     "attachment": true, "emailContent": "קיבלנו את התשלום על המנוי, והחשבונית מצורפת." }
+   ```
+
+   A row for each month recorded (its product, plan and the days payMonth() gave it), a row for a
+   setup fee, each price as the customer was asked, `vatType` 0 when VAT is added to it and 1 when
+   it is in it; one payment, a bank transfer (type 4), of the total the customer was asked to pay.
+   It is built from what "התשלום הגיע" recorded (`bill_json`), so a retry asks for the same
+   document. The client's name is the workspace's name (accounts keeps no other name for
+   invoices), its addresses the workspace's owners'.
+4. **The copy.** The answer `{ id, number, url: { he, origin } }` is written to the receipt at once
+   (`morning_doc_id`, `morning_doc_number`, `morning_url`; audit `morning_issued`). Its PDF is
+   fetched from `url.origin`, then `url.he`, each first without the token and then with it, the
+   token only to Morning's own hosts (`greeninvoice.co.il`, `morning.co`, `morning.dev`); a PDF of
+   5 MB or less goes into `invoices` (number, the day, the first product and its days, the amount
+   before VAT and the VAT) and so onto the customer's home page. When no link gives a PDF, only the
+   link is kept, and the page shows it.
+
+**Never two documents for one receipt.** Before anything is asked, one UPDATE claims the receipt
+(`morning_state = 'issuing'`), and only a receipt marked paid, with no document and no request out,
+passes it: a double press, a second retry while one is out, or a retry after it was issued asks
+Morning nothing. A request out for more than 10 minutes (the process stopped mid-way) may be
+retried, and the page says to look in Morning first; so does a timeout while the document was being
+asked for, since Morning may have made it.
+
+A failure (no answer in 15 seconds, a status that is not 2xx, an error code) is shown on the
+receipt's page with Morning's code and its own words (escaped): 1006, the Morning subscription needs
+renewing; 1010, a duplicate request; 1012, a higher plan is needed; 1018 and 1019, the client's
+email; `invalid_client` or `invalid_grant`, the keys; `unauthorized_client`, a plan without the API;
+`timeout`, `unreachable`. Audit: `morning_failed` (the code, the status and the step). UNVERIFIED
+until the first live run: the error body's field names (`errorCode` and `errorMessage` are read,
+then `code`, `error` and `message`), whether `vatRate` comes as 0.18 or 18 (both are read), and
+whether the PDF links need the token (both ways are tried).
+
 ## The tables
 
 ```
 pay_codes     code PK (PAY-XXXXXX), workspace_id, created_at, expires_at
 pay_receipts  id PK, workspace_id, code, phone, created_at, name, type, size, file (BLOB, NULL once deleted),
-              items_json (amountDue() when it came), decided_at, decided_by, decision ('paid' | 'not_paid' | NULL)
+              items_json (amountDue() when it came), decided_at, decided_by, decision ('paid' | 'not_paid' | NULL),
+              check_json (what Toran read), bill_json (what "התשלום הגיע" recorded), morning_state
+              ('issuing' | 'issued' | 'failed' | 'blocked'), morning_at, morning_error_json, morning_doc_id (unique),
+              morning_doc_number, morning_url, invoice_id
 ```
 
-Migration 9 (`src/db/schema.js`).
+Migrations 9 and 10 (`src/db/schema.js`).
 
 ## Retention
 
@@ -195,4 +287,6 @@ Not edited from here (`openfrequency-web` is its own repository). What this adds
 > בוואטסאפ.
 
 UNVERIFIED, for whoever words the policy: what Toran itself keeps of the picture after it posts
-it here (Toran's side), and where the server stands.
+it here (Toran's side), where the server stands, and whether the policy already names Morning as
+the invoicing service (it now gets the business's name and its owners' addresses for each
+invoice-receipt).

@@ -59,6 +59,9 @@ OF_SIGNUP_DAILY_EMAILS=       # the most sign-up emails a day, from everyone tog
 OF_PAYMENT=                   # manual (empty means manual) or provider; anything else and the service will not start
 OF_PAYMENT_URL=               # with OF_PAYMENT=provider, required: the provider's https payment page
 OF_PAYMENT_METHOD=            # manual only: how to pay, in Hebrew ("העברה בנקאית או ביט"); said on /setup and in the emails
+OF_MORNING_CLIENT_ID=         # Morning's API keys (docs/internal-pay.md); both set, a receipt marked paid issues its invoice-receipt there
+OF_MORNING_CLIENT_SECRET=
+OF_MORNING_ENV=               # production (empty means production) or sandbox
 ```
 
 **What a stranger who signs up needs.** With `OF_SIGNUP=1`, the first lines of the log say which of

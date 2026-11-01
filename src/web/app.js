@@ -20,7 +20,7 @@ import { accessAll, accessFor, BillingError, cancelSubscription, resumeSubscript
 import { eraseWorkspace, productsEver, sameName } from '../accounts/erase.js';
 import { prefsOf, savePrefs } from '../accounts/notify.js';
 import { cancelMail, cancelNoticeMail, deleteNoticeMail, existingAccountMail, inviteMail, magicLinkMail, paidMail, signupMail, signupNoticeMail, welcomeMail } from '../mail/messages.js';
-import { CANCEL, ERASE, MAIL, NOTIFY, OPS, PAY, PRODUCT_NAMES, SETUP, SIGNUP, T, dayHe, ils, opensAfter, phoneHe } from './copy.js';
+import { CANCEL, ERASE, MAIL, MORNING, NOTIFY, OPS, PAY, PRODUCT_NAMES, SETUP, SIGNUP, T, dayHe, ils, opensAfter, phoneHe } from './copy.js';
 import { payOverWa } from './pay.js';
 import { setupClient, setupState } from './setup.js';
 import { eraseClient } from './erase.js';
@@ -28,6 +28,7 @@ import { createLinkCode, openLinkCode, phoneIn, phonesFor, removePhone, setConse
 import { describe, listPrice, payMonth, payTotal, setSubscription, subscriptionsOf } from '../accounts/subscriptions.js';
 import { addInvoice, invoiceIn, invoicesOf, PDF_MAX, removeInvoice } from '../accounts/invoices.js';
 import { decideReceipt, PayError, RECEIPT_TYPES, receiptById, receiptProducts, receiptsWaiting } from '../accounts/pay.js';
+import { invoiceReceipt, morningClient, morningConfig } from '../accounts/morning.js';
 import { cancelTeamInvite, inviteToTeam, removeMember, TEAM_LIMIT, TeamError, teamOf } from '../accounts/team.js';
 import { opsCustomers } from '../accounts/ops.js';
 import { now } from '../core/clock.js';
@@ -171,7 +172,7 @@ const OPS_ACTION = /^\/admin\/ops\/(toran|teder)\/([^/]{1,300})\/([a-z]{1,20})$/
 // Where each button comes back to on the dashboard, without script.
 const OPS_BACK = ['contact', 'talking'];
 
-export function publicHandler({ db, env = process.env, mailer, limiters: given = {}, failDelayMs = 400, log = console.error, toran = toranClient({ env, log }), toranProxyMs, google = googleConfig(env), googleFetch = globalThis.fetch, setupMs, setupFetch = globalThis.fetch, eraseFetch = setupFetch, eraseMs }) {
+export function publicHandler({ db, env = process.env, mailer, limiters: given = {}, failDelayMs = 400, log = console.error, toran = toranClient({ env, log }), toranProxyMs, google = googleConfig(env), googleFetch = globalThis.fetch, setupMs, setupFetch = globalThis.fetch, eraseFetch = setupFetch, eraseMs, morningFetch = globalThis.fetch, morningMs }) {
   const secret = sessionSecret(env);
   const publicHost = String(env.PUBLIC_HOST || '').trim().toLowerCase() || null;
   const dev = !publicHost;
@@ -306,6 +307,9 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
   const CSP = `default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action ${formAction}`;
   const CSP_SCRIPT = CSP;
   const toranAt = toranBase(env);
+  // The invoice-receipt in Morning after "התשלום הגיע" (src/accounts/morning.js), while its keys are set; else none.
+  const morningSet = morningConfig(env);
+  const morning = morningSet ? morningClient(morningSet, { fetchImpl: morningFetch, ...(morningMs ? { timeoutMs: morningMs } : {}) }) : null;
 
   return async (req, res) => {
     const out = { cookies: [] };
@@ -1005,7 +1009,7 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
           const expects = Object.fromEntries(record.products.map((pr) => [pr, subs[pr]?.paid_until ?? '']));
           const since = (l) => !fresh.decided_at && l.item && subs[l.product]?.paid_until && subs[l.product].paid_until !== (l.paidUntil ?? null);
           const moved = (fresh.due.lines || []).filter(since).map((l) => ({ product: l.product, paidUntil: subs[l.product].paid_until }));
-          return page(status, PAY.title(fresh.business), P.receiptPage({ csrf, r: fresh, now: record.now, record, expects, moved, error }), { wide: true, banner });
+          return page(status, PAY.title(fresh.business), P.receiptPage({ csrf, r: fresh, now: record.now, record, expects, moved, error, flash, flashBad, morningOn: Boolean(morning) }), { wide: true, banner });
         };
         // The file, as it came, of a type we checked by its bytes: never cached, never framed, nothing sniffed.
         const receiptFile = (r) => {
@@ -1077,8 +1081,18 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
         }
 
         // The operator's answer to a receipt: the payment came (a month recorded for each product, guarded by the
-        // paid-until days the page showed, and each owner told), or it did not (nothing recorded).
-        m = /^\/admin\/receipts\/(\d+)\/(paid|not-paid)$/.exec(p);
+        // paid-until days the page showed, and each owner told; then, with Morning set up, its invoice-receipt, which
+        // never holds the payment up), or it did not (nothing recorded). A failed invoice comes back to the receipt's
+        // page, which says why and offers it again.
+        m = /^\/admin\/receipts\/(\d+)\/(paid|not-paid|invoice)$/.exec(p);
+        if (m && m[2] === 'invoice') {
+          const r = receiptById(db, m[1]);
+          if (!r) return page(404, T.notFound, P.messagePage({ title: T.notFound, lead: '', links: [['/admin', T.adminTitle]] }), { banner });
+          const inv = await invoiceReceipt(db, r.id, { client: morning, by: me, ip });
+          if (inv.state === 'issued') setFlash(MORNING.flashIssued(inv.number));
+          else if (inv.state === 'failed' || inv.state === 'blocked') setFlash(MORNING.flashFailed, true);
+          return redirect(`/admin/receipts/${r.id}`);
+        }
         if (m) {
           const r = receiptById(db, m[1]);
           if (!r) return page(404, T.notFound, P.messagePage({ title: T.notFound, lead: '', links: [['/admin', T.adminTitle]] }), { banner });
@@ -1088,7 +1102,13 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
             if (m[2] === 'paid') {
               const owners = db.all("SELECT u.email FROM memberships m JOIN users u ON u.id = m.user_id WHERE m.workspace_id = ? AND m.role = 'client_owner' AND u.disabled_at IS NULL", r.workspace_id);
               for (const x of recorded) for (const o of owners) mailer.send(paidMail(o.email, { business: r.business, product: x.product, until: x.until, link: `${base}/` }));
-              setFlash(PAY.flashPaid(r.business, recorded.map((x) => PAY.flashPaidLine(PRODUCT_NAMES[x.product], dayHe(x.until))).join(' ')));
+              const paidLine = PAY.flashPaid(r.business, recorded.map((x) => PAY.flashPaidLine(PRODUCT_NAMES[x.product], dayHe(x.until))).join(' '));
+              const inv = await invoiceReceipt(db, r.id, { client: morning, by: me, ip });
+              if (inv.state === 'failed' || inv.state === 'blocked') {
+                setFlash(`${paidLine} ${MORNING.flashFailed}`, true);
+                return redirect(`/admin/receipts/${r.id}`);
+              }
+              setFlash(inv.state === 'issued' ? `${paidLine} ${MORNING.flashIssued(inv.number)}` : paidLine);
             } else setFlash(PAY.flashNotPaid(r.business));
             return redirect('/admin');
           } catch (e) {
