@@ -147,7 +147,13 @@ workspace), `410 {"error":"expired"}` once its 60 days are over.
 
 `201 {"id": 7, "workspace": {"id": 3, "name": "Dana Shop"}}`: kept, with what was owed at that
 moment, in the audit log (`pay_receipt_received`: the receipt, phone, type, size and total, never
-the code), and the operator emailed. Refused, and nothing kept: `400 bad_phone`; `400 bad` (no
+the code), and the operator emailed. `200 {"id": 7, "workspace": {…}, "again": true}`: the very
+same file (byte for byte) as one of the workspace's receipts that waits or was marked paid, so
+that receipt: nothing kept again, no audit entry, nobody emailed, and so no second receipt to press
+"התשלום הגיע" on (the owner, 2026-11-02). One marked "לא הגיע" does not count, so the same picture
+sent after it is kept and the operator emailed again; another picture of the same transfer is a
+receipt of its own, and its "התשלום הגיע" within a minute of the first is "התשלום כבר נרשם".
+Toran answers the customer as for a 201 (src/channels/pay.ts sentOutcome). Refused, and nothing kept: `400 bad_phone`; `400 bad` (no
 `file` object, `data` not base64, or the body not a JSON object); `404 unknown_code`; `410
 expired`; `413 too_large`; `415 bad_type`; `429 rate_limited` for a sixth receipt from one code in
 an Israel day (it opens again at midnight, Israel time). The checks run in that order, after the

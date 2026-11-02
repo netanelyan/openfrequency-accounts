@@ -148,14 +148,26 @@ export function checkOf(raw) {
   );
 }
 
+/**
+ * The workspace's earlier receipt with these very bytes that waits or was marked paid, or null (the owner, 2026-11-02:
+ * the same picture sent twice made two receipts, and "התשלום הגיע" on each would record two months). One marked "לא
+ * הגיע" is not counted: the same picture sent again after that is the customer saying it did go through, so it is kept
+ * and the operator hears of it again.
+ */
+export function sameReceipt(db, workspaceId, bytes) {
+  const r = db.get("SELECT id, created_at, items_json, check_json FROM pay_receipts WHERE workspace_id = ? AND size = ? AND file = ? AND (decided_at IS NULL OR decision = 'paid') ORDER BY id LIMIT 1", workspaceId, bytes.length, bytes);
+  return r ? { id: r.id, created_at: r.created_at, due: j(r.items_json), check: j(r.check_json) } : null;
+}
+
 /** How many receipts a code brought today (an Israel day). */
 export const receiptsToday = (db, code, today = israelToday()) => db.get('SELECT COUNT(*) AS n FROM pay_receipts WHERE code = ? AND created_at > ?', code, endOfIsraelDay(addDays(today, -1))).n;
 
 /**
  * A receipt from Toran: kept with what the workspace owed at that moment, and in the audit log (never the code).
  * `check`, what Toran read on the picture, is kept as checkOf() leaves it. Returns { id, workspace: { id, name }, due,
- * check, createdAt }. Throws PayError: bad_phone, unknown_code, expired, bad,
- * too_large, bad_type, rate_limited (5 from one code in an Israel day).
+ * check, createdAt }, and `again: true` when it is the same file as one of the workspace's receipts that waits or was
+ * marked paid (sameReceipt()): that one is returned and nothing is kept or logged again. Throws PayError: bad_phone,
+ * unknown_code, expired, bad, too_large, bad_type, rate_limited (5 from one code in an Israel day).
  */
 export function addReceipt(db, { code, phone, file, check = null }) {
   if (!validPhone(phone)) throw new PayError('bad_phone');
@@ -163,6 +175,8 @@ export function addReceipt(db, { code, phone, file, check = null }) {
   const f = checkFile(file);
   const read = checkOf(check);
   return db.tx(() => {
+    const same = sameReceipt(db, c.workspace.id, f.data);
+    if (same) return { id: same.id, workspace: c.workspace, due: same.due, check: same.check, createdAt: same.created_at, again: true };
     if (receiptsToday(db, c.code) >= RECEIPTS_PER_DAY) throw new PayError('rate_limited');
     const due = dueForPay(db, c.workspace.id);
     const createdAt = nowIso();

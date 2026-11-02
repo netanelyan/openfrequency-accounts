@@ -182,6 +182,8 @@ export function internalHandler(db, { env = process.env, log = console.error, ma
         case '/internal/pay/receipt': {
           const body = await readJson(req, RECEIPT_BODY_LIMIT);
           const r = addReceipt(db, { code: body.code, phone: body.phone, file: body.file, check: body.check });
+          // The same picture as a receipt that waits or was marked paid: that receipt, and the operator is not told twice.
+          if (r.again) return json(res, 200, { id: r.id, workspace: r.workspace, again: true });
           // The operator hears of it with a link to its page. The mailer queues and never waits; a failure here is
           // logged, and the receipt is kept either way.
           try {

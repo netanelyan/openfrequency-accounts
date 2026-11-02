@@ -20,6 +20,8 @@ const T0 = '2026-10-22T10:00:00.000Z';
 const ALREADY = 'התשלום כבר נרשם.';
 const PAID_SUBJECT = /^קיבלנו את התשלום על /;
 const PNG = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.from('a picture')]);
+/** Another picture of the same transfer (the bank's own confirmation, a second screenshot): other bytes. */
+const PNG_TOO = Buffer.concat([PNG, Buffer.from(', from the bank')]);
 const json = (status, body) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
 
 /** Morning, slow on purpose (each answer `delayMs` late), so a second press arrives while the first one waits on it. */
@@ -55,12 +57,13 @@ async function site({ morning = null } = {}) {
   ensureSubscription(h.db, other.id, 'teder', '2026-10-22');
   const admin = makeUser(h.db, 'admin@example.com', { superadmin: true, name: 'Admin' });
   const op = signedIn(s, h.db, admin);
-  const receipt = async (workspaceId = ws.id) => {
-    const r = await s.owners('POST', '/internal/pay/receipt', { code: payCodeFor(h.db, workspaceId).code, phone: '972500000123', file: { name: 'shot.png', type: 'image/png', data: PNG.toString('base64') } });
+  const send = (workspaceId = ws.id, data = PNG) => s.owners('POST', '/internal/pay/receipt', { code: payCodeFor(h.db, workspaceId).code, phone: '972500000123', file: { name: 'shot.png', type: 'image/png', data: data.toString('base64') } });
+  const receipt = async (workspaceId = ws.id, data = PNG) => {
+    const r = await send(workspaceId, data);
     assert.equal(r.status, 201, r.body);
     return r.json.id;
   };
-  return { ...h, ...s, ws, other, admin, op, morning, receipt, done: async () => (await s.close(), h.cleanup()) };
+  return { ...h, ...s, ws, other, admin, op, morning, send, receipt, done: async () => (await s.close(), h.cleanup()) };
 }
 
 /** Every form on a page that posts, with its hidden fields as the browser would send them. */
@@ -270,12 +273,12 @@ test('"התשלום הגיע" sent again two minutes later (back, then send): no
   }
 });
 
-test('the same transfer sent to Toran twice (two receipts, both pages open), "התשלום הגיע" on each within a minute: one month, one invoice, the second "התשלום כבר נרשם" and still waiting', async () => {
+test('two pictures of the same transfer sent to Toran (two receipts, both pages open), "התשלום הגיע" on each within a minute: one month, one invoice, the second "התשלום כבר נרשם" and still waiting', async () => {
   const morning = fakeMorning({ delayMs: 0 });
   const t = await site({ morning });
   try {
     const a = await t.receipt();
-    const b = await t.receipt();
+    const b = await t.receipt(t.ws.id, PNG_TOO);
     const formA = receiptForm((await t.op.get(`/admin/receipts/${a}`)).body, a);
     const formB = receiptForm((await t.op.get(`/admin/receipts/${b}`)).body, b);
     t.mails.length = 0;
@@ -290,6 +293,77 @@ test('the same transfer sent to Toran twice (two receipts, both pages open), "ה
     assert.equal(paidMails(t).length, 4, 'two owners, two products, once');
     assert.equal(audits(t, 'subscription_paid'), 2);
     assert.equal(t.db.get('SELECT decided_at FROM pay_receipts WHERE id = ?', b).decided_at, null);
+  } finally {
+    await t.done();
+  }
+});
+
+// ---- the same picture sent twice (the owner, 2026-11-02: refuse a second receipt with the identical file)
+
+const notices = (t) => t.mails.filter((m) => m.to === 'boss@example.com' && m.text.includes('/admin/receipts/'));
+const rows = (t) => t.db.get('SELECT COUNT(*) AS n FROM pay_receipts').n;
+
+test('the same picture sent to Toran twice: one receipt, the second answer 200 with its id, the operator emailed once, one audit entry; "התשלום הגיע" on it records one month', async () => {
+  const morning = fakeMorning({ delayMs: 0 });
+  const t = await site({ morning });
+  try {
+    t.mails.length = 0;
+    const id = await t.receipt();
+    const again = await t.send();
+    assert.deepEqual([again.status, again.json], [200, { id, workspace: { id: t.ws.id, name: 'Noa Shop' }, again: true }]);
+    assert.equal(rows(t), 1);
+    assert.equal(notices(t).length, 1, 'the operator hears of it once');
+    assert.equal(audits(t, 'pay_receipt_received'), 1);
+    // At the same moment too (Toran sending it twice at once).
+    const both = await Promise.all([t.send(), t.send()]);
+    assert.deepEqual(both.map((r) => [r.status, r.json.id]), [[200, id], [200, id]]);
+    assert.equal(rows(t), 1);
+    const form = receiptForm((await t.op.get(`/admin/receipts/${id}`)).body, id);
+    assert.equal((await t.op.post(form.action, form.fields)).headers.location, '/admin');
+    assert.deepEqual([paidUntil(t, t.ws.id, 'teder'), paidUntil(t, t.ws.id, 'toran')], ['2026-11-21', '2026-11-21']);
+    assert.equal(morning.issued.length, 1);
+  } finally {
+    await t.done();
+  }
+});
+
+test('the same picture again an hour after it was marked paid: the receipt already decided, no new one to press, still one month', async () => {
+  const t = await site();
+  try {
+    const id = await t.receipt();
+    const form = receiptForm((await t.op.get(`/admin/receipts/${id}`)).body, id);
+    await t.op.post(form.action, form.fields);
+    advance(3600 * 1000);
+    t.mails.length = 0;
+    const again = await t.send();
+    assert.deepEqual([again.status, again.json.id, again.json.again], [200, id, true]);
+    assert.equal(rows(t), 1);
+    assert.equal(notices(t).length, 0);
+    // Pressed again on its page left open: "התשלום כבר נרשם", nothing more.
+    const press = await t.op.post(form.action, form.fields);
+    assert.deepEqual([press.status, press.headers.location, flashOf(press)], [303, `/admin/receipts/${id}`, ALREADY]);
+    assert.deepEqual([paidUntil(t, t.ws.id, 'teder'), paidUntil(t, t.ws.id, 'toran')], ['2026-11-21', '2026-11-21']);
+    assert.equal(audits(t, 'subscription_paid'), 2);
+  } finally {
+    await t.done();
+  }
+});
+
+test('kept as a receipt of its own: the same picture after the first was marked "לא הגיע", and the same picture for another business; a different picture of the same business', async () => {
+  const t = await site();
+  try {
+    const id = await t.receipt();
+    await t.op.get(`/admin/receipts/${id}`);
+    assert.equal((await t.op.post(`/admin/receipts/${id}/not-paid`, {})).status, 303);
+    t.mails.length = 0;
+    const after = await t.receipt();
+    assert.notEqual(after, id);
+    assert.equal(notices(t).length, 1, 'the operator hears of it again');
+    const ron = await t.receipt(t.other.id);
+    assert.ok(![id, after].includes(ron));
+    const other = await t.receipt(t.ws.id, PNG_TOO);
+    assert.ok(![id, after, ron].includes(other));
+    assert.equal(rows(t), 4);
   } finally {
     await t.done();
   }

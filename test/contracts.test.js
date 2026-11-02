@@ -223,6 +223,11 @@ const RUN = {
   "pay /internal/pay :: the code's 60 days are over": (w) => pay(w, expiredCode(w)),
   'pay /internal/pay :: no token, or the wrong one': (w) => noToken(w, 'GET', '/internal/pay?code=PAY-ABCDEF'),
   'pay /internal/pay/receipt :: kept, and the operator emailed a link to it': (w) => w.call('POST', '/internal/pay/receipt', receipt(payCodeFor(w.db, w.dana.id).code)),
+  "pay /internal/pay/receipt :: the same file as one of the workspace's receipts that waits or was marked paid: that receipt, nothing kept again and nobody emailed": async (w) => {
+    const code = payCodeFor(w.db, w.dana.id).code;
+    assert.equal((await w.call('POST', '/internal/pay/receipt', receipt(code))).status, 201);
+    return w.call('POST', '/internal/pay/receipt', receipt(code));
+  },
   'pay /internal/pay/receipt :: the phone is not international digits': (w) => w.call('POST', '/internal/pay/receipt', receipt(payCodeFor(w.db, w.dana.id).code, { phone: '0500000123' })),
   'pay /internal/pay/receipt :: not that shape: no file object, or its data is not base64': (w) => w.call('POST', '/internal/pay/receipt', receipt(payCodeFor(w.db, w.dana.id).code, { file: null })),
   'pay /internal/pay/receipt :: no such code, or its workspace is disabled or deleted': (w) => w.call('POST', '/internal/pay/receipt', receipt('PAY-ABCDEF')),
@@ -232,8 +237,10 @@ const RUN = {
   'pay /internal/pay/receipt :: not a JPEG, PNG, WebP or PDF, or its first bytes are not the type it says': (w) => w.call('POST', '/internal/pay/receipt', receipt(payCodeFor(w.db, w.dana.id).code, { file: { type: 'image/jpeg', data: PNG } })),
   'pay /internal/pay/receipt :: a sixth receipt from one code in an Israel day': async (w) => {
     const { code } = payCodeFor(w.db, w.dana.id);
-    for (let i = 0; i < 5; i++) assert.equal((await w.call('POST', '/internal/pay/receipt', receipt(code))).status, 201);
-    return w.call('POST', '/internal/pay/receipt', receipt(code));
+    // Six different pictures: the same one again is the receipt already kept (pay.js sameReceipt), not a sixth.
+    const shot = (i) => receipt(code, { file: { name: 'shot.png', type: 'image/png', data: Buffer.concat([Buffer.from(PNG, 'base64'), Buffer.from([i])]).toString('base64') } });
+    for (let i = 0; i < 5; i++) assert.equal((await w.call('POST', '/internal/pay/receipt', shot(i))).status, 201);
+    return w.call('POST', '/internal/pay/receipt', shot(5));
   },
   'pay /internal/pay/receipt :: no token, or the wrong one': (w) => noToken(w, 'POST', '/internal/pay/receipt', receipt('PAY-ABCDEF')),
 

@@ -72,8 +72,11 @@ async function site({ env = MORNING_ENV, morning = fakeMorning(), morningMs } = 
   ensureSubscription(h.db, ws.id, 'teder', '2026-10-22', 'small');
   const admin = makeUser(h.db, 'admin@example.com', { superadmin: true, name: 'Admin' });
   const op = signedIn(s, h.db, admin);
+  // Each receipt a picture of its own (the same picture again is the receipt already kept, pay.js sameReceipt).
+  let shots = 0;
   const receipt = async (extra = {}) => {
-    const r = await s.owners('POST', '/internal/pay/receipt', { code: payCodeFor(h.db, ws.id).code, phone: '972500000123', file: { name: 'shot.png', type: 'image/png', data: PNG.toString('base64') }, ...extra });
+    const shot = Buffer.concat([PNG, Buffer.from(` ${++shots}`)]);
+    const r = await s.owners('POST', '/internal/pay/receipt', { code: payCodeFor(h.db, ws.id).code, phone: '972500000123', file: { name: 'shot.png', type: 'image/png', data: shot.toString('base64') }, ...extra });
     assert.equal(r.status, 201, r.body);
     await op.get(`/admin/receipts/${r.json.id}`);
     return r.json.id;

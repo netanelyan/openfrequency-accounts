@@ -302,7 +302,7 @@ test('POST /internal/pay/receipt: kept with what was owed, in the audit log with
     assert.equal(t.db.get('SELECT type FROM pay_receipts WHERE id = 2').type, 'image/jpeg');
     payMonth(t.db, t.noa.id, 'teder', { by: null });
     t.mails.length = 0;
-    assert.equal((await t.post({ code, phone: '972500000123', file: file(PNG) })).status, 201);
+    assert.equal((await t.post({ code, phone: '972500000123', file: file(Buffer.concat([PNG, Buffer.from(' next month')])) })).status, 201);
     assert.ok(t.mails[0].text.includes('סכום: כשהאישור הגיע, לא היה מה לשלם'), t.mails[0].text);
   } finally {
     await t.done();
@@ -343,7 +343,9 @@ test('five receipts from one code in an Israel day; the sixth is 429 until midni
   const t = await site();
   try {
     const { code } = payCodeFor(t.db, t.noa.id);
-    const send = () => t.post({ code, phone: '972500000123', file: file(PNG) });
+    // A picture of its own each time: the same one again is the receipt already kept (pay.js sameReceipt).
+    let shots = 0;
+    const send = () => t.post({ code, phone: '972500000123', file: file(Buffer.concat([PNG, Buffer.from(` ${++shots}`)])) });
     for (let i = 0; i < 5; i++) assert.equal((await send()).status, 201);
     assert.deepEqual(((r) => [r.status, r.json])(await send()), [429, { error: 'rate_limited' }]);
     // Another workspace's code is its own.
