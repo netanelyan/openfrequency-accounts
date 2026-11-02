@@ -25,6 +25,11 @@ It owns:
 - **sessions**: a random id in the `__Secure-of_session` cookie for
   `.openfrequency.co.il`. Signing out ends it for every product at once, and "sign out
   on all devices" ends every session the user has.
+- **light or dark**: every page is light, whatever the device prefers. The round button beside the
+  accessibility button turns it dark and back, and keeps the choice in the `of-theme` cookie for
+  `.openfrequency.co.il` (a year; this host alone on localhost), which the website, Teder and Toran
+  read too, so one choice holds on all of them. The server reads it and renders the page in its
+  colours.
 
 ## Sign-up and the setup page
 
@@ -208,7 +213,8 @@ The full steps (DNS, Resend, Caddy, backups, checks) are in [docs/deploy.md](doc
 - The superadmin: password and TOTP (one use per code), 5 tries per address in 15 minutes, 12-hour
   sessions, every action in the audit log, view-as read-only.
 - Every form: a CSRF token and an Origin check. Every page: CSP with our own script files only and nothing inline
-  (`static/a11y.js`, the accessibility panel, and `static/load.js`, the loading state, on every page; `static/admin.js`
+  (`static/a11y.js`, the accessibility panel and the light or dark switch, and `static/load.js`, the loading state, on
+  every page; `static/admin.js`
   on `/admin`), no framing. `/admin/toran/*` is
   Toran's: superadmin only, a foreign Origin refused here, and Toran's own CSRF and CSP on its pages.
 - `/internal/session`, `/internal/owner-phone*`, `/internal/ops/customers`, `/internal/pay*` and `/internal/signup`: their own port, never proxied,

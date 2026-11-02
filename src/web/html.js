@@ -11,10 +11,10 @@ import { AUDIT_NAMES, CANCEL, ERASE, MORNING, NOTIFY, OPS, PAY, PLAN_NAMES, PROD
 import { CONTRACT_URLS, PRIVACY_URL, TERMS_URL } from '../accounts/signup.js';
 
 // Server-rendered pages: Hebrew, right to left, one stylesheet. Our own script files only: static/a11y.js (the
-// accessibility panel) and static/load.js (the loading state) on every page, and on the operator's dashboard on /admin
-// (dashboard.js) static/admin.js, to copy a message and to post its buttons in the background; every one of them
-// works without it. Everything shown is escaped here; nothing reaches the page
-// raw. The look is Teder's (see the head of static/site.css).
+// accessibility panel and the light or dark switch) and static/load.js (the loading state) on every page, and on the
+// operator's dashboard on /admin (dashboard.js) static/admin.js, to copy a message and to post its buttons in the
+// background; every one of them works without it. Everything shown is escaped here; nothing reaches the page raw.
+// The look is Teder's (see the head of static/site.css).
 
 export const esc = (s) =>
   String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
@@ -53,6 +53,21 @@ ${A11Y.map(([k, label]) => `<button type="button" data-a="${k}" aria-pressed="fa
 </div>
 </div>`;
 
+// Light or dark, one choice for every OpenFrequency site (the owner, 2026-11-02: "make sure that every repo starts on
+// light mode. changing it on one subdomain changes it on all of the subdomains"). A page is light unless the of-theme
+// cookie says dark; the device's own setting is never followed. The cookie is written in the browser, for the whole
+// of .openfrequency.co.il (static/a11y.js), and read here, so the page comes in its colours before it paints.
+export const THEME_COOKIE = 'of-theme';
+export const THEME_COLOR = { light: '#eeeff2', dark: '#111113' };
+/** The theme a request asks for: dark only when its cookie says exactly that, light for anything else or none. */
+export const themeOf = (jar) => (jar?.[THEME_COOKIE] === 'dark' ? 'dark' : 'light');
+
+// The switch, the website's own (openfrequency-web src/layout.mjs themeButton): a moon while light, a sun while dark;
+// one name, pressed while dark. It sits beside the accessibility button, in the same corner of every page, and stays
+// hidden until static/a11y.js wires it, since without script it could not change anything.
+export const themeButton = (theme = 'light') =>
+  `<button class="theme" type="button" data-theme-toggle aria-pressed="${theme === 'dark'}" aria-label="מצב כהה" hidden><svg class="moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5z"/></svg><svg class="sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4"/></svg></button>`;
+
 /** A product's label with its plan when it has one: "תדר, החבילה הקטנה". */
 export const productLabel = (p, plan) => (plan && PLAN_NAMES[plan] ? `${PRODUCT_NAMES[p]}, ${PLAN_NAMES[plan]}` : PRODUCT_NAMES[p]);
 
@@ -72,17 +87,18 @@ export function paySummary(due) {
 /** A plan in one line: its name and what a month gives. */
 const planLine = (p, plan) => (plan && PLANS[p]?.[plan] ? T.subPlan(PLAN_NAMES[plan], planGives(PLANS[p][plan].slideshows, PLANS[p][plan].redos)) : '');
 
-export function layout({ title, body, banner = '', flash = '', wide = false, v = '', script = false }) {
+/** Every page here: `theme` is themeOf() the request's cookies, light unless they say dark. */
+export function layout({ title, body, banner = '', flash = '', wide = false, v = '', script = false, theme = 'light' }) {
   const hero = wide ? '' : `<div class="hero">${ofMark(true)}<b class="ltr">${esc(T.brand)}</b></div>`;
+  const t = theme === 'dark' ? 'dark' : 'light';
   return `<!doctype html>
-<html lang="he" dir="rtl">
+<html lang="he" dir="rtl" data-theme="${t}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="robots" content="noindex, nofollow">
-<meta name="color-scheme" content="light dark">
-<meta name="theme-color" content="#eeeff2" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#111113" media="(prefers-color-scheme: dark)">
+<meta name="color-scheme" content="${t}">
+<meta name="theme-color" content="${THEME_COLOR[t]}">
 <title>${esc(title)} · ${esc(T.brand)}</title>
 <script src="/static/a11y.js?v=${esc(v)}"></script>
 <link rel="stylesheet" href="/static/site.css?v=${esc(v)}">
@@ -99,6 +115,7 @@ ${flash && !wide ? `<p class="flash" role="status">${esc(flash)}</p>` : ''}
 ${body}
 </main>
 <footer class="site-foot"><a href="${esc(ACCESSIBILITY_URL)}">${esc(T.accessibility)}</a></footer>
+${themeButton(t)}
 ${a11yPanel()}
 </body>
 </html>`;

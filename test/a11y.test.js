@@ -198,10 +198,10 @@ run('in a real browser: Tab reaches the button, it opens the panel, a switch is 
       await c.close();
     }
 
-    // On a desk, in the dark too: the same corner, and the pictures.
+    // On a desk, in the dark too (chosen, as of-theme: test/theme.test.js): the same corner, and the pictures.
     for (const colorScheme of ['light', 'dark']) {
       const c = await browser.newContext({ viewport: { width: 1440, height: 900 }, colorScheme });
-      await c.addCookies([{ name: 'of_session', value: t.sessions.admin, url: t.base }]);
+      await c.addCookies([{ name: 'of_session', value: t.sessions.admin, url: t.base }, { name: 'of-theme', value: colorScheme, url: t.base }]);
       const pg = await c.newPage();
       watch(pg);
       await pg.goto(`${t.base}/admin`);
@@ -218,7 +218,7 @@ run('in a real browser: Tab reaches the button, it opens the panel, a switch is 
     }
     if (shots) {
       const c = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, colorScheme: 'dark' });
-      await c.addCookies([{ name: 'of_session', value: t.sessions.dana, url: t.base }]);
+      await c.addCookies([{ name: 'of_session', value: t.sessions.dana, url: t.base }, { name: 'of-theme', value: 'dark', url: t.base }]);
       const pg = await c.newPage();
       await pg.goto(`${t.base}/`);
       await pg.click('.a11y-btn');

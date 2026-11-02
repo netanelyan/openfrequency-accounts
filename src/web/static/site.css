@@ -55,60 +55,57 @@
   --gut: 16px;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    color-scheme: dark;
-    --bg: #111113;
-    --wall: radial-gradient(120% 80% at 85% -10%, #2c2c30 0%, rgba(44, 44, 48, 0) 55%),
-      linear-gradient(160deg, #1c1c1f 0%, #0b0b0d 30%, #2a2a2e 52%, #0e0e10 76%, #1f1f22 100%);
-    --surface: rgba(44, 44, 48, 0.55);
-    --surface-hi: rgba(58, 58, 62, 0.55);
-    --edge: rgba(255, 255, 255, 0.1);
-    --rim: rgba(255, 255, 255, 0.14);
-    --shadow-tile: 0 1px 2px rgba(0, 0, 0, 0.3), 0 14px 36px -14px rgba(0, 0, 0, 0.7);
-    --inset: rgba(255, 255, 255, 0.06);
-    --fill: rgba(118, 118, 128, 0.24);
-    --fill-2: rgba(118, 118, 128, 0.32);
-    --field: rgba(0, 0, 0, 0.3);
-    --line: rgba(255, 255, 255, 0.08);
-    --line-2: rgba(255, 255, 255, 0.16);
-    --ink: #f5f5f7;
-    --ink-2: #d2d2d7;
-    --ink-3: #a1a1a6;
-    --ink-p: #b8b8bd;
-    --accent: #2997ff;
-    --accent-fill: #0071e3;
-    --accent-fill-2: #0077ed;
-    --ok: #30d158;
-    --ok-bg: #0f2a17;
-    --warn: #ff9f0a;
-    --warn-bg: #2d1f08;
-    --bad: #ff6961;
-    --bad-bg: #2d1213;
-    --bad-ink: #1d1d1f;
-    --bar-float: rgba(45, 31, 8, 0.82);
-    --bar-edge: rgba(255, 159, 10, 0.24);
-    --shadow-float: 0 8px 30px rgba(0, 0, 0, 0.6), 0 1px 3px rgba(0, 0, 0, 0.4);
-  }
+/* Dark, only when this browser chose it (data-theme on <html>, from the of-theme cookie that every OpenFrequency site
+   shares: html.js layout()); the device's own setting is never followed, so every page starts light. Each dark rule
+   below hangs on [data-theme='dark'], which also outweighs the light rules of the media queries after it. */
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --bg: #111113;
+  --wall: radial-gradient(120% 80% at 85% -10%, #2c2c30 0%, rgba(44, 44, 48, 0) 55%),
+    linear-gradient(160deg, #1c1c1f 0%, #0b0b0d 30%, #2a2a2e 52%, #0e0e10 76%, #1f1f22 100%);
+  --surface: rgba(44, 44, 48, 0.55);
+  --surface-hi: rgba(58, 58, 62, 0.55);
+  --edge: rgba(255, 255, 255, 0.1);
+  --rim: rgba(255, 255, 255, 0.14);
+  --shadow-tile: 0 1px 2px rgba(0, 0, 0, 0.3), 0 14px 36px -14px rgba(0, 0, 0, 0.7);
+  --inset: rgba(255, 255, 255, 0.06);
+  --fill: rgba(118, 118, 128, 0.24);
+  --fill-2: rgba(118, 118, 128, 0.32);
+  --field: rgba(0, 0, 0, 0.3);
+  --line: rgba(255, 255, 255, 0.08);
+  --line-2: rgba(255, 255, 255, 0.16);
+  --ink: #f5f5f7;
+  --ink-2: #d2d2d7;
+  --ink-3: #a1a1a6;
+  --ink-p: #b8b8bd;
+  --accent: #2997ff;
+  --accent-fill: #0071e3;
+  --accent-fill-2: #0077ed;
+  --ok: #30d158;
+  --ok-bg: #0f2a17;
+  --warn: #ff9f0a;
+  --warn-bg: #2d1f08;
+  --bad: #ff6961;
+  --bad-bg: #2d1213;
+  --bad-ink: #1d1d1f;
+  --bar-float: rgba(45, 31, 8, 0.82);
+  --bar-edge: rgba(255, 159, 10, 0.24);
+  --shadow-float: 0 8px 30px rgba(0, 0, 0, 0.6), 0 1px 3px rgba(0, 0, 0, 0.4);
 }
 
 /* Increase Contrast: quiet text and hairlines come up, glass goes nearly solid. */
 @media (prefers-contrast: more) {
   :root { --ink-2: #1d1d1f; --ink-3: #424245; --ink-p: #1d1d1f; --line: #c7c7cc; --line-2: #8e8e93; --surface: rgba(255, 255, 255, 0.94); --surface-hi: rgba(255, 255, 255, 0.94); --edge: #c7c7cc; --bar-float: #fff4e5; --bar-edge: #a44200; }
-}
-@media (prefers-contrast: more) and (prefers-color-scheme: dark) {
-  :root { --ink-2: #f5f5f7; --ink-3: #d2d2d7; --ink-p: #f5f5f7; --line: #545458; --line-2: #8e8e93; --surface: rgba(29, 29, 31, 0.96); --surface-hi: rgba(29, 29, 31, 0.96); --edge: #545458; --bar-float: #2d1f08; --bar-edge: #ff9f0a; }
+  :root[data-theme='dark'] { --ink-2: #f5f5f7; --ink-3: #d2d2d7; --ink-p: #f5f5f7; --line: #545458; --line-2: #8e8e93; --surface: rgba(29, 29, 31, 0.96); --surface-hi: rgba(29, 29, 31, 0.96); --edge: #545458; --bar-float: #2d1f08; --bar-edge: #ff9f0a; }
 }
 /* Reduce Transparency, or a browser without backdrop blur: solid panes. */
 @media (prefers-reduced-transparency: reduce) {
   :root { --surface: #ffffff; --surface-hi: #ffffff; --inset: #f5f5f7; --fill: #e8e8ed; --fill-2: #dcdce1; --field: #ffffff; --bar-float: #fff4e5; }
-}
-@media (prefers-reduced-transparency: reduce) and (prefers-color-scheme: dark) {
-  :root { --surface: #1d1d1f; --surface-hi: #1d1d1f; --inset: #2a2a2c; --fill: #2c2c2e; --fill-2: #3a3a3c; --field: #161617; --bar-float: #2d1f08; }
+  :root[data-theme='dark'] { --surface: #1d1d1f; --surface-hi: #1d1d1f; --inset: #2a2a2c; --fill: #2c2c2e; --fill-2: #3a3a3c; --field: #161617; --bar-float: #2d1f08; }
 }
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   :root { --surface: rgba(255, 255, 255, 0.9); --surface-hi: rgba(255, 255, 255, 0.9); }
-  @media (prefers-color-scheme: dark) { :root { --surface: rgba(29, 29, 31, 0.92); --surface-hi: rgba(29, 29, 31, 0.92); } }
+  :root[data-theme='dark'] { --surface: rgba(29, 29, 31, 0.92); --surface-hi: rgba(29, 29, 31, 0.92); }
 }
 
 * { box-sizing: border-box; }
@@ -221,10 +218,8 @@ p.google { margin: 20px 0 0; }
 a.button.google, button.google { width: 100%; min-height: 50px; gap: 12px; background: #ffffff; color: #1f1f1f; box-shadow: inset 0 0 0 1px #747775; font-weight: 500; }
 a.button.google:hover, button.google:hover { background: #f2f2f2; }
 a.button.google .g, button.google .g { width: 20px; height: 20px; flex: none; }
-@media (prefers-color-scheme: dark) {
-  a.button.google, button.google { background: #131314; color: #e3e3e3; box-shadow: inset 0 0 0 1px #8e918f; }
-  a.button.google:hover, button.google:hover { background: #1f1f20; }
-}
+[data-theme='dark'] a.button.google, [data-theme='dark'] button.google { background: #131314; color: #e3e3e3; box-shadow: inset 0 0 0 1px #8e918f; }
+[data-theme='dark'] a.button.google:hover, [data-theme='dark'] button.google:hover { background: #1f1f20; }
 p.google + .muted { margin: 10px 0 0; }
 /* "or by a link to your email": a thin line on each side of the words. */
 .or { display: flex; align-items: center; gap: 12px; margin: 22px 0 6px; color: var(--ink-3); font-size: 14px; }
@@ -574,7 +569,7 @@ article.op.gone { max-height: 0 !important; padding-block: 0; overflow: hidden; 
 .op-who small b { color: var(--warn); font-weight: 600; }
 .tag.p-toran { background: var(--ok-bg); color: var(--ok); }
 .tag.p-teder { background: color-mix(in srgb, #6a3fd6 14%, transparent); color: #5b33c2; }
-@media (prefers-color-scheme: dark) { .tag.p-teder { color: #b79cff; } }
+[data-theme='dark'] .tag.p-teder { color: #b79cff; }
 textarea {
   font: 400 15px/1.5 var(--text); color: var(--ink); background: var(--field); border: 1px solid var(--line-2); border-radius: var(--r-m);
   padding: 12px 14px; width: 100%; min-height: 120px; resize: vertical; margin: 0;
@@ -771,7 +766,7 @@ fieldset.notify legend .mark { width: 32px; height: 32px; }
    page lands where its outline was. Shimmer and bar are CSS animations, which keep moving while the browser is busy
    fetching; with reduced motion both stay, still (the rule above turns every animation off). */
 :root { --sk-hi: rgba(255, 255, 255, 0.6); --sk-ease: cubic-bezier(0.23, 1, 0.32, 1); }
-@media (prefers-color-scheme: dark) { :root { --sk-hi: rgba(255, 255, 255, 0.07); } }
+:root[data-theme='dark'] { --sk-hi: rgba(255, 255, 255, 0.07); }
 
 .loadbar { position: fixed; inset-inline: 0; top: 0; height: 3px; z-index: 60; pointer-events: none; opacity: 0; transition: opacity 0.15s ease-out; }
 .loadbar::before { content: ''; position: absolute; inset: 0; background: var(--accent-fill); transform: scaleX(0); transform-origin: right; }
@@ -829,6 +824,9 @@ button.primary[aria-busy='true']::after { border-color: var(--accent-ink) var(--
 .site-foot a:hover { background: var(--fill); color: var(--ink); }
 /* The narrow pages fill the screen above it, so the link shows without scrolling. */
 main.narrow { min-height: calc(100vh - 68px); min-height: calc(100dvh - 68px); }
+/* On a phone the corner's two round buttons (accessibility, light or dark) share the foot's row at the end of a page:
+   the link centres in the rest of it, 8px clear of them, where centring on the whole row ran into them below 380px. */
+@media (max-width: 560px) { .site-foot { padding-inline-end: calc(16px + 48px + 12px + 48px + 8px); } }
 
 /* ------------------------------------------------------------ the accessibility panel
    The website's (openfrequency.co.il, its .a11y): a round glass button at the bottom corner, on every page, and over
@@ -851,12 +849,18 @@ main.narrow { min-height: calc(100vh - 68px); min-height: calc(100dvh - 68px); }
 .a11y-reset, .a11y-reset:hover { min-height: 44px; padding: 0; border: 0; border-radius: 0; background: none; color: var(--ink-2); font: inherit; text-decoration: underline; text-underline-offset: 3px; }
 .a11y-reset:hover { color: var(--ink); }
 .a11y-end a { display: inline-flex; align-items: center; min-height: 44px; color: var(--ink); }
-@media (prefers-color-scheme: dark) {
-  /* The dark glass is thin (0.55); the panel, words on it, goes nearly solid so they keep their contrast over any page. */
-  .a11y-p { background: rgba(44, 44, 48, 0.94); }
-}
-@media (prefers-reduced-transparency: reduce) { .a11y-btn, .a11y-p { -webkit-backdrop-filter: none; backdrop-filter: none; } }
-@media print { .a11y-w { display: none; } }
+/* The dark glass is thin (0.55); the panel, words on it, goes nearly solid so they keep their contrast over any page. */
+[data-theme='dark'] .a11y-p { background: rgba(44, 44, 48, 0.94); }
+/* Light or dark (html.js themeButton): the same round glass beside it, 12px apart, so the corner reads as one pair
+   and each is its own target. The website's moon and sun inside: a moon while light, a sun while dark. */
+.theme, .theme:hover { position: fixed; z-index: 15; bottom: calc(16px + env(safe-area-inset-bottom)); inset-inline-end: calc(16px + 48px + 12px); display: grid; place-items: center; width: 48px; height: 48px; min-height: 0; padding: 0; border: 0; border-radius: 50%; background: var(--surface-hi); -webkit-backdrop-filter: saturate(180%) blur(24px); backdrop-filter: saturate(180%) blur(24px); box-shadow: var(--shadow-float), inset 0 0 0 1px var(--edge); color: var(--ink); transition: transform 0.16s ease, opacity 0.15s ease; }
+.theme[hidden] { display: none; }
+.theme:active { transform: scale(0.94); }
+.theme svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.theme .sun, [data-theme='dark'] .theme .moon { display: none; }
+[data-theme='dark'] .theme .sun { display: block; }
+@media (prefers-reduced-transparency: reduce) { .a11y-btn, .a11y-p, .theme { -webkit-backdrop-filter: none; backdrop-filter: none; } }
+@media print { .a11y-w, .theme { display: none; } }
 
 /* The switches. Bigger text zooms the page, so the sizes written in px grow with it (the website's way). */
 html.a-big body { zoom: 1.2; }
@@ -865,7 +869,5 @@ html.a-still *, html.a-still *::before, html.a-still *::after { animation: none 
 /* Higher contrast: the quiet inks come up to the ink, the hairlines darken, the glass goes solid; the view-as bar
    takes the rim Increase Contrast gives it. */
 html.a-contrast { --ink-2: #1d1d1f; --ink-3: #424245; --ink-p: #1d1d1f; --line: #8e8e93; --line-2: #424245; --surface: #ffffff; --surface-hi: #ffffff; --edge: #424245; --inset: #ffffff; --field: #ffffff; --bar-float: #fff4e5; --bar-edge: #a44200; }
-@media (prefers-color-scheme: dark) {
-  html.a-contrast { --ink-2: #f5f5f7; --ink-3: #e5e5ea; --ink-p: #f5f5f7; --line: #8e8e93; --line-2: #d2d2d7; --surface: #000000; --surface-hi: #000000; --edge: #d2d2d7; --inset: #000000; --field: #000000; --bar-float: #2d1f08; --bar-edge: #ff9f0a; }
-  html.a-contrast .a11y-p { background: #000000; }
-}
+html.a-contrast[data-theme='dark'] { --ink-2: #f5f5f7; --ink-3: #e5e5ea; --ink-p: #f5f5f7; --line: #8e8e93; --line-2: #d2d2d7; --surface: #000000; --surface-hi: #000000; --edge: #d2d2d7; --inset: #000000; --field: #000000; --bar-float: #2d1f08; --bar-edge: #ff9f0a; }
+html.a-contrast[data-theme='dark'] .a11y-p { background: #000000; }

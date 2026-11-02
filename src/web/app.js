@@ -49,9 +49,9 @@ import * as P from './html.js';
 //   - /admin needs a superadmin session
 //   - /admin/toran/* is Toran's, handed to it as it came (admin-toran.js), after the superadmin's session and
 //     before anything here reads the body; its answer goes back with Toran's headers, not ours
-// Server-rendered HTML; the only scripts are our own files: static/a11y.js (the accessibility panel) and
-// static/load.js (the loading state) on every page and static/admin.js on the operator's dashboard (/admin), nothing
-// inline. Referrer-Policy is same-origin: a token in a URL (magic links, invites) is never sent to another site as a
+// Server-rendered HTML; the only scripts are our own files: static/a11y.js (the accessibility panel and the light or
+// dark switch) and static/load.js (the loading state) on every page and static/admin.js on the operator's dashboard
+// (/admin), nothing inline. Referrer-Policy is same-origin: a token in a URL (magic links, invites) is never sent to another site as a
 // Referer, Teder
 // and Toran included. Not no-referrer: with that, browsers send "Origin: null"
 // on our own forms and the Origin check above would refuse every one of them.
@@ -313,6 +313,9 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
 
   return async (req, res) => {
     const out = { cookies: [] };
+    // Every page, its errors included, in the theme this browser chose (of-theme, html.js themeOf()): light without one.
+    const theme = P.themeOf(cookies(req));
+    const layout = (o) => P.layout({ v: V, theme, ...o });
     const headers = (extra = {}) => ({
       'cache-control': 'no-store',
       'x-content-type-options': 'nosniff',
@@ -380,7 +383,7 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
       // Toran's operator pages, on our /admin: the superadmin's only, outside view-as, as for /admin, and never
       // Toran's /internal routes. Everything else about the request (its CSRF, its forms) is Toran's to check.
       if (isAdminToran(p)) {
-        const page_ = (status, title, body) => send(status, P.layout({ title, body, v: V }));
+        const page_ = (status, title, body) => send(status, layout({ title, body }));
         if (!found?.user.is_superadmin || found.session.view_as_workspace_id) {
           if (req.method === 'GET') return redirect(`/admin/login?next=${encodeURIComponent(p + url.search)}`);
           return page_(403, T.adminLoginTitle, P.messagePage({ title: T.staleForm, lead: '', links: [['/admin/login', T.adminLoginTitle]] }));
@@ -405,7 +408,7 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
       const csrfName = secure ? '__Host-of_csrf' : 'of_csrf';
       let nonce = jar[csrfName];
       if (!/^[A-Za-z0-9_-]{22,}$/.test(nonce || '')) {
-        if (req.method === 'POST') return send(403, P.layout({ title: T.loginTitle, body: P.messagePage({ title: T.staleForm, lead: '', links: [['/login', T.notFoundBack]] }), v: V }));
+        if (req.method === 'POST') return send(403, layout({ title: T.loginTitle, body: P.messagePage({ title: T.staleForm, lead: '', links: [['/login', T.notFoundBack]] }) }));
         nonce = randomBytes(18).toString('base64url');
         out.cookies.push(`${csrfName}=${nonce}; Path=/; HttpOnly; SameSite=Lax${sec}`);
       }
@@ -433,7 +436,7 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
       let files = {};
       if (req.method === 'POST') {
         const o = req.headers.origin;
-        if (o && o !== origin) return send(403, P.layout({ title: T.loginTitle, body: P.messagePage({ title: T.crossSite, lead: '' }), v: V }));
+        if (o && o !== origin) return send(403, layout({ title: T.loginTitle, body: P.messagePage({ title: T.crossSite, lead: '' }) }));
         if (/^multipart\/form-data/i.test(String(req.headers['content-type'] || ''))) {
           // A file, up to PDF_MAX, only on the invoice form and only from the superadmin; nobody else sends one.
           if (!UPLOAD.test(p) || !found?.user.is_superadmin) throw new Refused(415, 'unsupported');
@@ -443,12 +446,12 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
         } else {
           form = await readForm(req);
         }
-        if (!csrfOk(form.get('_csrf'), nonce, secret)) return send(403, P.layout({ title: T.loginTitle, body: P.messagePage({ title: T.staleForm, lead: '', links: [[p.startsWith('/admin') ? '/admin' : '/login', T.notFoundBack]] }), v: V }));
+        if (!csrfOk(form.get('_csrf'), nonce, secret)) return send(403, layout({ title: T.loginTitle, body: P.messagePage({ title: T.staleForm, lead: '', links: [[p.startsWith('/admin') ? '/admin' : '/login', T.notFoundBack]] }) }));
       } else if (req.method !== 'GET' && req.method !== 'HEAD') {
         return text(405, 'method not allowed');
       }
       const f = (k) => String(form?.get(k) ?? '');
-      const page = (status, title, body, opts = {}) => send(status, P.layout({ title, body, flash, v: V, ...opts }));
+      const page = (status, title, body, opts = {}) => send(status, layout({ title, body, flash, ...opts }));
       const next = (raw) => safeNext(raw, { allowLocal: dev });
       const setSession = (user, opts = {}) => {
         const s = createSession(db, user, { ip, userAgent: req.headers['user-agent'], ...opts });
@@ -667,7 +670,7 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
 
         const via = f('via') === 'google' && google ? 'google' : 'email';
         const raw = { name: f('name').slice(0, 200), business: f('business').slice(0, 200), email: f('email').slice(0, 254), products: form.getAll('products'), plan: f('plan').slice(0, 20), terms: f('terms') === '1' };
-        const again = (status, error, extra) => send(status, P.layout({ title: SIGNUP.title, body: P.signupPage({ csrf, form: raw, error, google: Boolean(google), open: openProducts, payment }), v: V }), extra);
+        const again = (status, error, extra) => send(status, layout({ title: SIGNUP.title, body: P.signupPage({ csrf, form: raw, error, google: Boolean(google), open: openProducts, payment }) }), extra);
         const sent = (email) => page(200, SIGNUP.sentTitle, P.signupSentPage({ email }));
         // The honeypot: a field people never see. Filled, it was not a person: the same page as a real sign-up, and
         // nothing kept or sent.
@@ -797,7 +800,7 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
         if (!validEmail(email)) return page(400, T.loginTitle, P.loginPage({ csrf, next: to || '', email: f('email').slice(0, 254), error: T.badEmail, google: Boolean(google), signup: signupOn }));
         const wait = Math.max(limiters.magicIp.check(ipKey(ip)) || 0, limiters.magicEmail.check(email) || 0);
         if (wait) {
-          return send(429, P.layout({ title: T.loginTitle, body: P.loginPage({ csrf, next: to || '', email, error: T.tooMany(wait), google: Boolean(google), signup: signupOn }), v: V }), { 'retry-after': String(wait) });
+          return send(429, layout({ title: T.loginTitle, body: P.loginPage({ csrf, next: to || '', email, error: T.tooMany(wait), google: Boolean(google), signup: signupOn }) }), { 'retry-after': String(wait) });
         }
         limiters.magicIp.hit(ipKey(ip));
         limiters.magicEmail.hit(email);
@@ -974,7 +977,7 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
         }
         const back = adminNext(f('next'));
         const wait = limiters.adminLogin.check(ipKey(ip));
-        if (wait) return send(429, P.layout({ title: T.adminLoginTitle, body: P.adminLoginPage({ csrf, next: back, email: f('email'), error: T.adminTooMany(wait) }), v: V }), { 'retry-after': String(wait) });
+        if (wait) return send(429, layout({ title: T.adminLoginTitle, body: P.adminLoginPage({ csrf, next: back, email: f('email'), error: T.adminTooMany(wait) }) }), { 'retry-after': String(wait) });
         const ok = verifySuperadmin(db, { email: f('email'), password: f('password'), code: f('code') });
         if (!ok) {
           limiters.adminLogin.hit(ipKey(ip));
@@ -1029,7 +1032,7 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
           const viewAs = Boolean(session.view_as_workspace_id);
           const t = viewAs ? null : { ...(await toran.ops()), base: toran.base };
           const body = dashboardPage({ csrf, flash, flashBad, toran: t, customers: viewAs ? null : opsCustomers(db), at: now(), viewAs, receipts: viewAs ? [] : receiptsWaiting(db) });
-          return send(200, P.layout({ title: OPS.title, body, v: V, wide: true, banner, script: true }), { 'content-security-policy': CSP_SCRIPT });
+          return send(200, layout({ title: OPS.title, body, wide: true, banner, script: true }), { 'content-security-policy': CSP_SCRIPT });
         }
         if (p === '/admin/accounts' && req.method === 'GET') return console_(200);
         let m = /^\/admin\/invoices\/(\d+)$/.exec(p);
@@ -1250,7 +1253,7 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
       log(`[accounts] ${req.method} ${req.url?.split('?')[0]}: ${e.stack || e.message}`);
       if (!res.headersSent) {
         out.cookies = [];
-        send(500, P.layout({ title: T.serverError, body: P.messagePage({ title: T.serverError, lead: '' }), v: V }));
+        send(500, layout({ title: T.serverError, body: P.messagePage({ title: T.serverError, lead: '' }) }));
       }
     }
   };

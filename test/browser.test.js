@@ -108,7 +108,9 @@ run('the home page on a phone, in dark mode: the bar fills from the right, the i
     const month = paidMonth(paidUntil, today);
     addInvoice(t.db, ws, { product: 'teder', number: 'INV-2026-001042', issued_on: today, period_from: today, period_to: today, amount: '790', vat: '142.2' }, Buffer.from('%PDF-1.7\n%%EOF\n'), { by: admin });
 
+    // Dark is chosen, never taken from the device (of-theme, test/theme.test.js).
     const context = await t.browser.newContext({ viewport: { width: 375, height: 812 }, colorScheme: 'dark' });
+    await context.addCookies([{ name: 'of-theme', value: 'dark', url: t.base }]);
     const page = await context.newPage();
     await page.goto(`${t.base}/login`);
     await page.fill('#email', 'dana@example.com');
@@ -175,6 +177,7 @@ run("sign-up on a phone, in dark mode, Teder the only product open: no box to ti
   const t = await setup({ env: { OF_SIGNUP: '1', OF_SIGNUP_PRODUCTS: 'teder' } });
   try {
     const context = await t.browser.newContext({ viewport: { width: 375, height: 812 }, colorScheme: 'dark' });
+    await context.addCookies([{ name: 'of-theme', value: 'dark', url: t.base }]);
     const page = await context.newPage();
     // From the website's button under the full plan: Teder is in the form without being asked (the owner, 2026-11-02),
     // and its plans are open, the one from the button chosen.
