@@ -17,6 +17,7 @@ import { startViewAs } from '../src/accounts/workspaces.js';
 import { operatorAssertion } from '../src/web/admin-toran.js';
 import { readSetup } from '../src/web/setup.js';
 import { eraseClient } from '../src/web/erase.js';
+import { changedClient, CHANGED_PATH, REASONS } from '../src/web/changed.js';
 import { toranClient } from '../src/web/toran.js';
 import { sampleSetup } from './setup-fake.js';
 import { sampleOps } from './toran-fake.js';
@@ -54,7 +55,7 @@ export function shapeProblems(actual, example, nullable = [], at = '$') {
 }
 
 test('every contract file is complete: who serves it, who calls it, and every answer with a status and an example', () => {
-  assert.deepEqual(Object.keys(contracts).sort(), ['admin-toran-operator', 'entitlement', 'notify', 'ops-customers', 'owner-phone', 'pay', 'session', 'setup', 'signup', 'toran-ops', 'workspaces-delete']);
+  assert.deepEqual(Object.keys(contracts).sort(), ['admin-toran-operator', 'entitlement', 'entitlement-changed', 'notify', 'ops-customers', 'owner-phone', 'pay', 'session', 'setup', 'signup', 'toran-ops', 'workspaces-delete']);
   for (const [name, c] of Object.entries(contracts)) {
     assert.equal(c.name, name);
     assert.ok(c.doc && c.servedBy.length && c.calledBy.length, name);
@@ -314,6 +315,42 @@ test('workspaces-delete: a 200 is deleted, whatever its body; a 404 or anything 
     } finally {
       await p.close();
     }
+  }
+});
+
+test('entitlement-changed: accounts sends the request the contract has, to the path it names; a 2xx is told, anything else a line in the log', async () => {
+  const r = contracts['entitlement-changed'].routes[0];
+  assert.deepEqual([r.method, r.path], ['POST', CHANGED_PATH]);
+  assert.ok(REASONS.includes(r.request.body.reason), 'the example reason is one accounts sends');
+  for (const a of r.answers) {
+    const seen = [];
+    const p = await answering((req) => (seen.push({ method: req.method, url: req.url, auth: req.headers.authorization, type: req.headers['content-type'] }), { status: a.status, body: a.body }));
+    const logs = [];
+    try {
+      const out = await changedClient({ env: { OF_INTERNAL_TOKEN: TOKEN, OF_TEDER_INTERNAL: p.url }, log: (m) => logs.push(m) }).tell(r.request.body.workspace, ['teder'], r.request.body.reason);
+      const ok = a.status >= 200 && a.status < 300;
+      assert.deepEqual(out, { teder: ok ? 'told' : 'failed' }, a.case);
+      assert.equal(logs.length, ok ? 0 : 1, `${a.case}: ${ok ? 'nothing' : 'one line'} in the log`);
+      assert.deepEqual(seen, [{ method: 'POST', url: CHANGED_PATH, auth: `Bearer ${TOKEN}`, type: 'application/json' }]);
+    } finally {
+      await p.close();
+    }
+  }
+  // The body itself: what the contract's request shows, the workspace a number even when it came as a string.
+  const bodies = [];
+  const p = createServer(async (req, res) => {
+    const chunks = [];
+    for await (const c of req) chunks.push(c);
+    bodies.push(JSON.parse(Buffer.concat(chunks).toString('utf8')));
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify(r.answers[0].body));
+  });
+  await new Promise((ok) => p.listen(0, '127.0.0.1', ok));
+  try {
+    await changedClient({ env: { OF_INTERNAL_TOKEN: TOKEN, OF_TORAN_INTERNAL: `http://127.0.0.1:${p.address().port}` }, log: () => {} }).tell(String(r.request.body.workspace), ['toran'], r.request.body.reason);
+    assert.deepEqual(bodies, [r.request.body]);
+  } finally {
+    await new Promise((ok) => (p.closeAllConnections(), p.close(ok)));
   }
 });
 

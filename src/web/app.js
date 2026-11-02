@@ -24,6 +24,7 @@ import { CANCEL, ERASE, MAIL, MORNING, NOTIFY, OPS, PAY, PRODUCT_NAMES, SETUP, S
 import { payOverWa } from './pay.js';
 import { setupClient, setupState } from './setup.js';
 import { eraseClient } from './erase.js';
+import { changedClient } from './changed.js';
 import { createLinkCode, openLinkCode, phoneIn, phonesFor, removePhone } from '../accounts/phones.js';
 import { describe, listPrice, payMonth, payTotal, setSubscription, subscriptionsOf } from '../accounts/subscriptions.js';
 import { addInvoice, invoiceIn, invoicesOf, PDF_MAX, removeInvoice } from '../accounts/invoices.js';
@@ -172,7 +173,7 @@ const OPS_ACTION = /^\/admin\/ops\/(toran|teder)\/([^/]{1,300})\/([a-z]{1,20})$/
 // Where each button comes back to on the dashboard, without script.
 const OPS_BACK = ['contact', 'talking'];
 
-export function publicHandler({ db, env = process.env, mailer, limiters: given = {}, failDelayMs = 400, log = console.error, toran = toranClient({ env, log }), toranProxyMs, google = googleConfig(env), googleFetch = globalThis.fetch, setupMs, setupFetch = globalThis.fetch, eraseFetch = setupFetch, eraseMs, morningFetch = globalThis.fetch, morningMs }) {
+export function publicHandler({ db, env = process.env, mailer, limiters: given = {}, failDelayMs = 400, log = console.error, toran = toranClient({ env, log }), toranProxyMs, google = googleConfig(env), googleFetch = globalThis.fetch, setupMs, setupFetch = globalThis.fetch, eraseFetch = setupFetch, eraseMs, changedFetch = setupFetch, changedMs, changed = null, morningFetch = globalThis.fetch, morningMs }) {
   const secret = sessionSecret(env);
   const publicHost = String(env.PUBLIC_HOST || '').trim().toLowerCase() || null;
   const dev = !publicHost;
@@ -206,6 +207,20 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
   };
   // Deleting a workspace: the products' parts first (src/web/erase.js), then ours (src/accounts/erase.js).
   const eraser = eraseClient({ env, log, fetchImpl: eraseFetch, ...(eraseMs ? { timeoutMs: eraseMs } : {}) });
+  // Teder and Toran hear at once that a workspace's access changed (src/web/changed.js), so the customer sees it on the
+  // next page instead of up to 5 minutes later. Called after the change is committed and never awaited: a product that
+  // is down or slow is a line in the log, and the request goes on. Only the products the workspace has on are told;
+  // `had` names products it had until this request (a product just turned off), told whatever they are now.
+  const changes = changed || changedClient({ env, log, fetchImpl: changedFetch, ...(changedMs ? { timeoutMs: changedMs } : {}) });
+  const accessChanged = (workspaceId, products, reason, { had = false } = {}) => {
+    try {
+      const on = enabledProducts(db, workspaceId);
+      const to = [...new Set(products)].filter((pr) => PRODUCTS.includes(pr) && (had || on.includes(pr)));
+      if (to.length) changes.tell(workspaceId, to, reason);
+    } catch (e) {
+      log(`[accounts] telling the products that workspace ${workspaceId} changed failed: ${e.message}`);
+    }
+  };
   // The owner hears of each confirmed sign-up (OF_SIGNUP_NOTIFY). Called once its transaction has committed; the
   // mailer queues and never waits, and a failure here is logged and never stands in the customer's way. It has each
   // product's plan and price as its subscription has them, and what to do next: in manual mode, email the customer
@@ -576,12 +591,14 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
         try {
           if (action === 'cancel') {
             const r = cancelSubscription(db, ws.id, product, { by: found.user, ip });
+            accessChanged(ws.id, [product], 'cancelled');
             const owners = db.all("SELECT u.email FROM memberships m JOIN users u ON u.id = m.user_id WHERE m.workspace_id = ? AND m.role = 'client_owner' AND u.disabled_at IS NULL", ws.id);
             for (const o of owners) mailer.send(cancelMail(o.email, { business: ws.name, product, lastDay: r.lastDay, paid: r.paid, link: `${base}/` }));
             tellOwner((to) => cancelNoticeMail(to, { business: ws.name, product, who: found.user.email, lastDay: r.lastDay, paid: r.paid, link: `${base}/admin/accounts#ws-${ws.id}` }), 'cancellation');
             setFlash(r.paid ? CANCEL.flashCancelled(name, dayHe(r.lastDay)) : CANCEL.flashCancelledNow(name));
           } else {
             resumeSubscription(db, ws.id, product, { by: found.user, ip });
+            accessChanged(ws.id, [product], 'resumed');
             tellOwner((to) => cancelNoticeMail(to, { business: ws.name, product, who: found.user.email, resumed: true, link: `${base}/admin/accounts#ws-${ws.id}` }), 'resumption');
             setFlash(CANCEL.flashResumed(name));
           }
@@ -1106,6 +1123,8 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
           try {
             const { recorded } = decideReceipt(db, r.id, m[2] === 'paid' ? 'paid' : 'not_paid', { ...by, expects });
             if (m[2] === 'paid') {
+              // Committed: each product paid for hears at once, before the emails and before Morning, which may be slow.
+              accessChanged(r.workspace_id, recorded.map((x) => x.product), 'paid');
               const owners = db.all("SELECT u.email FROM memberships m JOIN users u ON u.id = m.user_id WHERE m.workspace_id = ? AND m.role = 'client_owner' AND u.disabled_at IS NULL", r.workspace_id);
               for (const x of recorded) for (const o of owners) mailer.send(paidMail(o.email, { business: r.business, product: x.product, until: x.until, link: `${base}/` }));
               const paidLine = PAY.flashPaid(r.business, recorded.map((x) => PAY.flashPaidLine(PRODUCT_NAMES[x.product], dayHe(x.until))).join(' '));
@@ -1180,12 +1199,16 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
                 setFlash(s?.paid_until ? `${T.errors.already_paid} ${T.flashSubPaid(PRODUCT_NAMES[product], w.name, dayHe(s.paid_until))}` : T.errors.already_paid);
                 return toConsole();
               }
-              // Each owner hears that the payment is in.
+              // Recorded and committed: the product hears at once (a refused duplicate, above, tells nobody), and each
+              // owner that the payment is in.
+              accessChanged(w.id, [product], 'paid');
               const owners = db.all("SELECT u.email FROM memberships m JOIN users u ON u.id = m.user_id WHERE m.workspace_id = ? AND m.role = 'client_owner' AND u.disabled_at IS NULL", w.id);
               for (const o of owners) mailer.send(paidMail(o.email, { business: w.name, product, until, link: `${base}/` }));
               setFlash(T.flashSubPaid(PRODUCT_NAMES[product], w.name, dayHe(until)));
             } else {
               setSubscription(db, w.id, product, { plan: f('plan'), monthly: f('monthly'), setup: f('setup'), vat: f('vat'), started_on: f('started_on'), paid_until: f('paid_until'), ends_on: f('ends_on') }, by);
+              // The paid-until day, the last day or Teder's plan may have moved: the product asks again.
+              accessChanged(w.id, [product], 'subscription');
               setFlash(T.flashSubSaved(PRODUCT_NAMES[product], w.name));
             }
             return toConsole();
@@ -1201,6 +1224,7 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
             const w = getWorkspace(db, m[1]);
             const on = f('comp') === '1';
             setComp(db, w.id, f('product'), on, by);
+            accessChanged(w.id, [f('product')], 'comp');
             setFlash((on ? T.flashCompOn : T.flashCompOff)(PRODUCT_NAMES[f('product')], w.name));
             return toConsole();
           } catch (e) {
@@ -1236,9 +1260,12 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
             } else if (action === 'products') {
               const on = f('enabled') === '1';
               setProduct(db, w.id, f('product'), on, by);
+              // Off, it is told too: it had the product until now, and its engine reads what it kept.
+              accessChanged(w.id, [f('product')], 'product', { had: true });
               setFlash((on ? T.flashProductOn : T.flashProductOff)(PRODUCT_NAMES[f('product')], w.name));
             } else if (action === 'disable' || action === 'enable') {
               setDisabled(db, w.id, action === 'disable', by);
+              accessChanged(w.id, enabledProducts(db, w.id), 'workspace');
               setFlash((action === 'disable' ? T.flashDisabled : T.flashEnabled)(w.name));
             } else {
               startViewAs(db, session, w.id, by);

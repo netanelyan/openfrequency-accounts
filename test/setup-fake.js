@@ -5,7 +5,9 @@ import { TOKEN } from './site.js';
 // GET /internal/setup?workspace=<id>, which answers `state.answer(workspaceId)`: a body (an object, sent as JSON), or
 // { status, raw } to send something else as it is, or 'hang' to never answer; and POST
 // /internal/workspaces/<id>/delete, which answers `state.erase(workspaceId)`: a status (404, as a product without the
-// route would, unless a test says otherwise). Every request is kept in `calls`.
+// route would, unless a test says otherwise); and POST /internal/entitlement/changed (docs/contracts/entitlement-changed.json),
+// which answers `state.changed(body)`: a status (200, the contract's "cleared" case, unless a test says otherwise) or
+// 'hang' to never answer. Every request is kept in `calls`, a POST to changed with its body.
 
 /** A checklist in the contract's shape: one required step done, one required to do, one optional. Fictional. */
 export function sampleSetup(product, { ready = false, done = false } = {}) {
@@ -21,16 +23,31 @@ export function sampleSetup(product, { ready = false, done = false } = {}) {
   };
 }
 
-export async function startProduct(product, { token = TOKEN, answer = () => sampleSetup(product), erase = () => 404 } = {}) {
+export async function startProduct(product, { token = TOKEN, answer = () => sampleSetup(product), erase = () => 404, changed = () => 200 } = {}) {
   const calls = [];
-  const state = { answer, erase };
+  const state = { answer, erase, changed };
   const hanging = new Set();
-  const server = createServer((req, res) => {
+  const server = createServer(async (req, res) => {
     const url = new URL(req.url, 'http://x');
-    calls.push({ method: req.method, path: req.url, auth: req.headers.authorization || null, workspace: url.searchParams.get('workspace') });
+    const call = { method: req.method, path: req.url, auth: req.headers.authorization || null, workspace: url.searchParams.get('workspace') };
+    calls.push(call);
+    if (req.method === 'POST' && url.pathname === '/internal/entitlement/changed') {
+      const chunks = [];
+      for await (const c of req) chunks.push(c);
+      call.body = JSON.parse(Buffer.concat(chunks).toString('utf8') || 'null');
+    }
     if (req.headers.authorization !== `Bearer ${token}`) {
       res.writeHead(401, { 'content-type': 'application/json' });
       return res.end('{"error":"bad_token"}');
+    }
+    if (req.method === 'POST' && url.pathname === '/internal/entitlement/changed') {
+      const status = state.changed(call.body);
+      if (status === 'hang') {
+        hanging.add(res);
+        return;
+      }
+      res.writeHead(status, { 'content-type': 'application/json' });
+      return res.end(status < 300 ? JSON.stringify({ ok: true, workspace: call.body?.workspace, cleared: true }) : '{"error":"x"}');
     }
     const del = /^\/internal\/workspaces\/(\d+)\/delete$/.exec(url.pathname);
     if (req.method === 'POST' && del) {

@@ -275,6 +275,53 @@ The same, field by field, with an example for every status, is `docs/contracts/e
 id we never had (a deleted workspace is `200` with `off`), `401` without the token, `503` while
 the token is unset or short here, `405` for any other method.
 
+### When access changes: POST /internal/entitlement/changed
+
+Teder and Toran keep each answer 5 minutes. So that a customer does not wait those 5 minutes after
+paying (the owner's audit, 2026-11-02: "The customer should see access open on the next refresh"),
+accounts tells the product as soon as a change is committed (`src/web/changed.js`):
+
+```
+POST <OF_TEDER_INTERNAL or OF_TORAN_INTERNAL>/internal/entitlement/changed
+Authorization: Bearer <OF_INTERNAL_TOKEN>
+Content-Type: application/json
+
+{ "workspace": 7, "reason": "paid" }
+```
+
+The product drops the answer it keeps for that workspace, so its next page or check asks
+`GET /internal/entitlement` afresh; the last answer stays underneath for the 24 hours accounts may
+be down. It answers `200 {"ok":true,"workspace":7,"cleared":true}` (`cleared` false when it kept
+nothing for that workspace), and refuses as its other internal routes do: `503` without a token of
+its own, `403` from anywhere but this machine or through Caddy, `401` without ours, `405` for any
+other method, `400 bad_workspace` without a workspace id. Every case is in
+`docs/contracts/entitlement-changed.json`.
+
+Accounts sends it after the transaction commits, never inside it, and never waits for it: each
+product gets 2 seconds (`CHANGED_MS`), and one that is down, slow or refuses is a line in the log
+(`pm2 logs of-accounts`: `teder POST /internal/entitlement/changed (workspace 7, paid): timed out`)
+and nothing else. The payment, its emails, its invoice and the redirect go on; that product asks
+again within its 5 minutes, as before. The addresses are the ones `/setup` uses, `OF_TEDER_INTERNAL`
+and `OF_TORAN_INTERNAL` (defaults `http://127.0.0.1:4700` and `http://127.0.0.1:4710`), and the
+token is `OF_INTERNAL_TOKEN`: nothing new to set.
+
+Who is told, and why:
+
+| Change | `reason` | Told |
+|---|---|---|
+| A month recorded: the console's "התקבל תשלום לחודש", a receipt's "התשלום הגיע" | `paid` | The product paid for (each one a receipt records), if the workspace has it on. Once for each payment recorded; a form sent again ("התשלום כבר נרשם") tells nobody, and so does "לא הגיע". |
+| The subscription saved by hand on `/admin/accounts` | `subscription` | That product. The paid-until day, the last day or Teder's plan (its month's size, read from the entitlement) may have moved. |
+| Complimentary, or no longer | `comp` | That product. Comp opens it at once, often while the customer is on the phone with us. |
+| The owner cancels online, or takes it back | `cancelled`, `resumed` | That product. Cancelling with nothing paid for today stops it today. |
+| A product turned on or off | `product` | That product, even when it was just turned off: the session check refuses it within a minute, but the product's engine (Teder's runner, Toran's answers) reads the kept answer. |
+| The workspace disabled or enabled | `workspace` | Every product it has on, for the same reason. |
+| The workspace deleted (by its owner, the superadmin or the daily retention) | none | Each product is asked to delete it first (below), which removes what it kept. |
+| A paid month running out, the grace ending, a last day passing | none | Nothing happens at that moment to send from; the products see it when their 5 minutes are up. |
+
+Deploy Teder and Toran first: until a product has the route, it takes the request for a browser
+with no session (Teder answers 401, Toran a redirect to the sign-in, which accounts does not follow),
+accounts logs the line, and the product goes on asking every 5 minutes.
+
 ### The payment button
 
 "התקבל תשלום לחודש" records one month for each form, however often the form is sent. It carries

@@ -47,7 +47,8 @@ MAIL_FROM=OpenFrequency <accounts@openfrequency.co.il>
 MAIL_REPLY_TO=                # where "reply to this email" lands; your own inbox (the billing emails ask customers to reply)
 OF_SUPPORT_WA=                # our WhatsApp for "write to us", digits only (972...); unset, a question about paying opens an email to MAIL_REPLY_TO
 OF_ASSISTANT_WA=              # the owner line's WhatsApp number, digits only; the same as TORAN_ASSISTANT_WA in Toran's .env; with OF_PAYMENT_METHOD, customers pay over WhatsApp (docs/internal-pay.md)
-OF_TORAN_INTERNAL=            # Toran on this machine, for /admin and /admin/toran; empty means http://127.0.0.1:4710
+OF_TORAN_INTERNAL=            # Toran on this machine, for /admin and /admin/toran (and /setup, deleting, telling it of a payment); empty means http://127.0.0.1:4710
+OF_TEDER_INTERNAL=            # Teder on this machine, for /setup, deleting and telling it of a payment; empty means http://127.0.0.1:4700
 GOOGLE_CLIENT_ID=             # sign in with Google (below); unset, only the emailed link is offered
 GOOGLE_CLIENT_SECRET=
 
@@ -251,6 +252,7 @@ from; `private/` stays where it is, shared by every release.
 | No email arrives | `pm2 logs of-accounts`: a `Resend answered 4xx` line says why (an unverified domain, a key without access). |
 | Teder or Toran sends everyone to the login | Their `OF_INTERNAL_TOKEN` must equal this one. `/internal/session` answers `bad_token` when it does not. |
 | `/admin` says "תורן לא ענה עכשיו" | Toran is down, or not at `OF_TORAN_INTERNAL`, or its `OF_INTERNAL_TOKEN` differs from this one. `pm2 logs of-accounts` has a `toran GET /internal/ops` line with the status or the error. The money and the console work in the meantime. |
+| A customer paid and Teder or Toran still shows the paywall | `pm2 logs of-accounts` has a `teder POST /internal/entitlement/changed (workspace <id>, paid)` (or `toran ...`) line when the product was not told: down, not at `OF_TEDER_INTERNAL` / `OF_TORAN_INTERNAL`, a different `OF_INTERNAL_TOKEN`, or a build without the route. The product sees the payment anyway within its 5 minutes; Teder's paywall also has "בדקו שוב". |
 | `/admin/toran/` says "תורן לא ענה כרגע" (502) | Toran is down or took over 30 seconds. `pm2 logs of-accounts` has a `toran GET /admin/toran/...` line with the error. |
 | "האתר הזה עובד רק ב-HTTPS" | The request reached 4740 without Caddy's `X-Forwarded-Proto: https`. Check that Caddy proxies it. |
 | "Google לא אישר את הכניסה" | `pm2 logs of-accounts`: `google sign-in: refused` is usually a wrong secret, or a redirect URI in Google Cloud that is not exactly `https://accounts.openfrequency.co.il/auth/google/callback`. |

@@ -70,7 +70,12 @@ operator records it on `/admin/receipts/<id>` with one press. Toran never record
 Morning, once, after the payment is recorded and only when Morning's VAT settings match what was
 charged, and its PDF goes onto the customer's page.
 Teder and Toran ask `GET /internal/entitlement?workspace=<id>&product=<p>`: `access` is `paid`,
-`comp`, `unpaid`, `cancelled` or `off`, and `allowed` says whether to open. Every workspace that
+`comp`, `unpaid`, `cancelled` or `off`, and `allowed` says whether to open. They keep the answer 5
+minutes, so the moment a payment is recorded (and when comp, a subscription saved by hand, a
+cancellation or its undo, a product turned on or off, or the workspace disabled changes access),
+accounts tells each product the workspace has, `POST /internal/entitlement/changed`, and that
+product asks afresh on the customer's next page: after the transaction, never awaited, 2 seconds,
+and a product that is down is a line in the log (`src/web/changed.js`). Every workspace that
 existed before the paywall (migration 7) is complimentary for the products it had on, so nothing
 that worked stops; a new sign-up is not. Until it is paid, `/setup` shows the payment as the
 first required step ("לתשלום" to the provider's page, or, in manual mode, our WhatsApp for
@@ -181,7 +186,8 @@ The full steps (DNS, Resend, Caddy, backups, checks) are in [docs/deploy.md](doc
   operator; the codes, the operator's page, retention, and a line for the privacy policy.
 - [docs/switch-over.md](docs/switch-over.md): what changes in each product, and in what order.
 - [docs/setup.md](docs/setup.md): `/internal/setup`, each product's checklist for the setup page;
-  `/internal/entitlement`, the paywall; `/internal/notify`, product emails; the delete route each
+  `/internal/entitlement`, the paywall, and `/internal/entitlement/changed`, the route each product
+  answers when access changes here; `/internal/notify`, product emails; the delete route each
   product answers when a workspace is deleted; the sign-up's settings; and `/internal/signup`,
   whether sign-up is open and for which products, which Teder checks its own switch against at start.
 
@@ -194,7 +200,7 @@ The full steps (DNS, Resend, Caddy, backups, checks) are in [docs/deploy.md](doc
 | `src/auth` | passwords, TOTP, tokens, rate limits, the `?next=` allowlist, sessions, Google's half of signing in |
 | `src/accounts` | magic links and invites, public sign-up, workspaces, the superadmin, subscriptions, the payment hook, the paywall (`entitlement.js`), deleting a workspace (`erase.js`), product emails (`notify.js`), invoices, WhatsApp numbers, paying over WhatsApp (`pay.js`: the payment codes and the transfers' pictures), the operator's list of customers |
 | `src/mail` | Resend (or the outbox folder without a key), and the emails |
-| `src/web` | `app.js` the public site, `internal.js` `/internal/session`, `/internal/owner-phone*`, `/internal/ops/customers`, `/internal/entitlement`, `/internal/notify`, `/internal/pay*` and `/internal/signup`, `pay.js` the button to pay over WhatsApp and Toran's answer, `toran.js` the client for Toran's `/internal/ops`, `setup.js` the client for each product's `/internal/setup`, `erase.js` the client for each product's delete route, `dashboard.js` the operator's dashboard, `copy.js` every Hebrew word, `html.js` the pages |
+| `src/web` | `app.js` the public site, `internal.js` `/internal/session`, `/internal/owner-phone*`, `/internal/ops/customers`, `/internal/entitlement`, `/internal/notify`, `/internal/pay*` and `/internal/signup`, `pay.js` the button to pay over WhatsApp and Toran's answer, `toran.js` the client for Toran's `/internal/ops`, `setup.js` the client for each product's `/internal/setup`, `erase.js` the client for each product's delete route, `changed.js` the one that tells each product its access changed, `dashboard.js` the operator's dashboard, `copy.js` every Hebrew word, `html.js` the pages |
 | `scripts` | start, demo, `admin:create`, backup (checked), `daily` (the billing emails and the deletions, by hand), `schema-check`, `release-check`, `check:public`, `init-private` |
 | `deploy` | the Caddy block, `deploy.sh` and `rollback.sh` (release folders) |
 | `docs/contracts` | each internal API between accounts, Teder and Toran: the request, every status, an example of each |
