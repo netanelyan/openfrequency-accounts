@@ -25,10 +25,10 @@ try {
 
 const run = chromium ? test : test.skip;
 
-async function setup({ comp = true, env = {} } = {}) {
+async function setup({ comp = true, env = {}, products = ['teder'] } = {}) {
   const h = tempHome();
   // Complimentary unless a test pays for it, so the sign-in lands on the home page (an unpaid workspace lands on /setup).
-  makeWorkspace(h.db, 'dana-shop', { name: 'החנות של דנה', products: ['teder'], comp, members: { 'dana@example.com': 'client_owner' } });
+  makeWorkspace(h.db, 'dana-shop', { name: 'החנות של דנה', products, comp, members: { 'dana@example.com': 'client_owner' } });
   const { codes } = setSuperadmin(h.db, { email: 'admin@example.com', password: 'a long enough password', totpSecret: newTotpSecret() });
   const site = await startSite(h.db, { env: { PUBLIC_HOST: '', TEDER_URL: 'http://localhost:4700/', OF_ASSISTANT_WA: '972500000100', ...env } });
   const browser = await chromium.launch();
@@ -150,21 +150,22 @@ run('the home page on a phone, in dark mode: the bar fills from the right, the i
   }
 });
 
-run('on a phone, a customer ticks the box, gets the code and the WhatsApp button, and nothing runs off the screen', async () => {
-  const t = await setup();
+run('on a phone, a customer of Toran gets the code and the WhatsApp button, with no box about updates, and nothing runs off the screen', async () => {
+  // A linked number is for Toran's assistant only since 2026-11-02 (Teder is managed on its dashboard): no updates box.
+  const t = await setup({ products: ['teder', 'toran'] });
   try {
     const dana = t.db.get("SELECT * FROM users WHERE email = 'dana@example.com'");
     const context = await t.browser.newContext({ viewport: { width: 375, height: 800 } });
     await context.addCookies([{ name: 'of_session', value: createSession(t.db, dana).id, url: t.base }]);
     const page = await context.newPage();
     await page.goto(`${t.base}/`);
-    await page.check('input[name="updates"]');
+    assert.equal(await page.locator('input[name="updates"]').count(), 0);
     await page.click('form[action="/whatsapp/link"] button');
     await page.waitForURL(`${t.base}/#whatsapp`);
     const code = await page.textContent('.wa-code .code');
     assert.match(code, /^LINK-[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{6}$/);
     assert.equal(await page.getAttribute('.wa-code a.button', 'href'), `https://wa.me/972500000100?text=${code}`);
-    assert.equal(t.db.get('SELECT opt_in FROM phone_links').opt_in, 1);
+    assert.equal(t.db.get('SELECT opt_in FROM phone_links').opt_in, 0);
     const wide = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
     assert.equal(wide, 0);
   } finally {

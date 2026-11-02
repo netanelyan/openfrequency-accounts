@@ -162,29 +162,22 @@ export const T = {
   dashNotifications: 'התראות במייל',
   dashDelete: 'מחיקת החשבון',
 
-  // ---- WhatsApp: the owner line (docs/internal-owner-phone.md)
+  // ---- WhatsApp: the owner line (docs/internal-owner-phone.md), for Toran only since 2026-11-02 (Teder is managed on
+  // its dashboard, and sends nothing to WhatsApp)
   waTitle: 'וואטסאפ',
-  waLead: 'כשהמספר שלכם מחובר, אפשר לכתוב לתורן ולתדר בוואטסאפ ולשאול על החשבון, בלי להיכנס לאתר.',
+  waLead: 'כשהמספר שלכם מחובר, אפשר לכתוב לתורן בוואטסאפ ולשאול על החנות, בלי להיכנס לאתר.',
+  waLeadNoToran: 'את תדר מנהלים רק מלוח הבקרה, ומתדר לא נשלחות הודעות לוואטסאפ. מספר שחיברתם קודם אפשר להסיר כאן.',
   waNone: 'עוד לא חיברתם מספר.',
   waOf: (name) => `של ${name}`,
-  waOn: 'עם עדכונים',
-  waOff: 'בלי עדכונים',
-  waTurnOn: 'הפעלת עדכונים',
-  waTurnOff: 'כיבוי עדכונים',
   waRemove: 'הסרה',
   waConnect: 'לחבר את הוואטסאפ',
   waAgain: 'קוד חדש',
-  waOptIn: 'לשלוח לי עדכונים מתדר ומתורן בוואטסאפ',
-  waOptInHint: 'למשל כשיש פוסטים שמחכים לאישור, וסיכום פעם בשבוע. כדי להפסיק, כותבים שם "הפסק" או מכבים כאן.',
   waCodeTitle: 'הקוד שלכם',
   waCodeLead: (until) => `שולחים את הקוד בוואטסאפ למספר שלנו, מהטלפון שרוצים לחבר. הוא עובד פעם אחת, במשך 30 דקות (עד ${until}).`,
-  waCodeUpdates: (on) => (on ? 'ביקשתם לקבל עדכונים בוואטסאפ.' : 'בלי עדכונים בוואטסאפ. אפשר להפעיל אותם אחר כך כאן.'),
   waSend: 'פתיחת וואטסאפ עם הקוד',
   waNoNumber: 'עוד לא הגדרנו כאן את המספר שלנו בוואטסאפ, אז כרגע אין לאן לשלוח את הקוד.',
   waReadOnly: 'בצפייה כלקוח אי אפשר לשנות כלום.',
   flashWaRemoved: (phone) => `הסרנו את ${phone}. כדי לחבר אותו שוב צריך קוד חדש.`,
-  flashWaOn: (phone) => `העדכונים בוואטסאפ ל-${phone} פועלים.`,
-  flashWaOff: (phone) => `כיבינו את העדכונים בוואטסאפ ל-${phone}. המספר עדיין מחובר.`,
 
   logoutTitle: 'יציאה',
   logoutLead: (email) => `אפשר לצאת רק מהדפדפן הזה, או מכל מקום שבו נכנסתם עם ${email}. היציאה חלה על כל המוצרים של OpenFrequency.`,

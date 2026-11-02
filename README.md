@@ -170,7 +170,9 @@ The full steps (DNS, Resend, Caddy, backups, checks) are in [docs/deploy.md](doc
 - [docs/internal-session.md](docs/internal-session.md): what they send to
   `/internal/session` and every answer they can get back.
 - [docs/internal-owner-phone.md](docs/internal-owner-phone.md): who a WhatsApp number is, for
-  Toran's owner line: the link code, the claim, consent, and every answer.
+  Toran's owner line: the link code, the claim, consent, and every answer. Since 2026-11-02 the
+  home page offers the link only to a workspace with Toran, with no box about updates: Teder is
+  managed on its dashboard only, and its messages are not sent to WhatsApp.
 - [docs/internal-ops.md](docs/internal-ops.md): `/internal/ops/customers`, every workspace with
   its people, subscriptions and invoices, for Toran; and the other direction, `/admin` calling
   Toran's `/internal/ops`.

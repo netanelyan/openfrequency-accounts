@@ -24,7 +24,7 @@ import { CANCEL, ERASE, MAIL, MORNING, NOTIFY, OPS, PAY, PRODUCT_NAMES, SETUP, S
 import { payOverWa } from './pay.js';
 import { setupClient, setupState } from './setup.js';
 import { eraseClient } from './erase.js';
-import { createLinkCode, openLinkCode, phoneIn, phonesFor, removePhone, setConsent } from '../accounts/phones.js';
+import { createLinkCode, openLinkCode, phoneIn, phonesFor, removePhone } from '../accounts/phones.js';
 import { describe, listPrice, payMonth, payTotal, setSubscription, subscriptionsOf } from '../accounts/subscriptions.js';
 import { addInvoice, invoiceIn, invoicesOf, PDF_MAX, removeInvoice } from '../accounts/invoices.js';
 import { decideReceipt, PayError, RECEIPT_TYPES, receiptById, receiptProducts, receiptsWaiting } from '../accounts/pay.js';
@@ -480,7 +480,9 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
           // Invoices are the owners' only: a member sees the team and the products, not what the business pays.
           invoices: d.body.role === 'client_owner' ? invoicesOf(db, wsId) : null,
           team: teamOf(db, wsId),
-          whatsapp: { phones: phonesFor(db, { userId: found.user.id, workspaceId: wsId, role: d.body.role }), code: openLinkCode(db, found.user.id, wsId), waNumber },
+          // A linked number is for Toran's assistant only (Teder is managed on its dashboard): the card's form shows only
+          // with Toran (html.js whatsappCard).
+          whatsapp: { phones: phonesFor(db, { userId: found.user.id, workspaceId: wsId, role: d.body.role }), code: openLinkCode(db, found.user.id, wsId), waNumber, toran: d.body.products.includes('toran') },
           role: d.body.role,
           readOnly: d.body.readOnly,
           support,
@@ -760,8 +762,10 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
         return pdf(inv);
       }
 
-      // WhatsApp on the home page: a link code, a number removed, its updates on or off. Only a customer in their own
-      // workspace; the superadmin (in view-as, read-only) changes nothing here.
+      // WhatsApp on the home page: a link code, a number removed. Only a customer in their own workspace; the
+      // superadmin (in view-as, read-only) changes nothing here. A link code only for a workspace with Toran, and with
+      // no updates: Teder is managed on its dashboard only (the owner, 2026-11-02), and the updates were Teder's
+      // messages, which are not sent any more. /whatsapp/updates, which turned them on or off, is gone.
       if (p.startsWith('/whatsapp/') && req.method === 'POST') {
         if (!found) return redirect('/login');
         if (found.user.is_superadmin) return page(403, T.loginTitle, P.messagePage({ title: T.waReadOnly, lead: '', links: [['/admin', T.adminTitle]] }));
@@ -770,7 +774,8 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
         const me = found.user;
         const wsId = d.body.workspace.id;
         if (p === '/whatsapp/link') {
-          createLinkCode(db, { user: me, workspaceId: wsId, optIn: f('updates') === '1', ip });
+          if (!d.body.products.includes('toran')) return redirect('/');
+          createLinkCode(db, { user: me, workspaceId: wsId, optIn: false, ip });
           return redirect('/#whatsapp');
         }
         // A number of this workspace only: its own person, or the owner to remove it. Anything else changes nothing.
@@ -778,10 +783,6 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
         if (p === '/whatsapp/remove' && row && (row.user_id === me.id || d.body.role === 'client_owner')) {
           removePhone(db, row.phone, { by: me, ip });
           setFlash(T.flashWaRemoved(phoneHe(row.phone)));
-        } else if (p === '/whatsapp/updates' && row && row.user_id === me.id) {
-          const on = f('on') === '1';
-          setConsent(db, row.phone, { optIn: on, source: 'accounts', actor: me, ip });
-          setFlash((on ? T.flashWaOn : T.flashWaOff)(phoneHe(row.phone)));
         }
         return redirect('/#whatsapp');
       }

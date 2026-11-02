@@ -320,38 +320,39 @@ ${add}
 
 /**
  * WhatsApp on the home page (docs/internal-owner-phone.md): the numbers linked (a member's own; the owner's, every
- * one in the workspace), the open link code with its wa.me button, and the form for a new one. A number's own person
- * turns its updates on or off; its own person or the owner removes it. Nothing to press when read-only.
+ * one in the workspace), the open link code with its wa.me button, and the form for a new one. Its own person or the
+ * owner removes a number. Nothing to press when read-only.
+ *
+ * Only for a workspace with Toran (`toran`): Teder is managed on its dashboard only (the owner, 2026-11-02: "managing
+ * teder through whatsapp, only through the dashboard"), so a linked number is for Toran's assistant alone, and the
+ * updates the old checkbox asked about were Teder's messages, which are not sent any more. A workspace without Toran
+ * sees the card only while a number of its is still linked, to remove it, with no code and no form.
  */
-function whatsappCard({ csrf, phones = [], code = null, waNumber = null, readOnly = false }) {
+function whatsappCard({ csrf, phones = [], code = null, waNumber = null, readOnly = false, toran = false }) {
+  if (!toran && !phones.length) return '';
   const items = phones
     .map((n) => {
       const shown = phoneHe(n.phone);
-      const actions = readOnly
-        ? ''
-        : `<span class="end">${n.mine ? button('/whatsapp/updates', n.updates ? T.waTurnOff : T.waTurnOn, csrf, { fields: { phone: n.phone, on: n.updates ? '0' : '1' }, kind: 'quiet' }) : ''}${button('/whatsapp/remove', T.waRemove, csrf, { fields: { phone: n.phone }, kind: 'danger' })}</span>`;
-      return `<li><span class="who ltr">${esc(shown)}</span>${n.mine ? '' : `<span class="muted"><bdi>${esc(T.waOf(n.name || n.email))}</bdi></span>`}<span class="tag${n.updates ? '' : ' off'}">${esc(n.updates ? T.waOn : T.waOff)}</span>${actions}</li>`;
+      const actions = readOnly ? '' : `<span class="end">${button('/whatsapp/remove', T.waRemove, csrf, { fields: { phone: n.phone }, kind: 'danger' })}</span>`;
+      return `<li><span class="who ltr">${esc(shown)}</span>${n.mine ? '' : `<span class="muted"><bdi>${esc(T.waOf(n.name || n.email))}</bdi></span>`}${actions}</li>`;
     })
     .join('');
-  const open = code
+  const open = code && toran
     ? `<div class="wa-code" role="status">
 <p class="section-l">${esc(T.waCodeTitle)}</p>
 <p class="code ltr">${esc(code.code)}</p>
 <p>${esc(T.waCodeLead(hourHe(code.expires_at)))}</p>
-<p class="muted">${esc(T.waCodeUpdates(Boolean(code.opt_in)))}</p>
 ${waNumber ? `<p><a class="button primary" href="${esc(`https://wa.me/${waNumber}?text=${encodeURIComponent(code.code)}`)}">${esc(T.waSend)}</a></p>` : `<p class="warn">${esc(T.waNoNumber)}</p>`}
 </div>`
     : '';
-  const form = readOnly
+  const form = readOnly || !toran
     ? ''
     : `<form method="post" action="/whatsapp/link" class="wa-form">${csrfField(csrf)}
-<label class="check"><input type="checkbox" name="updates" value="1" aria-describedby="wa-hint"> ${esc(T.waOptIn)}</label>
-<small id="wa-hint">${esc(T.waOptInHint)}</small>
 <button class="${code ? 'quiet' : 'primary'}">${esc(code ? T.waAgain : T.waConnect)}</button>
 </form>`;
   return `<section class="card wa" id="whatsapp">
 <h2>${esc(T.waTitle)}</h2>
-<p class="lead">${esc(T.waLead)}</p>
+<p class="lead">${esc(toran ? T.waLead : T.waLeadNoToran)}</p>
 <ul class="people phones">${items || `<li class="muted">${esc(T.waNone)}</li>`}</ul>
 ${open}
 ${form}

@@ -1,9 +1,27 @@
 # /internal/owner-phone
 
-Who a WhatsApp number is, for the owner line: the one WhatsApp number on which a business
-owner talks to Toran and Teder. Toran asks this service about the number on every message,
+Who a WhatsApp number is, for the owner line: the one WhatsApp number on which a Toran store's
+owner talks to Toran's assistant. Toran asks this service about the number on every message,
 and tells it which number sent a link code. This is section 1 of Toran's `docs/owner-line.md`,
 as built here.
+
+**Since 2026-11-02 Teder is managed on its dashboard only** (the owner: "managing teder through
+whatsapp, only through the dashboard"). The updates the link form's box asked about were Teder's
+messages, which Toran does not send any more, so on the home page (`src/web/html.js`
+`whatsappCard`):
+
+- the link form is only for a workspace with Toran, and has no box: `POST /whatsapp/link` makes
+  a code with `opt_in` 0, whatever the form says, and for a workspace without Toran makes none
+  (a redirect to `/`);
+- the "עם עדכונים" / "בלי עדכונים" tag and the button that turned updates on or off are gone,
+  with their route `POST /whatsapp/updates`;
+- a workspace without Toran sees the card only while a number of its is still linked, with
+  "את תדר מנהלים רק מלוח הבקרה, ומתדר לא נשלחות הודעות לוואטסאפ. מספר שחיברתם קודם אפשר להסיר
+  כאן." and the way to remove it.
+
+The internal routes below are unchanged: Toran still asks who a number is, claims codes, and
+tells this service a "הפסק" from WhatsApp. Consent already recorded stays as it was. Steps 1 and
+4 of the flow below describe the box and the toggle as they were before 2026-11-02.
 
 A number belongs to one user in one workspace. This service never sends anything to a phone.
 The number proves itself by writing: the customer asks for a link code on their home page,
