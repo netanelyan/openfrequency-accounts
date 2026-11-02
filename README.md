@@ -173,7 +173,8 @@ The full steps (DNS, Resend, Caddy, backups, checks) are in [docs/deploy.md](doc
 - [docs/switch-over.md](docs/switch-over.md): what changes in each product, and in what order.
 - [docs/setup.md](docs/setup.md): `/internal/setup`, each product's checklist for the setup page;
   `/internal/entitlement`, the paywall; `/internal/notify`, product emails; the delete route each
-  product answers when a workspace is deleted; and the sign-up's settings.
+  product answers when a workspace is deleted; the sign-up's settings; and `/internal/signup`,
+  whether sign-up is open and for which products, which Teder checks its own switch against at start.
 
 ## Where things are
 
@@ -184,7 +185,7 @@ The full steps (DNS, Resend, Caddy, backups, checks) are in [docs/deploy.md](doc
 | `src/auth` | passwords, TOTP, tokens, rate limits, the `?next=` allowlist, sessions, Google's half of signing in |
 | `src/accounts` | magic links and invites, public sign-up, workspaces, the superadmin, subscriptions, the payment hook, the paywall (`entitlement.js`), deleting a workspace (`erase.js`), product emails (`notify.js`), invoices, WhatsApp numbers, paying over WhatsApp (`pay.js`: the payment codes and the transfers' pictures), the operator's list of customers |
 | `src/mail` | Resend (or the outbox folder without a key), and the emails |
-| `src/web` | `app.js` the public site, `internal.js` `/internal/session`, `/internal/owner-phone*`, `/internal/ops/customers`, `/internal/entitlement`, `/internal/notify` and `/internal/pay*`, `pay.js` the button to pay over WhatsApp and Toran's answer, `toran.js` the client for Toran's `/internal/ops`, `setup.js` the client for each product's `/internal/setup`, `erase.js` the client for each product's delete route, `dashboard.js` the operator's dashboard, `copy.js` every Hebrew word, `html.js` the pages |
+| `src/web` | `app.js` the public site, `internal.js` `/internal/session`, `/internal/owner-phone*`, `/internal/ops/customers`, `/internal/entitlement`, `/internal/notify`, `/internal/pay*` and `/internal/signup`, `pay.js` the button to pay over WhatsApp and Toran's answer, `toran.js` the client for Toran's `/internal/ops`, `setup.js` the client for each product's `/internal/setup`, `erase.js` the client for each product's delete route, `dashboard.js` the operator's dashboard, `copy.js` every Hebrew word, `html.js` the pages |
 | `scripts` | start, demo, `admin:create`, backup (checked), `daily` (the billing emails and the deletions, by hand), `schema-check`, `release-check`, `check:public`, `init-private` |
 | `deploy` | the Caddy block, `deploy.sh` and `rollback.sh` (release folders) |
 | `docs/contracts` | each internal API between accounts, Teder and Toran: the request, every status, an example of each |
@@ -208,7 +209,7 @@ The full steps (DNS, Resend, Caddy, backups, checks) are in [docs/deploy.md](doc
   (`static/a11y.js`, the accessibility panel, and `static/load.js`, the loading state, on every page; `static/admin.js`
   on `/admin`), no framing. `/admin/toran/*` is
   Toran's: superadmin only, a foreign Origin refused here, and Toran's own CSRF and CSP on its pages.
-- `/internal/session`, `/internal/owner-phone*`, `/internal/ops/customers` and `/internal/pay*`: their own port, never proxied,
+- `/internal/session`, `/internal/owner-phone*`, `/internal/ops/customers`, `/internal/pay*` and `/internal/signup`: their own port, never proxied,
   loopback only, a bearer token. A transfer's picture is checked by its first bytes, kept 90 days, and shown only to the
   superadmin, never cached or sniffed.
 

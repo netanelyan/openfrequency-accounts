@@ -54,7 +54,7 @@ export function shapeProblems(actual, example, nullable = [], at = '$') {
 }
 
 test('every contract file is complete: who serves it, who calls it, and every answer with a status and an example', () => {
-  assert.deepEqual(Object.keys(contracts).sort(), ['admin-toran-operator', 'entitlement', 'notify', 'ops-customers', 'owner-phone', 'pay', 'session', 'setup', 'toran-ops', 'workspaces-delete']);
+  assert.deepEqual(Object.keys(contracts).sort(), ['admin-toran-operator', 'entitlement', 'notify', 'ops-customers', 'owner-phone', 'pay', 'session', 'setup', 'signup', 'toran-ops', 'workspaces-delete']);
   for (const [name, c] of Object.entries(contracts)) {
     assert.equal(c.name, name);
     assert.ok(c.doc && c.servedBy.length && c.calledBy.length, name);
@@ -95,6 +95,15 @@ const expiredCode = (w) => {
   const { code } = payCodeFor(w.db, w.dana.id);
   setNow('2026-12-22T10:00:00.000Z');
   return code;
+};
+// The world's site has sign-up closed, as by default; an open one is a second site on the same database, with its settings.
+const signupOn = async (w, env) => {
+  const s = await startSite(w.db, { env });
+  try {
+    return await s.owners('GET', '/internal/signup');
+  } finally {
+    await s.close();
+  }
 };
 
 // Each case, by "<contract> <path> :: <case>", made and asked. 503 (no token here) is asked of a site started without one.
@@ -227,6 +236,10 @@ const RUN = {
     return w.call('POST', '/internal/pay/receipt', receipt(code));
   },
   'pay /internal/pay/receipt :: no token, or the wrong one': (w) => noToken(w, 'POST', '/internal/pay/receipt', receipt('PAY-ABCDEF')),
+
+  'signup /internal/signup :: open, for the products OF_SIGNUP_PRODUCTS names': (w) => signupOn(w, { OF_SIGNUP: '1', OF_SIGNUP_PRODUCTS: 'teder' }),
+  'signup /internal/signup :: closed: OF_SIGNUP is not 1, so no product': (w) => w.call('GET', '/internal/signup'),
+  'signup /internal/signup :: no token, or the wrong one': (w) => noToken(w, 'GET', '/internal/signup'),
 };
 
 for (const [name, c] of Object.entries(contracts)) {

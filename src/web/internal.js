@@ -6,7 +6,7 @@ import { claimPhone, ownerOf, ownersOf, PhoneError, setConsent, validPhone } fro
 import { entitlement } from '../accounts/entitlement.js';
 import { checkNotify, logNotify, NOTIFY_PER_DAY, NotifyError, recipients, sentToday } from '../accounts/notify.js';
 import { addReceipt, dueForPay, openPayCode, PayError } from '../accounts/pay.js';
-import { signupNotify } from '../accounts/signup.js';
+import { signupNotify, signupOpen, signupProducts } from '../accounts/signup.js';
 import { productNoticeMail, receiptNoticeMail } from '../mail/messages.js';
 import { payAnswer } from './pay.js';
 
@@ -21,6 +21,7 @@ import { payAnswer } from './pay.js';
 //   POST /internal/notify               email a workspace's people for a product, as each of them chose (docs/setup.md)
 //   GET  /internal/pay                  what a payment code's workspace owes now, for Toran (docs/internal-pay.md)
 //   POST /internal/pay/receipt          a picture of a transfer a customer sent Toran, for the operator to check
+//   GET  /internal/signup               whether /signup takes new businesses now, and for which products (docs/setup.md)
 //
 // The other direction, /admin calling Toran's /internal/ops for the operator's dashboard, is src/web/toran.js.
 //
@@ -60,6 +61,7 @@ const ROUTES = {
   '/internal/notify': 'POST',
   '/internal/pay': 'GET',
   '/internal/pay/receipt': 'POST',
+  '/internal/signup': 'GET',
 };
 const BODY_LIMIT = 4096;
 // A notification's body is larger: its text (5,000 characters) and its html (50,000), in UTF-8.
@@ -188,6 +190,12 @@ export function internalHandler(db, { env = process.env, log = console.error, ma
             log(`[accounts] the receipt notice for receipt ${r.id} failed: ${e.message}`);
           }
           return json(res, 201, { id: r.id, workspace: r.workspace });
+        }
+        case '/internal/signup': {
+          // What /signup goes by, read only: OF_SIGNUP=1 opens it, and then OF_SIGNUP_PRODUCTS says which products it
+          // takes. Closed, it takes none. Teder checks its own switch against this at start (its OF_SIGNUP_OPEN).
+          const open = signupOpen(env);
+          return json(res, 200, { open, products: open ? signupProducts(env) : [] });
         }
       }
     } catch (e) {

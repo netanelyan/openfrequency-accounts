@@ -80,6 +80,25 @@ the account is open, the payment comes first (how, by the payment mode below, wi
 price before VAT and its setup fee; Teder's says its setup fee is not refunded, as Teder's terms
 do), then the setup, with a button to `/setup`.
 
+### GET /internal/signup
+
+Whether `/signup` takes new businesses now, and for which products, read only, for Teder: sign-up
+is one switch in three places (accounts' `OF_SIGNUP` and `OF_SIGNUP_PRODUCTS`, Teder's
+`OF_SIGNUP_OPEN`, the website's `"signup"`), and Teder asks this once at start to check that its
+own agrees (Teder's docs/operator-notes.md says how to turn all three together). On the internal
+listener, with its four locks, like `/internal/entitlement`.
+
+```
+GET http://127.0.0.1:4741/internal/signup
+Authorization: Bearer <OF_INTERNAL_TOKEN>
+```
+
+`200`, never cached: `{ "open": true, "products": ["teder"] }`. `open` is `OF_SIGNUP=1`, exactly
+as `/signup` reads it; `products` are the products the form takes (`OF_SIGNUP_PRODUCTS`, every
+product when it is empty), and `[]` while it is closed. `401` without the token, `503` while the
+token is unset or short here, `405` for any other method. The cases are
+`docs/contracts/signup.json`.
+
 ### Payment
 
 Payment is not taken here. The subscription starts unpaid (the console's "open": on, no payment
