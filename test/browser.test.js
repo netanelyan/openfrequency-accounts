@@ -170,25 +170,20 @@ run('on a phone, a customer ticks the box, gets the code and the WhatsApp button
   }
 });
 
-run("sign-up on a phone, in dark mode: Teder starts unticked with its plans closed; ticked, they open as rows with a small dot, their words beside it, and a tap on the words picks the plan", async () => {
+run("sign-up on a phone, in dark mode, Teder the only product open: no box to tick, its plans open from the start as rows with a small dot, their words beside it, and a tap on the words picks the plan", async () => {
   // The radios once took the field style (width 100%), a box as wide as the row, with the plan's words squeezed beside it.
   const t = await setup({ env: { OF_SIGNUP: '1', OF_SIGNUP_PRODUCTS: 'teder' } });
   try {
     const context = await t.browser.newContext({ viewport: { width: 375, height: 812 }, colorScheme: 'dark' });
     const page = await context.newPage();
-    // From the website's button under the full plan: still nothing ticked, the plans closed.
+    // From the website's button under the full plan: Teder is in the form without being asked (the owner, 2026-11-02),
+    // and its plans are open, the one from the button chosen.
     await page.goto(`${t.base}/signup?p=teder&plan=full`);
-    const teder = page.locator('input[name="products"][value="teder"]');
-    assert.equal(await teder.isChecked(), false);
-    assert.equal(await page.locator('fieldset.plans-pick').isVisible(), false);
-    // A tap on Teder's name ticks it and opens its plans, the one from the website's button chosen; untick, closed again.
-    await page.click('label.product-pick:has(input[value="teder"]) b');
-    assert.equal(await teder.isChecked(), true);
-    assert.equal(await page.locator('fieldset.plans-pick').isVisible(), true);
+    assert.equal(await page.inputValue('input[type="hidden"][name="products"]'), 'teder');
+    assert.equal(await page.locator('input[type="checkbox"][name="products"], label.product-pick').count(), 0);
+    assert.equal(await page.textContent('h1'), 'פותחים חשבון בתדר');
+    assert.equal(await page.locator('fieldset.products-pick legend').textContent(), 'איזו חבילה של תדר');
     assert.equal(await page.isChecked('input[name="plan"][value="full"]'), true);
-    await page.click('label.product-pick:has(input[value="teder"]) b');
-    assert.equal(await page.locator('fieldset.plans-pick').isVisible(), false);
-    await page.click('label.product-pick:has(input[value="teder"]) b');
     const rows = page.locator('label.plan-pick');
     assert.equal(await rows.count(), 2);
     for (let i = 0; i < 2; i++) {
@@ -209,6 +204,27 @@ run("sign-up on a phone, in dark mode: Teder starts unticked with its plans clos
   }
 });
 
+run('sign-up with both products open: ?p=teder starts Teder ticked, its plans open on the one ?plan= names; unticked they close, and plain /signup ticks nothing', async () => {
+  const t = await setup({ env: { OF_SIGNUP: '1' } });
+  try {
+    const page = await t.browser.newPage({ viewport: { width: 375, height: 812 } });
+    await page.goto(`${t.base}/signup?p=teder&plan=small`);
+    const teder = page.locator('input[name="products"][value="teder"]');
+    assert.equal(await teder.isChecked(), true);
+    assert.equal(await page.isChecked('input[name="products"][value="toran"]'), false);
+    assert.equal(await page.locator('fieldset.plans-pick').isVisible(), true);
+    assert.equal(await page.isChecked('input[name="plan"][value="small"]'), true);
+    await page.click('label.product-pick:has(input[value="teder"]) b');
+    assert.equal(await teder.isChecked(), false);
+    assert.equal(await page.locator('fieldset.plans-pick').isVisible(), false);
+    await page.goto(`${t.base}/signup`);
+    assert.equal(await page.locator('input[name="products"]:checked').count(), 0);
+    assert.equal(await page.locator('fieldset.plans-pick').isVisible(), false);
+  } finally {
+    await t.done();
+  }
+});
+
 run('sign-up with Google in a real browser: the form goes on to Google\'s sign-in page, with the choices kept on our side', async () => {
   // The button is a submit answered with a redirect to Google; the browser checks the redirect against form-action, and
   // until Google was in it the browser stopped there, the button spinning (2026-10-31).
@@ -223,7 +239,7 @@ run('sign-up with Google in a real browser: the form goes on to Google\'s sign-i
     await page.goto(`${t.base}/signup?p=teder`);
     await page.fill('#su-name', 'Noa Levi');
     await page.fill('#su-business', 'Noa Ceramics');
-    await page.check('input[name="products"][value="teder"]');
+    // Nothing to tick for Teder, the only product open: its hidden field goes with the Google button too.
     await page.check('input[name="terms"]');
     const going = page.waitForEvent('request', { predicate: (r) => r.url().startsWith('https://accounts.google.com/'), timeout: 5000 });
     await page.click('button.google');
@@ -231,6 +247,7 @@ run('sign-up with Google in a real browser: the form goes on to Google\'s sign-i
     assert.equal(to.origin + to.pathname, 'https://accounts.google.com/o/oauth2/v2/auth');
     assert.equal(to.searchParams.get('client_id'), 'client-123.apps.googleusercontent.com');
     assert.doesNotMatch(to.href, /Noa|teder|small|full/, 'the choices stay on our side');
+    assert.deepEqual(JSON.parse(t.db.get("SELECT products_json FROM signups WHERE kind = 'google'").products_json), ['teder']);
     assert.deepEqual(refused, []);
   } finally {
     await browser.close();

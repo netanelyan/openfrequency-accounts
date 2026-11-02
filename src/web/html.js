@@ -386,35 +386,50 @@ ${owner ? `<p class="links"><a href="/account/delete">${esc(T.dashDelete)}</a></
  * Google is set up, "continue with Google", a second submit button of the same form, so the choices go with it (kept
  * on our side, never in the URL). It skips the browser's checks, since Google brings the address; ours still run.
  * Under the products, how paying works in this payment mode (`payment`, OF_PAYMENT: manual or provider).
+ * `form.products` starts ticked (startProducts: the one ?p= names). With only one product open the form does not ask
+ * (the owner, 2026-11-02): that product goes in a hidden field, the heading names it, and its plans (or its price) and
+ * how paying works stand where the question was; the products not open yet are left out.
  */
 export function signupPage({ csrf, form = {}, error = '', google = false, open = ['teder', 'toran'], payment = 'manual' }) {
   const chosen = [].concat(form.products || []);
+  const only = open.length === 1 ? open[0] : null;
   // A product sign-up does not offer yet (OF_SIGNUP_PRODUCTS): shown after the open ones, its box disabled and outside
   // the form's data, with a "בקרוב" tag and one line on why.
   // A product with plans (Teder) shows each plan, with what a month gives and its price, to choose under its box, once
-  // the box is ticked (site.css; no product starts ticked).
+  // the box is ticked (site.css), or from the start when it is the only product.
   // ?plan=full or ?plan=small (the website's buttons) starts that one chosen; anything else, or none, the full one.
   const picked = Object.hasOwn(PLANS.teder, form.plan ?? '') ? form.plan : plansOf('teder')[0];
-  const plans = (p) =>
-    PLANS[p]
-      ? `<fieldset class="plans-pick"><legend>${esc(SIGNUP.planLegend)}</legend>${plansOf(p)
-          .map(
-            (k) =>
-              `<label class="plan-pick"><input type="radio" name="plan" value="${k}"${k === picked ? ' checked' : ''}><span><b>${esc(PLAN_NAMES[k])}</b><small>${esc(planGives(PLANS[p][k].slideshows, PLANS[p][k].redos))}</small><small class="price">${esc(SIGNUP.price(ils(PLANS[p][k].monthly), ils(PLANS[p][k].setup)))}</small></span></label>`
-          )
-          .join('')}<small>${esc(SIGNUP.planHint)}</small></fieldset>`
-      : '';
+  const planRows = (p) =>
+    plansOf(p)
+      .map(
+        (k) =>
+          `<label class="plan-pick"><input type="radio" name="plan" value="${k}"${k === picked ? ' checked' : ''}><span><b>${esc(PLAN_NAMES[k])}</b><small>${esc(planGives(PLANS[p][k].slideshows, PLANS[p][k].redos))}</small><small class="price">${esc(SIGNUP.price(ils(PLANS[p][k].monthly), ils(PLANS[p][k].setup)))}</small></span></label>`
+      )
+      .join('');
+  const plans = (p) => (PLANS[p] ? `<fieldset class="plans-pick"><legend>${esc(SIGNUP.planLegend)}</legend>${planRows(p)}<small>${esc(SIGNUP.planHint)}</small></fieldset>` : '');
+  const listPrice = (p) => `<small class="price">${esc(SIGNUP.price(ils(LIST_PRICES[p].monthly), ils(LIST_PRICES[p].setup)))}</small>`;
   const product = (p) =>
     open.includes(p)
-      ? `<label class="product-pick"><input type="checkbox" name="products" value="${p}"${chosen.includes(p) ? ' checked' : ''}>${productMark(p)}<span><b>${esc(PRODUCT_NAMES[p])}</b><small>${esc(SIGNUP.productWhat[p])}</small>${PLANS[p] ? '' : `<small class="price">${esc(SIGNUP.price(ils(LIST_PRICES[p].monthly), ils(LIST_PRICES[p].setup)))}</small>`}</span></label>${plans(p)}`
+      ? `<label class="product-pick"><input type="checkbox" name="products" value="${p}"${chosen.includes(p) ? ' checked' : ''}>${productMark(p)}<span><b>${esc(PRODUCT_NAMES[p])}</b><small>${esc(SIGNUP.productWhat[p])}</small>${PLANS[p] ? '' : listPrice(p)}</span></label>${plans(p)}`
       : `<label class="product-pick soon"><input type="checkbox" disabled aria-describedby="su-soon-${p}">${productMark(p)}<span><b>${esc(PRODUCT_NAMES[p])}</b><small id="su-soon-${p}">${esc(SIGNUP.productSoon)}</small></span><span class="tag off">${esc(SIGNUP.soon)}</span></label>`;
   const order = ['toran', 'teder'].sort((a, b) => Number(!open.includes(a)) - Number(!open.includes(b)));
+  // The question, or with one product its plans in the question's place and look (fieldset.products-pick).
+  const pick = only
+    ? `<input type="hidden" name="products" value="${only}">
+<fieldset class="products-pick">${PLANS[only] ? `<legend>${esc(SIGNUP.planLegend)}</legend>${planRows(only)}<small>${esc(SIGNUP.planHint)}</small>` : listPrice(only)}
+<small>${esc(SIGNUP.pricesNote(payment, PRODUCT_NAMES[only]))}</small>
+</fieldset>`
+    : `<fieldset class="products-pick"><legend>${esc(SIGNUP.productsLegend)}</legend>
+${order.map(product).join('\n')}
+${open.length > 1 ? `<small>${esc(SIGNUP.productsHint)}</small>` : ''}
+<small>${esc(SIGNUP.pricesNote(payment))}</small>
+</fieldset>`;
   // The box: the short contract of each product the form sells, then the terms and the privacy policy, each in a tab.
   const newTab = (href, words) => `<a href="${esc(href)}" target="_blank" rel="noopener">${esc(words)}</a>`;
   const contracts = order.filter((p) => open.includes(p)).map((p) => newTab(CONTRACT_URLS[p], SIGNUP.contractLink(PRODUCT_NAMES[p])));
   return `
 <section class="card signup">
-<h1>${esc(SIGNUP.heading)}</h1>
+<h1>${esc(only ? SIGNUP.headingFor(PRODUCT_NAMES[only]) : SIGNUP.heading)}</h1>
 <p class="lead">${esc(SIGNUP.lead)}</p>
 <form method="post" action="/signup">
 ${csrfField(csrf)}
@@ -423,11 +438,7 @@ ${csrfField(csrf)}
 <label for="su-business">${esc(SIGNUP.businessLabel)}</label>
 <input id="su-business" name="business" autocomplete="organization" required minlength="2" maxlength="80" value="${esc(form.business || '')}" aria-describedby="su-business-hint">
 <small id="su-business-hint">${esc(SIGNUP.businessHint)}</small>
-<fieldset class="products-pick"><legend>${esc(SIGNUP.productsLegend)}</legend>
-${order.map(product).join('\n')}
-${open.length > 1 ? `<small>${esc(SIGNUP.productsHint)}</small>` : ''}
-<small>${esc(SIGNUP.pricesNote(payment))}</small>
-</fieldset>
+${pick}
 <label class="check terms"><input type="checkbox" name="terms" value="1" required${form.terms ? ' checked' : ''}> <span>${esc(SIGNUP.termsPre)}${contracts.map((c) => `${c}${esc(SIGNUP.contractSep)}`).join('')}${newTab(TERMS_URL, SIGNUP.termsLink)}${esc(SIGNUP.termsMid)}${newTab(PRIVACY_URL, SIGNUP.privacyLink)}</span></label>
 <div class="hp" aria-hidden="true"><label for="su-website">${esc(SIGNUP.honeypot)}</label><input id="su-website" name="website" tabindex="-1" autocomplete="off"></div>
 <label for="su-email">${esc(SIGNUP.emailLabel)}</label>

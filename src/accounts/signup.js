@@ -75,6 +75,17 @@ export function signupProducts(env = process.env) {
 }
 
 /**
+ * The products the form starts with ticked (the owner, 2026-11-02): with only one open, that one, and the form does not
+ * ask; else the one the visitor came from (`want`, ?p=teder or ?p=toran, the website's and Teder's buttons) when it is
+ * open; else none. Only where the form starts: what it sends is checked against `open` all the same (checkSignup).
+ */
+export function startProducts(want, open = PRODUCTS) {
+  if (open.length === 1) return [...open];
+  const p = String(want ?? '').trim().toLowerCase();
+  return open.filter((o) => o === p);
+}
+
+/**
  * The form, checked. Returns { name, business, email, products, plan } or throws SignupError: bad_name, bad_business,
  * no_products, product_closed (one chosen that is not in `open`), bad_plan (a Teder plan that does not exist),
  * no_terms, bad_email (only when `needEmail`: Google brings its own). `plan` is Teder's, the full one when none is

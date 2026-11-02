@@ -14,7 +14,7 @@ import { chooseWorkspace, createSession, describeSession, enabledProducts, findS
 import { acceptInvite, consumeMagicLink, createInvite, InviteError, normEmail, peekInvite, peekMagicLink, requestMagicLink, revokeInvite, validEmail } from '../accounts/links.js';
 import { verifySuperadmin } from '../accounts/superadmin.js';
 import { createWorkspace, getWorkspace, listWorkspaces, recentAudit, setDisabled, setProduct, startViewAs, stopViewAs, WorkspaceError } from '../accounts/workspaces.js';
-import { checkSignup, completeSignup, CONTACT_URL, dropSignup, peekSignup, requestSignup, SignupError, signupNotify, signupOpen, signupProducts } from '../accounts/signup.js';
+import { checkSignup, completeSignup, CONTACT_URL, dropSignup, peekSignup, requestSignup, SignupError, signupNotify, signupOpen, signupProducts, startProducts } from '../accounts/signup.js';
 import { assistantWa, billingReady, checkoutUrl, payHow, paymentMode, supportWa } from '../accounts/billing.js';
 import { accessAll, accessFor, BillingError, cancelSubscription, resumeSubscription, setComp } from '../accounts/entitlement.js';
 import { eraseWorkspace, productsEver, sameName } from '../accounts/erase.js';
@@ -656,11 +656,13 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
           const links = found.user.is_superadmin ? [['/admin', T.adminTitle]] : [['/', SIGNUP.home], ['/logout', SIGNUP.signOut]];
           return page(200, SIGNUP.title, P.messagePage({ title: SIGNUP.signedInTitle(found.user.email), lead: found.user.is_superadmin ? '' : SIGNUP.signedInLead, links }));
         }
-        // No product starts chosen, not even the one the visitor came from (?p=) or the only one open: they tick it
-        // themselves, and its plans open under it (the owner's choice, 2026-10-31).
+        // The product the visitor came from (?p=) starts ticked when it is open, and the only one open always, without
+        // asking (startProducts; the owner, 2026-11-02, in place of 2026-10-31's "nothing starts ticked"). The POST
+        // below checks what comes back against the open ones as before.
         if (req.method !== 'POST') {
           // ?plan= (the website's button under each of Teder's plans) starts that plan chosen, for when Teder is ticked.
-          return page(200, SIGNUP.title, P.signupPage({ csrf, google: Boolean(google), open: openProducts, payment, form: { products: [], plan: url.searchParams.get('plan') || '' } }));
+          const start = { products: startProducts(url.searchParams.get('p'), openProducts), plan: url.searchParams.get('plan') || '' };
+          return page(200, SIGNUP.title, P.signupPage({ csrf, google: Boolean(google), open: openProducts, payment, form: start }));
         }
 
         const via = f('via') === 'google' && google ? 'google' : 'email';

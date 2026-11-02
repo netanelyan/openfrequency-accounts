@@ -6,7 +6,7 @@ import { advance, setNow, MINUTE } from '../src/core/clock.js';
 import { createLimiter, LIMITS } from '../src/auth/limiter.js';
 import { acceptInvite, createInvite } from '../src/accounts/links.js';
 import { openFlow } from '../src/auth/google.js';
-import { checkSignup, SignupError, signupProducts, TERMS_VERSION } from '../src/accounts/signup.js';
+import { checkSignup, SignupError, signupProducts, startProducts, TERMS_VERSION } from '../src/accounts/signup.js';
 import { createWorkspace } from '../src/accounts/workspaces.js';
 
 // Public sign-up end to end, over HTTP: closed and open, the form's checks, the honeypot, the limits, the email's
@@ -92,9 +92,16 @@ test('open: the form asks for the name, the business, the products with a line e
     assert.doesNotMatch(page.headers['content-security-policy'], /unsafe-inline|unsafe-eval|nonce-/);
     // The login page points to it.
     assert.match((await t.browser().get('/login')).body, /עוד אין לכם חשבון\? <a href="\/signup">להרשמה<\/a>/);
-    // Nothing starts chosen, not even the product the website's button (?p=) came from: the visitor ticks it.
+    // With both open, nothing starts ticked, but the product a button came from (?p=) does (the owner, 2026-11-02); a
+    // name that is no product ticks nothing. Still a question: both boxes, and the box names both contracts.
     assert.doesNotMatch(page.body, /value="(toran|teder)" checked/);
-    for (const p of ['teder', 'toran', 'nope']) assert.doesNotMatch((await t.browser().get(`/signup?p=${p}`)).body, /value="(toran|teder)" checked/, p);
+    for (const [p, ticked] of [['teder', 'teder'], ['toran', 'toran'], [' Teder ', 'teder'], ['nope', null], ['', null]]) {
+      const body = (await t.browser().get(`/signup?p=${encodeURIComponent(p)}`)).body;
+      assert.deepEqual([...body.matchAll(/name="products" value="(\w+)" checked/g)].map((m) => m[1]), ticked ? [ticked] : [], p);
+      assert.ok(body.includes('type="checkbox" name="products" value="toran"') && body.includes('type="checkbox" name="products" value="teder"'), p);
+      assert.match(body, /<h1>פותחים חשבון<\/h1>/);
+      assert.match(body, /ל<a href="https:\/\/openfrequency\.co\.il\/toran\/contract"[^>]*>הסכם של תורן<\/a>, ל<a href="https:\/\/openfrequency\.co\.il\/teder\/contract"/);
+    }
   } finally {
     await t.done();
   }
@@ -526,6 +533,18 @@ test('OF_SIGNUP_PRODUCTS: both by default, unknown names left out', () => {
   assert.throws(() => checkSignup({ ...FORM, products: ['toran'], terms: true }, { open: ['teder'] }), (e) => e.code === 'product_closed');
 });
 
+test('what starts ticked: the only product open, whatever ?p= says; else the one ?p= names when it is open; else none', () => {
+  const both = ['teder', 'toran'];
+  assert.deepEqual(startProducts('teder', both), ['teder']);
+  assert.deepEqual(startProducts('toran', both), ['toran']);
+  assert.deepEqual(startProducts(' TEDER ', both), ['teder']);
+  for (const p of [null, undefined, '', 'nope', 'teder,toran']) assert.deepEqual(startProducts(p, both), [], String(p));
+  for (const p of [null, '', 'teder', 'toran', 'nope']) assert.deepEqual(startProducts(p, ['teder']), ['teder'], String(p));
+  assert.deepEqual(startProducts('toran', ['toran']), ['toran']);
+  // None open (OF_SIGNUP_PRODUCTS names nothing known): nothing, not even what ?p= names.
+  assert.deepEqual(startProducts('teder', []), []);
+});
+
 test('by default both products are open, neither chosen in advance, and neither says בקרוב', async () => {
   const t = await setup();
   try {
@@ -539,19 +558,38 @@ test('by default both products are open, neither chosen in advance, and neither 
   }
 });
 
-test('with OF_SIGNUP_PRODUCTS=teder: Toran shows as coming soon and is refused, by the form and by Google; Teder, the only one open, still starts unticked', async () => {
+test('with OF_SIGNUP_PRODUCTS=teder: Teder, the only one open, is ticked and not asked; Toran is not on the form and is refused, by the form and by Google', async () => {
+  // Before 2026-11-02 Teder started unticked here, with Toran under it as coming soon; the owner: "If only one product is
+  // open for sign-up, tick it and don't ask."
   const t = await setup({ env: { ...OPEN, ...CLIENT, OF_SIGNUP_PRODUCTS: 'teder' } });
   try {
     const b = t.browser();
-    const page = await b.get('/signup');
-    assert.ok(page.body.includes('name="products" value="teder">'));
-    assert.match(page.body, /<label class="product-pick soon"><input type="checkbox" disabled aria-describedby="su-soon-toran">/);
-    assert.match(page.body, /<small id="su-soon-toran">ההרשמה אליו תיפתח בקרוב\.<\/small><\/span><span class="tag off">בקרוב<\/span>/);
-    assert.doesNotMatch(page.body, /name="products" value="toran"/);
-    assert.doesNotMatch(page.body, /אפשר לבחור את שניהם/);
-    // Teder comes first, Toran after it.
-    assert.ok(page.body.indexOf('value="teder"') < page.body.indexOf('su-soon-toran'));
+    // The same form whatever ?p= says, an open product, a closed one or none.
+    for (const path of ['/signup', '/signup?p=teder', '/signup?p=toran', '/signup?p=nope']) {
+      const page = (await b.get(path)).body;
+      // Teder in a hidden field: no box, no question, and nothing of Toran.
+      assert.ok(page.includes('<input type="hidden" name="products" value="teder">'), path);
+      assert.equal([...page.matchAll(/name="products"/g)].length, 1, path);
+      assert.doesNotMatch(page, /type="checkbox" name="products"|product-pick|מה מתאים לכם|אפשר לבחור את שניהם|בקרוב|toran|תורן/, path);
+      // The heading names it, its plans stand in the question's place (the full one chosen), and the note says Teder.
+      assert.match(page, /<h1>פותחים חשבון בתדר<\/h1>/, path);
+      assert.match(page, /<input type="hidden" name="products" value="teder">\n<fieldset class="products-pick"><legend>איזו חבילה של תדר<\/legend><label class="plan-pick"><input type="radio" name="plan" value="full" checked>/, path);
+      assert.match(page, /<small>אחרי שהחשבון נפתח, נשלח לכם במייל את פרטי התשלום, ותדר נפתח אחרי שהתשלום מגיע אלינו\. אפשר לבטל את המנוי מהדף הראשי, והוא עובד עד סוף התקופה ששולמה\.<\/small>\n<\/fieldset>/, path);
+      // The box names Teder's contract and no other.
+      assert.match(page, /<span>קראתי והסכמתי ל<a href="https:\/\/openfrequency\.co\.il\/teder\/contract" target="_blank" rel="noopener">הסכם של תדר<\/a>, ל<a href="https:\/\/openfrequency\.co\.il\/terms"/, path);
+    }
+    // ?plan= still starts that plan chosen.
+    const small = (await b.get('/signup?p=teder&plan=small')).body;
+    assert.match(small, /value="small" checked/);
+    assert.doesNotMatch(small, /value="full" checked/);
 
+    // The hidden field opens nothing on its own: without it, or with Toran in it, refused as before.
+    const none = await b.post('/signup', { ...FORM, products: [] });
+    assert.equal(none.status, 400);
+    assert.match(none.body, /צריך לבחור לפחות מוצר אחד/);
+    // Said again on the same form, Teder still in it.
+    assert.ok(none.body.includes('<input type="hidden" name="products" value="teder">'));
+    assert.match(none.body, /<h1>פותחים חשבון בתדר<\/h1>/);
     for (const products of [['toran'], ['teder', 'toran']]) {
       for (const via of ['email', 'google']) {
         const r = await b.post('/signup', { ...FORM, products, via, ...(via === 'google' ? { email: '' } : {}) });
@@ -572,6 +610,45 @@ test('with OF_SIGNUP_PRODUCTS=teder: Toran shows as coming soon and is refused, 
     const admin = makeUser(t.db, 'boss@example.com', { superadmin: true });
     const { workspace } = createWorkspace(t.db, { name: 'Gal', slug: 'gal-shop', ownerEmail: 'gal@example.com', products: ['toran'] }, { by: admin });
     assert.deepEqual(t.db.all('SELECT product FROM workspace_products WHERE workspace_id = ?', workspace.id).map((r) => r.product), ['toran']);
+  } finally {
+    await t.done();
+  }
+});
+
+test('with OF_SIGNUP_PRODUCTS=toran, the same: Toran ticked and not asked, its price where the question was, and only its contract', async () => {
+  const t = await setup({ env: { ...OPEN, OF_SIGNUP_PRODUCTS: 'toran' } });
+  try {
+    const page = (await t.browser().get('/signup?p=teder')).body;
+    assert.ok(page.includes('<input type="hidden" name="products" value="toran">'));
+    assert.doesNotMatch(page, /type="checkbox" name="products"|product-pick|name="plan"|teder|תדר/);
+    assert.match(page, /<h1>פותחים חשבון בתורן<\/h1>/);
+    assert.match(page, /<fieldset class="products-pick"><small class="price">590 ₪ לחודש ועוד מע״מ, ודמי הקמה של 990 ₪ פעם אחת<\/small>\n<small>[^<]*ותורן נפתח אחרי שהתשלום מגיע אלינו\./);
+    assert.match(page, /קראתי והסכמתי ל<a href="https:\/\/openfrequency\.co\.il\/toran\/contract" target="_blank" rel="noopener">הסכם של תורן<\/a>, ל<a href="https:\/\/openfrequency\.co\.il\/terms"/);
+    const b = t.browser();
+    await b.get('/signup');
+    assert.equal((await b.post('/signup', { ...FORM, products: ['toran'] })).status, 200);
+  } finally {
+    await t.done();
+  }
+});
+
+test('with OF_SIGNUP_PRODUCTS naming no product: both show as coming soon, nothing starts ticked, and nothing goes through', async () => {
+  const t = await setup({ env: { ...OPEN, OF_SIGNUP_PRODUCTS: 'other' } });
+  try {
+    const b = t.browser();
+    const page = (await b.get('/signup?p=teder')).body;
+    assert.match(page, /<h1>פותחים חשבון<\/h1>/);
+    assert.doesNotMatch(page, /name="products"/);
+    for (const p of ['toran', 'teder']) {
+      assert.match(page, new RegExp(`<label class="product-pick soon"><input type="checkbox" disabled aria-describedby="su-soon-${p}">`));
+      assert.match(page, new RegExp(`<small id="su-soon-${p}">ההרשמה אליו תיפתח בקרוב\\.</small></span><span class="tag off">בקרוב</span>`));
+    }
+    for (const products of [['teder'], ['toran']]) {
+      const r = await b.post('/signup', { ...FORM, products });
+      assert.equal(r.status, 400, String(products));
+      assert.match(r.body, /ההרשמה לאחד המוצרים שבחרתם עוד לא נפתחה/);
+    }
+    assert.equal(count(t.db, 'signups'), 0);
   } finally {
     await t.done();
   }

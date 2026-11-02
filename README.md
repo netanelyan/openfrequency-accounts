@@ -36,7 +36,9 @@ the terms and the privacy policy. An emailed link (15 minutes, one use, like the
 subscription at the list price and nothing paid yet) and makes them its owner, without an invite.
 An address that already has an account gets a sign-in link instead, never a second workspace.
 `OF_SIGNUP_PRODUCTS` (default `teder,toran`) says which products the form offers: one left out
-shows as coming soon and is refused (Toran waits for Meta's approval of WhatsApp: `teder`).
+is refused (Toran waits for Meta's approval of WhatsApp: `teder`). With only one open the form
+does not ask: that product is ticked in a hidden field and the heading names it. With both,
+`?p=teder` or `?p=toran` (the website's and Teder's buttons) starts that one ticked.
 Each confirmed sign-up sends a short email to every address in `OF_SIGNUP_NOTIFY` (unset: none),
 with who signed up, the business, each product's plan and price, the time, what to do next (in
 manual payment, email the customer the payment details) and a link to it on `/admin`, and the
