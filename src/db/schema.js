@@ -364,4 +364,20 @@ export const MIGRATIONS = [
   ALTER TABLE pay_receipts ADD COLUMN invoice_id INTEGER REFERENCES invoices(id) ON DELETE SET NULL;
   CREATE UNIQUE INDEX pay_receipts_morning_doc ON pay_receipts(morning_doc_id) WHERE morning_doc_id IS NOT NULL;
   `,
+  `
+  -- Each month recorded on /admin (subscriptions.js payMonth): the console's "התקבל תשלום לחודש" and a receipt's
+  -- "התשלום הגיע". once_hash is the SHA-256 of the one-time token the console's button carried (a new one each time
+  -- the page is drawn): the same form sent again, at once or later, finds it here and records nothing. A month
+  -- recorded without a token or the paid-until day the page showed is refused while another of that product was
+  -- recorded in the last 60 seconds. Deleted with the workspace's data (src/accounts/erase.js).
+  CREATE TABLE paid_months (
+    id              INTEGER PRIMARY KEY,
+    workspace_id    INTEGER NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+    product         TEXT NOT NULL CHECK (product IN ('teder', 'toran')),
+    paid_until      TEXT NOT NULL,                 -- the day it was paid until once this month was recorded
+    at              TEXT NOT NULL,
+    once_hash       TEXT UNIQUE                    -- NULL for a month recorded without a form's token
+  );
+  CREATE INDEX paid_months_recent ON paid_months(workspace_id, product, at);
+  `,
 ];

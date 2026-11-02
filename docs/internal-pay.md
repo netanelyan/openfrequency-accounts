@@ -172,8 +172,11 @@ token.
   that was owed when the receipt came (when none was, for what is owed now), each guarded by the
   paid-until day the page showed (`expect_<product>`), all in one transaction: if one was
   recorded meanwhile (the console's button, another receipt, a page left open), nothing is
-  recorded and the page says "התשלום הזה כבר נרשם". A receipt is decided once; pressing again
-  changes nothing. Audit: `pay_receipt_paid` (with the days recorded) and `subscription_paid`.
+  recorded and the page says "התשלום כבר נרשם". A receipt is decided once: "התשלום הגיע" sent
+  again (a double click, the browser sending it again, back and send) records no month, sends no
+  email, asks Morning for no second invoice and writes no audit entry, and comes back to the
+  receipt's page with "התשלום כבר נרשם" at the top. Audit: `pay_receipt_paid` (with the days
+  recorded) and `subscription_paid`.
 - "לא הגיע" (`POST /admin/receipts/<id>/not-paid`) closes it and records nothing. Audit:
   `pay_receipt_not_paid`.
 

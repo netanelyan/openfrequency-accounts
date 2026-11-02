@@ -96,6 +96,7 @@ test('an owner deletes the workspace: the products first, then ours; invoices ke
     assert.match(failed.body, /לא הצלחנו לסיים את המחיקה, כי תדר לא ענה לנו\. החשבון עדיין קיים\./);
     assert.equal(t.db.get('SELECT deleted_at FROM workspaces WHERE id = ?', t.ws.id).deleted_at, null);
     assert.equal(t.db.get('SELECT COUNT(*) AS n FROM memberships WHERE workspace_id = ?', t.ws.id).n, 2);
+    assert.equal(t.db.get('SELECT COUNT(*) AS n FROM paid_months WHERE workspace_id = ?', t.ws.id).n, 1);
     assert.ok(t.db.get("SELECT 1 FROM audit WHERE action = 'workspace_delete_failed'"));
 
     // A product without the route (404) is a failure too, never "nothing there" (ACC-06): Toran's data would stay.
@@ -119,10 +120,11 @@ test('an owner deletes the workspace: the products first, then ours; invoices ke
       assert.deepEqual([last.path, last.auth], [`/internal/workspaces/${t.ws.id}/delete`, `Bearer ${TOKEN}`]);
     }
 
-    // Ours: the workspace emptied (its id kept, never reused), its people, products, subscriptions and choices gone.
+    // Ours: the workspace emptied (its id kept, never reused), its people, products, subscriptions (and the month
+    // recorded in setup(), paid_months) and choices gone.
     const w = t.db.get('SELECT * FROM workspaces WHERE id = ?', t.ws.id);
     assert.deepEqual([w.name, w.slug, Boolean(w.deleted_at), Boolean(w.disabled_at)], ['', `deleted-${t.ws.id}-`, true, true]);
-    for (const table of ['memberships', 'workspace_products', 'subscriptions', 'notify_prefs', 'tokens', 'user_phones', 'phone_links', 'signups'])
+    for (const table of ['memberships', 'workspace_products', 'subscriptions', 'paid_months', 'notify_prefs', 'tokens', 'user_phones', 'phone_links', 'signups'])
       assert.equal(t.db.get(`SELECT COUNT(*) AS n FROM ${table} WHERE workspace_id = ?`, t.ws.id).n, 0, table);
     // Noa was only here: her account is gone. Ron is in another workspace: his stays, out of this one.
     assert.equal(t.db.get("SELECT 1 FROM users WHERE email = 'noa@example.com'"), null);

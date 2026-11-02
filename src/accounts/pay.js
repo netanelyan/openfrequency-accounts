@@ -198,16 +198,18 @@ export function receiptProducts(db, receipt, today = israelToday()) {
  * The operator's answer to a receipt. 'paid' records a month for each of receiptProducts() with payMonth(), `expects`
  * ({ product: the paid-until day the page showed, '' for none }) guarding each the way the console's button is
  * guarded, all in one transaction: an already_paid (WorkspaceError) records nothing at all. 'not_paid' records
- * nothing. Returns { recorded: [{ product, until }] }. Throws PayError: no_receipt, decided (answered already),
- * nothing_due ('paid' with nothing to record). 'paid' also keeps what it recorded, as the invoice says it (bill_json,
- * src/accounts/morning.js): each product's month (from, until), its price as the customer was asked, the total with VAT.
+ * nothing. Returns { recorded: [{ product, until }] }. Throws PayError: no_receipt, already_paid ('paid' on a receipt
+ * already marked paid: its form sent again, at once or later; nothing recorded, emailed or invoiced again), decided
+ * (answered already, otherwise), nothing_due ('paid' with nothing to record). A receipt is decided once, so it is its
+ * own one-time token. 'paid' also keeps what it recorded, as the invoice says it (bill_json, src/accounts/morning.js):
+ * each product's month (from, until), its price as the customer was asked, the total with VAT.
  */
 export function decideReceipt(db, id, decision, { by, ip = null, expects = {} }, today = israelToday()) {
   return db.tx(() => {
     const r = receiptById(db, id);
     if (!r) throw new PayError('no_receipt');
     const claimed = db.run('UPDATE pay_receipts SET decided_at = ?, decided_by = ?, decision = ? WHERE id = ? AND decided_at IS NULL', nowIso(), by?.id ?? null, decision, r.id);
-    if (Number(claimed.changes) !== 1) throw new PayError('decided');
+    if (Number(claimed.changes) !== 1) throw new PayError(decision === 'paid' && r.decision === 'paid' ? 'already_paid' : 'decided');
     const recorded = [];
     if (decision === 'paid') {
       const { products, from, now: owedNow } = receiptProducts(db, r, today);

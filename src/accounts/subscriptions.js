@@ -1,5 +1,7 @@
+import { randomBytes } from 'node:crypto';
 import { now, nowIso } from '../core/clock.js';
 import { audit } from '../core/audit.js';
+import { hashToken } from '../auth/tokens.js';
 import { PRODUCTS } from '../db/schema.js';
 import { WorkspaceError, getWorkspace } from './workspaces.js';
 
@@ -167,21 +169,39 @@ export function setSubscription(db, workspaceId, product, form, { by, ip = null 
   return w;
 }
 
+/** A month recorded without a form's token or the paid-until day the page showed is refused this long after the last. */
+export const PAY_AGAIN_MS = 60_000;
+
+/** A one-time token for a form that records a month (the console's button): random, new each time the page is drawn. */
+export const newPayOnce = () => randomBytes(16).toString('base64url');
+
 /**
- * A month's payment came in: paid until a month after the last paid day (or after yesterday, if that is later).
- * `expect` is the paid-until date the console showed when the button was pressed ('' for none): when it is given and
- * the subscription has moved on since, nothing is recorded (WorkspaceError 'already_paid'), so a second press of the
- * same button, or a page left open, never records a second month.
+ * A month's payment came in: paid until a month after the last paid day (or after yesterday, if that is later). Each
+ * of these refuses a month that was already recorded (WorkspaceError 'already_paid'), and then nothing is recorded:
+ *   once    the one-time token of the form (newPayOnce()): a form is recorded once, however often it is sent (a double
+ *           click, the browser sending it again, back and send), even if the date it carries is right again later
+ *   expect  the paid-until date the page showed when the button was pressed ('' for none): when the subscription has
+ *           moved on since (a page left open, another tab, a receipt recorded meanwhile), nothing more is recorded
+ *   neither (a script, a request that did not come from the form): refused within 60 seconds of the last month
+ *           recorded for this product of this workspace (PAY_AGAIN_MS)
+ * Two payments meant as two (the next month from the page drawn again, another product, another workspace) each have
+ * their own token and date, and both record. Each month is kept in paid_months, the token as its SHA-256 only.
  */
-export function payMonth(db, workspaceId, product, { by, ip = null, expect = undefined }, today = israelToday()) {
+export function payMonth(db, workspaceId, product, { by, ip = null, expect = undefined, once = undefined }, today = israelToday()) {
   return db.tx(() => {
     const w = getWorkspace(db, workspaceId);
     ensureSubscription(db, w.id, product, today);
     const s = subscriptionsOf(db, w.id)[product];
+    const onceHash = once ? hashToken(once) : null;
+    if (onceHash && db.get('SELECT 1 FROM paid_months WHERE once_hash = ?', onceHash)) throw new WorkspaceError('already_paid');
     if (expect !== undefined && (s.paid_until ?? '') !== String(expect ?? '')) throw new WorkspaceError('already_paid');
+    if (!onceHash && expect === undefined && db.get('SELECT 1 FROM paid_months WHERE workspace_id = ? AND product = ? AND at > ?', w.id, product, new Date(now() - PAY_AGAIN_MS).toISOString()))
+      throw new WorkspaceError('already_paid');
     const from = s.paid_until && s.paid_until >= addDays(today, -1) ? s.paid_until : addDays(today, -1);
     const paid_until = addDays(addMonths(addDays(from, 1), 1), -1);
-    db.run('UPDATE subscriptions SET paid_until = ?, updated_at = ? WHERE workspace_id = ? AND product = ?', paid_until, nowIso(), w.id, product);
+    const at = nowIso();
+    db.run('UPDATE subscriptions SET paid_until = ?, updated_at = ? WHERE workspace_id = ? AND product = ?', paid_until, at, w.id, product);
+    db.insert('paid_months', { workspace_id: w.id, product, paid_until, at, once_hash: onceHash });
     audit(db, { actor: by, action: 'subscription_paid', workspaceId: w.id, ip, detail: { product, paid_until } });
     return paid_until;
   });

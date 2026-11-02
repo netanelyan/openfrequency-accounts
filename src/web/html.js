@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { ROOT } from '../core/paths.js';
-import { addDays, addMonths, describe, israelToday, LIST_PRICES, PLANS, plansOf } from '../accounts/subscriptions.js';
+import { addDays, addMonths, describe, israelToday, LIST_PRICES, newPayOnce, PLANS, plansOf } from '../accounts/subscriptions.js';
 import { dueOf } from '../accounts/billing.js';
 import { ISSUING_STALE_MS } from '../accounts/morning.js';
 import { now as clockNow } from '../core/clock.js';
@@ -777,7 +777,8 @@ function workspaceTile(w, csrf) {
     ),
     ...w.invites.map((i) => `<li><span class="muted">${esc(T.pendingInvite(i.email, when(i.expires_at)))}</span><span class="end">${button(`/admin/invites/${i.id}/revoke`, T.revokeInvite, csrf, { kind: 'quiet' })}</span></li>`),
   ];
-  // Each product's subscription: what the customer's dashboard shows, recorded here (no payment provider yet).
+  // Each product's subscription: what the customer's dashboard shows, recorded here (no payment provider yet). Its
+  // "התקבל תשלום לחודש" carries the day shown and a new one-time token each time the page is drawn (payMonth).
   const subs = Object.keys(w.products)
     .filter((p) => w.products[p] || w.subscriptions?.[p])
     .map((p) => {
@@ -793,7 +794,7 @@ ${PLANS[p] ? `<label>${esc(T.subPlanLabel)}<select name="plan">${plansOf(p).map(
 <label>${esc(T.subStarted)}<input name="started_on" type="date" value="${esc(s.started_on ?? '')}"></label>
 <label>${esc(T.subPaid)}<input name="paid_until" type="date" value="${esc(s.paid_until ?? '')}"></label>
 <label>${esc(T.subEnds)}<input name="ends_on" type="date" value="${esc(s.ends_on ?? '')}"></label>
-<button class="quiet">${esc(T.subSave)}</button></form>${button(`${base}/subscription/pay`, T.subPayMonth, csrf, { fields: { product: p, expect: s.paid_until ?? '' }, kind: 'quiet' })}
+<button class="quiet">${esc(T.subSave)}</button></form>${button(`${base}/subscription/pay`, T.subPayMonth, csrf, { fields: { product: p, expect: s.paid_until ?? '', once: newPayOnce() }, kind: 'quiet' })}
 ${accessRow(base, p, w.access?.[p], w.products[p], csrf)}
 ${invoiceForm(base, p, s, csrf)}</li>`;
     })

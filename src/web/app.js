@@ -1117,6 +1117,12 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
             } else setFlash(PAY.flashNotPaid(r.business));
             return redirect('/admin');
           } catch (e) {
+            // The same "התשלום הגיע" again (a double click, the browser sending it again): it was recorded, and nothing
+            // more is (no month, email, invoice or audit entry). Said on the receipt's page, above what was decided.
+            if (e instanceof PayError && e.code === 'already_paid') {
+              setFlash(T.errors.already_paid);
+              return redirect(`/admin/receipts/${r.id}`);
+            }
             if (e instanceof PayError) return receiptView(r, 409, PAY.errors[e.code] || e.code);
             if (e instanceof WorkspaceError) return receiptView(r, 409, T.errors[e.code] || e.code);
             throw e;
@@ -1161,8 +1167,18 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
             const w = getWorkspace(db, m[1]);
             const product = f('product');
             if (m[2]) {
-              // The paid-until date the console showed: a second press of the same button records nothing (ACC-03).
-              const until = payMonth(db, w.id, product, { ...by, expect: form.has('expect') ? f('expect') : undefined });
+              // The button's one-time token and the paid-until date the console showed (ACC-03): the same form sent
+              // again records nothing, and comes back to the console with "התשלום כבר נרשם" (below). Without either,
+              // payMonth() refuses a second month within 60 seconds.
+              let until;
+              try {
+                until = payMonth(db, w.id, product, { ...by, expect: form.has('expect') ? f('expect') : undefined, once: f('once') || undefined });
+              } catch (e) {
+                if (!(e instanceof WorkspaceError && e.code === 'already_paid')) throw e;
+                const s = subscriptionsOf(db, w.id)[product];
+                setFlash(s?.paid_until ? `${T.errors.already_paid} ${T.flashSubPaid(PRODUCT_NAMES[product], w.name, dayHe(s.paid_until))}` : T.errors.already_paid);
+                return toConsole();
+              }
               // Each owner hears that the payment is in.
               const owners = db.all("SELECT u.email FROM memberships m JOIN users u ON u.id = m.user_id WHERE m.workspace_id = ? AND m.role = 'client_owner' AND u.disabled_at IS NULL", w.id);
               for (const o of owners) mailer.send(paidMail(o.email, { business: w.name, product, until, link: `${base}/` }));

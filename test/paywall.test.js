@@ -149,8 +149,10 @@ test('GET /internal/entitlement: the documented shape, each state as the console
     assert.deepEqual(r.json, { workspace: t.ws.id, product: 'teder', enabled: true, access: 'paid', allowed: true, paidThrough: END_21_11, cancelAt: null, graceUntil: null, plan: { name: 'full', slideshows: 40, redos: 10 } });
     page = (await t.admin.get('/admin/accounts')).body;
     assert.match(page, /גישה: שולם, פתוח, עד 21\.11\.2026/);
-    // A second payment extends it by a month; the date can also be set by hand.
-    await t.admin.post(`/admin/workspaces/${t.ws.id}/subscription/pay`, { product: 'teder' });
+    // A second payment extends it by a month: sent with the day the console now shows, as its button sends it (without
+    // it or the button's token, a month so soon after the first is refused: test/pay-once.test.js); the date can also
+    // be set by hand.
+    await t.admin.post(`/admin/workspaces/${t.ws.id}/subscription/pay`, { product: 'teder', expect: '2026-11-21' });
     assert.equal((await t.ent()).json.paidThrough, endOfIsraelDay('2026-12-21'));
     await t.admin.post(`/admin/workspaces/${t.ws.id}/subscription`, { product: 'teder', monthly: '790', setup: '1490', vat: 'excluded', started_on: '2026-10-22', paid_until: '2026-11-21', ends_on: '' });
     assert.equal((await t.ent()).json.paidThrough, END_21_11);

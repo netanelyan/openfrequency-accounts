@@ -329,7 +329,9 @@ export const T = {
     product_off: 'המוצר הזה לא פעיל בחשבון.',
     name_mismatch: 'השם לא תואם את שם העסק, אז לא מחקנו כלום.',
     bad_plan: 'החבילה הזאת לא קיימת.',
-    already_paid: 'התשלום הזה כבר נרשם (הכפתור נלחץ פעמיים, או שהדף היה פתוח מקודם). בדקו את התאריך ב"שולם עד" לפני שרושמים עוד חודש.',
+    // A payment form sent again (src/accounts/subscriptions.js payMonth), on the console and on a receipt's page. On the
+    // console the day it is paid until follows (flashSubPaid).
+    already_paid: 'התשלום כבר נרשם.',
   },
 };
 

@@ -277,11 +277,19 @@ the token is unset or short here, `405` for any other method.
 
 ### The payment button
 
-"התקבל תשלום לחודש" sends the paid-until date the console showed with it. When the subscription
-has moved on since (the button pressed twice, or the page left open after a payment), nothing is
-recorded and the console says so ("התשלום הזה כבר נרשם"). Each owner gets "קיבלנו את התשלום על
-<product>" with the day it is now paid until. A transfer's picture sent to Toran (paying over
-WhatsApp, docs/internal-pay.md) is recorded the same way, from its page, `/admin/receipts/<id>`.
+"התקבל תשלום לחודש" records one month for each form, however often the form is sent. It carries
+a one-time token, new each time the console is drawn, and the paid-until date the console showed.
+The same form sent again (a double click, the browser sending it again, back and send, even after
+the date was set back by hand) finds its token used; a form from before the subscription moved on
+(a page left open, another tab) has the wrong date. Either way nothing is recorded, nobody is
+emailed, no audit entry is written, and the console says "התשלום כבר נרשם" at the top with the day
+it is paid until. A request with neither (a script, an old page) is refused within 60 seconds of
+the last month recorded for that product of that workspace. Each month recorded is kept in
+`paid_months` (the token as its SHA-256 only). Each owner gets "קיבלנו את התשלום על <product>"
+with the day it is now paid until. The next month from the console drawn again, another product
+or another workspace each record, at the same moment too. A transfer's picture sent to Toran
+(paying over WhatsApp, docs/internal-pay.md) is recorded the same way, from its page,
+`/admin/receipts/<id>`: a receipt is decided once, so it is its own one-time token.
 
 ### The daily jobs
 

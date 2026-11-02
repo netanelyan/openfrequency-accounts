@@ -326,9 +326,10 @@ test('a failure, then the retry: Morning\'s code and words on the page, the paym
     assert.equal(m.docs().length, 2, 'the failed one and one more');
     assert.deepEqual([t.row(id).morning_state, t.row(id).morning_doc_number], ['issued', '40002']);
     assert.match((await t.op.get(`/admin/receipts/${id}`)).body, /Morning הפיק חשבונית מס קבלה 40002/);
-    // Issued: another press, and the "paid" button again, ask nothing.
+    // Issued: another press, and the "paid" button again (back to the receipt's page, "התשלום כבר נרשם"), ask nothing.
     await t.op.post(`/admin/receipts/${id}/invoice`);
-    assert.equal((await t.paid(id)).status, 409);
+    const again = await t.paid(id);
+    assert.deepEqual([again.status, again.headers.location], [303, `/admin/receipts/${id}`]);
     assert.equal(m.docs().length, 2);
     assert.equal(t.db.get('SELECT COUNT(*) AS n FROM invoices').n, 1);
   } finally {

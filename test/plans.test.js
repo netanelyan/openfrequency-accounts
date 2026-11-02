@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { makeWorkspace, tempHome } from './helpers.js';
 import { pathOf, signedIn, startSite, tokenOf } from './site.js';
-import { now, setNow } from '../src/core/clock.js';
+import { advance, now, setNow } from '../src/core/clock.js';
 import { ensureSubscription, listPrice, payMonth, planFor, planOut, PLANS, plansOf } from '../src/accounts/subscriptions.js';
 import { entitlement } from '../src/accounts/entitlement.js';
 import { setSuperadmin } from '../src/accounts/superadmin.js';
@@ -123,10 +123,11 @@ test('the payment button records one month however often it is pressed, and each
     const press = () => t.admin.post(`/admin/workspaces/${t.ws.id}/subscription/pay`, { product: 'teder', expect: '' });
     assert.equal((await press()).status, 303);
     assert.equal(sub(t.db, t.ws.id).paid_until, '2026-11-21');
-    // The same button again (a double press, or the page left open): nothing more is recorded.
+    // The same button again (a double press, or the page left open): nothing more is recorded, and the console says
+    // so at the top (test/pay-once.test.js has the button's one-time token and the 60 seconds).
     const again = await press();
-    assert.equal(again.status, 400);
-    assert.match(again.body, /התשלום הזה כבר נרשם/);
+    assert.deepEqual([again.status, again.headers.location], [303, '/admin/accounts']);
+    assert.match((await t.admin.get('/admin/accounts')).body, /<p class="flash" role="status">התשלום כבר נרשם\. Noa Shop: תדר שולם עד 21\.11\.2026\.<\/p>/);
     assert.equal(sub(t.db, t.ws.id).paid_until, '2026-11-21');
     // From the page as it is now, the next month.
     page = (await t.admin.get('/admin/accounts')).body;
@@ -137,7 +138,10 @@ test('the payment button records one month however often it is pressed, and each
     const paid = t.mails.filter((m) => m.subject === 'קיבלנו את התשלום על תדר');
     assert.deepEqual(paid.map((m) => m.to).sort(), ['dan@example.com', 'dan@example.com', 'noa@example.com', 'noa@example.com']);
     assert.match(paid[0].text, /קיבלנו את התשלום על תדר בחשבון של Noa Shop\. המנוי שולם עד 21\.11\.2026\./);
-    // payMonth without `expect` (a script) records as before.
+    // payMonth without `expect` or a form's token (a script): not within 60 seconds of the last month; a minute on, it
+    // records.
+    assert.throws(() => payMonth(t.db, t.ws.id, 'teder', { by: null }), (e) => e.code === 'already_paid');
+    advance(60_000);
     assert.equal(payMonth(t.db, t.ws.id, 'teder', { by: null }), '2027-01-21');
   } finally {
     await t.done();

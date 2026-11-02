@@ -330,8 +330,8 @@ test('"התשלום הגיע": the month recorded, the owners told, the receipt 
     assert.match(page, /סימנתם ב-22\.10\.2026, 13:00 שהתשלום הגיע\./);
     assert.doesNotMatch(page, /<button class="primary">התשלום הגיע/);
     const again = await op.post(`/admin/receipts/${id}/paid`, { expect_teder: '2026-11-21' });
-    assert.equal(again.status, 409);
-    assert.match(again.body, /כבר החלטתם על האישור הזה, אז שום דבר לא השתנה\./);
+    assert.deepEqual([again.status, again.headers.location], [303, `/admin/receipts/${id}`]);
+    assert.match((await op.get(`/admin/receipts/${id}`)).body, /<p class="flash" role="status">התשלום כבר נרשם\.<\/p>/);
     assert.equal(t.db.get('SELECT paid_until FROM subscriptions WHERE workspace_id = ?', t.ws.id).paid_until, '2026-11-21');
     assert.equal(t.db.get("SELECT COUNT(*) AS n FROM audit WHERE action = 'subscription_paid'").n, 1);
   } finally {
@@ -348,7 +348,7 @@ test('"התשלום הגיע" on a page left open after the month was recorded e
     payMonth(t.db, t.ws.id, 'teder', { by: t.admin }); // the console's button, meanwhile
     const r = await op.post(`/admin/receipts/${id}/paid`, { expect_teder: '' });
     assert.equal(r.status, 409);
-    assert.match(r.body, /התשלום הזה כבר נרשם \(הכפתור נלחץ פעמיים, או שהדף היה פתוח מקודם\)/);
+    assert.match(r.body, /<p class="error" role="alert">התשלום כבר נרשם\.<\/p>/);
     assert.equal(t.db.get('SELECT paid_until FROM subscriptions WHERE workspace_id = ?', t.ws.id).paid_until, '2026-11-21', 'one month, not two');
     assert.equal(t.db.get('SELECT decided_at FROM pay_receipts WHERE id = ?', id).decided_at, null);
     // The page says what changed since the receipt came.
