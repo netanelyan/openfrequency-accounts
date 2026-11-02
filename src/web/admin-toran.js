@@ -18,8 +18,9 @@ import { now } from '../core/clock.js';
 // status, its cookies, its CSP, its compressed body), without the hop-by-hop headers and without ours.
 //
 // The superadmin's session never goes to Toran (PRA-SEC-004). Of the browser's cookies only Toran's own (tn_*: its
-// flash line, its side menu) are passed on; who is asking is said instead by X-OF-Operator, a statement we sign for
-// this one request (operatorAssertion() below, docs/contracts/admin-toran-operator.json):
+// flash line, its side menu) and of-theme (light or dark, the one choice every OpenFrequency site reads, so Toran's
+// pages come dark from its server here too) are passed on; who is asking is said instead by X-OF-Operator, a
+// statement we sign for this one request (operatorAssertion() below, docs/contracts/admin-toran-operator.json):
 //
 //   X-OF-Operator: <payload>.<signature>
 //     payload    base64url of JSON { id, email, name, ses, exp }: the superadmin's user id, email and name; `ses`, a
@@ -41,12 +42,12 @@ export const ASSERTION_MS = 60_000;
 const MIN_TOKEN = 32;
 const mac = (key, text) => createHmac('sha256', key).update(text).digest('base64url');
 
-/** The browser's cookies that are Toran's own (tn_*), as one Cookie header, or null when there are none. */
+/** The browser's cookies that are Toran's own (tn_*) and of-theme, as one Cookie header, or null when there are none. */
 export function toranCookies(header) {
   const kept = String(header || '')
     .split(';')
     .map((c) => c.trim())
-    .filter((c) => /^tn_[A-Za-z0-9_-]*=/.test(c));
+    .filter((c) => /^(?:tn_[A-Za-z0-9_-]*|of-theme)=/.test(c));
   return kept.length ? kept.join('; ') : null;
 }
 

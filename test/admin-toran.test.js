@@ -109,12 +109,12 @@ const PASSED = {
   'x-tn-ajax': '1',
 };
 
-test('the session never reaches Toran: only its own tn_* cookies do; without OF_INTERNAL_TOKEN there is no statement', async () => {
+test('the session never reaches Toran: only its own tn_* cookies and of-theme do; without OF_INTERNAL_TOKEN there is no statement', async () => {
   const t = await setup();
   try {
-    const cookie = `__Secure-of_session=${t.op.cookie('__Secure-of_session')}; tn_side=mini; __Host-of_csrf=abc; tn_flash=saved`;
+    const cookie = `__Secure-of_session=${t.op.cookie('__Secure-of_session')}; tn_side=mini; __Host-of_csrf=abc; of-theme=dark; of-themex=1; tn_flash=saved`;
     await t.op.get('/admin/toran/leads', { cookie });
-    assert.equal(t.fake.calls.at(-1).headers.cookie, 'tn_side=mini; tn_flash=saved');
+    assert.equal(t.fake.calls.at(-1).headers.cookie, 'tn_side=mini; of-theme=dark; tn_flash=saved');
     assert.ok(readOperator(t.fake.calls.at(-1).headers['x-of-operator']));
   } finally {
     await t.done();
