@@ -168,6 +168,9 @@ export function setupState(results, products, { billingReady = false, access = {
         // Provider mode with no payment page to send them to (the service does not start so) still leaves a way to us.
         href: paidAll ? null : (billingReady && checkout) || contact,
         checkout: Boolean(!paidAll && billingReady && checkout),
+        // The same way to pay while it is done, for the month ahead within the week (html.js billingCard).
+        payHref: (billingReady && checkout) || contact,
+        payCheckout: Boolean(billingReady && checkout),
         required: true,
       }
     : null;

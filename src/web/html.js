@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { ROOT } from '../core/paths.js';
 import { addDays, addMonths, describe, israelToday, LIST_PRICES, newPayOnce, PLANS, plansOf } from '../accounts/subscriptions.js';
-import { dueOf } from '../accounts/billing.js';
+import { dueOf, PAY_AHEAD_DAYS } from '../accounts/billing.js';
 import { ISSUING_STALE_MS } from '../accounts/morning.js';
 import { now as clockNow } from '../core/clock.js';
 import { total } from '../accounts/invoices.js';
@@ -517,29 +517,38 @@ function stepRow(s, { readOnly, first, locked = false }) {
  * payment reaches us, and the button (quiet: there is nothing to start here) is for questions, to us.
  * Under the prices, what the payment comes to with VAT (the setup fee in it until the first payment), and the months
  * after; in manual mode with the owner's payment details, the receipt (אסמכתא) to us, the button sending it.
- * What is owed is billing.js dueOf(), the same answer Toran gives on WhatsApp. Paying over WhatsApp (`payWa`, from
- * src/web/pay.js payOverWa(): manual mode with the owner's payment details and OF_ASSISTANT_WA both set) changes only
- * this, and only while something is owed: the one blue button is "לתשלום בוואטסאפ", to our owner line with the
- * message written, and the line under the details says to send it as it is, in place of the receipt's line. Read-only
- * (view-as) shows the card the customer sees, without its button.
+ * What is owed is billing.js dueOf(), the same answer Toran gives on WhatsApp (pay.js dueForPay()): with nothing owed
+ * today, a month that falls due within the week (PAY_AHEAD_DAYS, the days of the billing emails a week and a day
+ * before, and of Teder's banner "אפשר כבר לשלם על החודש הבא") is offered ahead. The step stays done then (the setup is
+ * not behind), and the card shows that month, its total and how to pay, with the same one button. Paying over WhatsApp
+ * (`payWa`, from src/web/pay.js payOverWa(): manual mode with the owner's payment details and OF_ASSISTANT_WA both set)
+ * changes only this, and only while something is owed: the one blue button is "לתשלום בוואטסאפ", to our owner line
+ * with the message written, and the line under the details says to send it as it is, in place of the receipt's line.
+ * Read-only (view-as) shows the card the customer sees, without its button.
  */
 function billingCard(b, { readOnly, first, products, access, prices, payHow = '', payWa = null }) {
   const done = b.status === 'done';
+  // What is to pay now, product by product (a month, and the setup fee until the first payment), and the months after;
+  // with nothing owed today, the month ahead within the week, as Toran quotes it (pay.js dueForPay()).
+  const due = dueOf({ products, access, prices, ahead: PAY_AHEAD_DAYS });
+  // Paid for today, and the next month can be paid now: the step is done, and the card still offers the payment.
+  const ahead = done && due.items.length > 0;
+  const open = !done || ahead;
+  const href = done ? b.payHref : b.href;
+  const checkout = done ? b.payCheckout : b.checkout;
   // A product whose cancellation has run its course is not waiting for a payment (dueOf() 'ended').
   const closed = products.filter((p) => !access[p]?.allowed && access[p]?.access !== 'cancelled');
   const opens = closed.length ? opensAfter(b.checkout ? 'provider' : 'manual', closed.map((p) => PRODUCT_NAMES[p]).join(SIGNUP.and), closed.length > 1) : '';
-  const detail = done ? (b.comp ? SETUP.billingComp : SETUP.billingDone) : b.checkout ? SETUP.billingTodo(opens) : SETUP.billingManual(opens, payHow);
-  const wa = /^https:\/\/wa\.me\//.test(b.href || '');
-  // What is to pay now, product by product (a month, and the setup fee until the first payment), and the months after.
-  const due = dueOf({ products, access, prices });
-  const overWa = Boolean(payWa && payHow && !b.checkout && !done && due.items.length);
-  const label = b.checkout ? SETUP.billingPay : wa ? (payHow ? SETUP.billingSendReceipt : SETUP.billingWrite) : SETUP.billingContact;
+  const detail = done ? (b.comp ? SETUP.billingComp : ahead ? SETUP.billingAheadDone : SETUP.billingDone) : b.checkout ? SETUP.billingTodo(opens) : SETUP.billingManual(opens, payHow);
+  const wa = /^https:\/\/wa\.me\//.test(href || '');
+  const overWa = Boolean(payWa && payHow && !checkout && open && due.items.length);
+  const label = checkout ? SETUP.billingPay : wa ? (payHow ? SETUP.billingSendReceipt : SETUP.billingWrite) : SETUP.billingContact;
   const btn = overWa
     ? payWa.href && !readOnly
       ? `<a class="button ${first() ? 'primary' : 'quiet'}" href="${esc(payWa.href)}">${esc(PAY.button)}</a>`
       : ''
-    : !done && b.href && !readOnly
-      ? `<a class="button ${b.checkout && first() ? 'primary' : 'quiet'}" href="${esc(b.href)}">${esc(label)}</a>`
+    : open && href && !readOnly
+      ? `<a class="button ${checkout && first() ? 'primary' : 'quiet'}" href="${esc(href)}">${esc(label)}</a>`
       : '';
   const lines = due.lines
     .map((l) => {
@@ -547,6 +556,7 @@ function billingCard(b, { readOnly, first, products, access, prices, payHow = ''
       if (l.kind === 'due') return `<li>${esc(SETUP.billingDue(name, weekdayHe(l.graceUntil)))}</li>`;
       if (l.kind === 'paid') return `<li>${esc(SETUP.billingPaidUntil(name, dayHe(l.paidUntil)))}</li>`;
       if (l.kind === 'ended') return `<li>${esc(SETUP.billingEnded(name, dayHe(l.lastDay)))}</li>`;
+      if (l.kind === 'ahead') return `<li>${esc(SETUP.billingAhead(name, ils(l.monthly), l.vat === 'included' ? T.vatIncluded : T.vatExcluded, dayHe(addDays(l.paidUntil, 1))))}</li>`;
       if (l.kind !== 'owed') return '';
       return `<li>${esc(SETUP.billingPrice(name, ils(l.monthly), l.vat === 'included' ? T.vatIncluded : T.vatExcluded, l.setup ? ils(l.setup) : ''))}</li>`;
     })
@@ -557,10 +567,10 @@ function billingCard(b, { readOnly, first, products, access, prices, payHow = ''
   return `<section class="card setup-p" id="setup-billing"><header><div><h2>${esc(SETUP.billingTitle)}</h2></div><span class="tag${done ? '' : ' off'}">${esc(done ? SETUP.ready : SETUP.notReady)}</span></header>
 <ol class="steps"><li class="step st-${done ? 'done' : 'todo'}"><span class="chip">${esc(SETUP.status[done ? 'done' : 'todo'])}</span><span class="what"><b>${esc(SETUP.billingStep)}</b><small>${esc(detail)}</small></span>${btn}</li></ol>
 ${lines ? `<ul class="prices">${lines}</ul>` : ''}
-${!done && now ? `<p class="pay-total"><b>${esc(SETUP.billingNow(ils(now.total), ils(now.net), now.vat ? ils(now.vat) : ''))}</b>${then ? ` ${esc(SETUP.billingThen(ils(then)))}` : ''}</p>` : ''}
-${!done && payHow ? `<p>${esc(SETUP.billingHow(payHow))}</p>` : ''}
-${!done && payHow && !b.checkout ? after : ''}
-${!done && !b.checkout ? `<p class="muted">${esc(SETUP.billingAsk(wa))}</p>` : ''}
+${open && now ? `<p class="pay-total"><b>${esc(SETUP.billingNow(ils(now.total), ils(now.net), now.vat ? ils(now.vat) : ''))}</b>${then ? ` ${esc(SETUP.billingThen(ils(then)))}` : ''}</p>` : ''}
+${open && payHow ? `<p>${esc(SETUP.billingHow(payHow))}</p>` : ''}
+${open && payHow && !checkout ? after : ''}
+${open && !checkout ? `<p class="muted">${esc(SETUP.billingAsk(wa))}</p>` : ''}
 </section>`;
 }
 

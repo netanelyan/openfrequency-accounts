@@ -96,6 +96,88 @@ test('/setup without one of the two settings, or with a provider: what it said b
   }
 });
 
+// The week before the next month (Teder's banner, "אפשר כבר לשלם על החודש הבא", leads here): /setup offers it, as
+// Toran quotes it (dueForPay()) and as the billing emails a week and a day before ask for it, on the same days.
+test('/setup in the week before the next month: the month ahead, its total and the one button, from 7 days before it falls due to the last paid day', async () => {
+  const t = await site();
+  try {
+    payMonth(t.db, t.ws.id, 'teder', { by: null }); // paid until 21.11.2026, the small plan: 490 ₪ before VAT
+    const mails = [];
+    const daily = (at) => runDaily(t.db, { env: { PUBLIC_HOST: 'accounts.openfrequency.co.il', ...WA }, mailer: { send: (m) => mails.push(m) }, eraser: { erase: async () => ({ results: {}, ok: true, failed: [] }) }, log: () => {} });
+    const LINE = '<li>תדר, החבילה הקטנה: 490 ₪ לחודש, לא כולל מע״מ, על החודש שמתחיל ב-22.11.2026</li>';
+    const TOTAL = 'סך הכול לתשלום עכשיו: 578.20 ₪, כולל מע״מ (490 ₪ ועוד 88.20 ₪ מע״מ).';
+    const day = async (at) => {
+      setNow(at);
+      return billingOf((await signedIn(t, t.db, t.noa).get('/setup')).body);
+    };
+
+    // A week and a day before it falls due: paid, nothing to pay, no button, as before.
+    let card = await day('2026-11-14T10:00:00.000Z');
+    assert.match(card, /<li class="step st-done"><span class="chip">✓ בוצע<\/span><span class="what"><b>התשלום על המנוי<\/b><small>המנוי שולם\.<\/small><\/span><\/li>/);
+    assert.match(card, /<li>תדר, החבילה הקטנה: שולם עד 21\.11\.2026<\/li>/);
+    assert.doesNotMatch(card, /<a class="button|סך הכול/);
+    assert.deepEqual(dueForPay(t.db, t.ws.id).items, []);
+
+    // From the 15th (6 days before the last paid day, the day soon7 goes) to the 21st (the last paid day, soon1's): the
+    // step stays done, and the card offers the next month, what Toran would quote, with "לתשלום בוואטסאפ".
+    for (const at of ['2026-11-15T07:00:00.000Z', '2026-11-18T10:00:00.000Z', '2026-11-21T21:00:00.000Z']) {
+      card = await day(at);
+      assert.match(card, /<li class="step st-done"><span class="chip">✓ בוצע<\/span><span class="what"><b>התשלום על המנוי<\/b><small>המנוי שולם\. אפשר כבר לשלם על החודש הבא\.<\/small><\/span><a class="button primary" href="https:\/\/wa\.me\/972500000200\?text=[^"]+">לתשלום בוואטסאפ<\/a><\/li>/, at);
+      assert.ok(card.includes(LINE), at);
+      assert.ok(card.includes(`<b>${TOTAL}</b>`), at);
+      assert.ok(card.includes(`איך משלמים: ${HOW}`) && card.includes(EXPLAIN), at);
+      assert.equal((card.match(/<a class="button/g) || []).length, 1, `${at}: one button`);
+      const due = dueForPay(t.db, t.ws.id);
+      assert.deepEqual([due.total, due.lines[0].kind, due.lines[0].paidUntil], [578.2, 'ahead', '2026-11-21'], at);
+      const { code } = t.db.get('SELECT code FROM pay_codes WHERE workspace_id = ?', t.ws.id);
+      assert.equal(waText(/href="([^"]+)">לתשלום בוואטסאפ/.exec(card)[1]), PAY_TEXT('Noa Shop', code), at);
+      // The billing email of that week, the same day: the same month, the same amount, the same button.
+      if (at.startsWith('2026-11-15') || at.startsWith('2026-11-21')) {
+        mails.length = 0;
+        await daily(at);
+        const m = mails.find((x) => x.to === 'noa@example.com');
+        assert.equal(m.subject, 'התשלום הבא על תדר: 22.11.2026', at);
+        assert.ok(m.text.includes('מתחיל ב-22.11.2026. הסכום: 490 ₪ ועוד מע״מ, 578.20 ₪ בסך הכול.'), at);
+        assert.equal(m.link, /href="([^"]+)">לתשלום בוואטסאפ/.exec(card)[1].replace(/&amp;/g, '&'), `${at}: the email's button is the card's`);
+      }
+    }
+
+    // The first day after it: the payment is owed now, and the card is the due one.
+    card = await day('2026-11-22T10:00:00.000Z');
+    assert.match(card, /<li class="step st-todo">/);
+    assert.match(card, /<li>תדר, החבילה הקטנה: התשלום על החודש החדש עוד לא הגיע\. המנוי עובד עד סוף יום שלישי, 24\.11\.2026, ואחרי זה נעצר עד שישולם\.<\/li>/);
+    assert.ok(card.includes(`<b>${TOTAL}</b>`));
+    assert.equal(dueForPay(t.db, t.ws.id).total, 578.2);
+  } finally {
+    await t.done();
+  }
+});
+
+test('/setup in the week before the next month, in the other ways of paying: our WhatsApp for the receipt, or the payment page', async () => {
+  for (const [env, button] of [
+    [{ OF_PAYMENT_METHOD: HOW, OF_SUPPORT_WA: '972500000100' }, /<a class="button quiet" href="https:\/\/wa\.me\/972500000100\?text=[^"]+">לשלוח אסמכתא בוואטסאפ<\/a>/],
+    [{ OF_SUPPORT_WA: '972500000100' }, /<a class="button quiet" href="https:\/\/wa\.me\/972500000100\?text=[^"]+">כתבו לנו בוואטסאפ<\/a>/],
+    [{ OF_PAYMENT: 'provider', OF_PAYMENT_URL: 'https://pay.example.com/openfrequency' }, /<a class="button primary" href="https:\/\/pay\.example\.com\/openfrequency[^"]*">לתשלום<\/a>/],
+  ]) {
+    const t = await site(env);
+    try {
+      payMonth(t.db, t.ws.id, 'teder', { by: null }); // paid until 21.11.2026
+      setNow('2026-11-18T10:00:00.000Z');
+      const card = billingOf((await signedIn(t, t.db, t.noa).get('/setup')).body);
+      assert.match(card, button, JSON.stringify(env));
+      assert.equal((card.match(/<a class="button/g) || []).length, 1, 'one button');
+      assert.ok(card.includes('<li>תדר, החבילה הקטנה: 490 ₪ לחודש, לא כולל מע״מ, על החודש שמתחיל ב-22.11.2026</li>'));
+      assert.ok(card.includes('סך הכול לתשלום עכשיו: 578.20 ₪'));
+      // Cancelled, it is never asked for the month after its last day.
+      cancelSubscription(t.db, t.ws.id, 'teder', { by: null });
+      const after = billingOf((await signedIn(t, t.db, t.noa).get('/setup')).body);
+      assert.doesNotMatch(after, /<a class="button|סך הכול|על החודש שמתחיל/);
+    } finally {
+      await t.done();
+    }
+  }
+});
+
 test('/setup in view-as: the customer\'s card without its button, and no code made for it', async () => {
   const t = await site();
   try {

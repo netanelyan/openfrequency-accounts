@@ -156,12 +156,19 @@ test('the grace on the pages: due, it still opens and asks to pay, with the day 
   const t = await setup();
   try {
     payMonth(t.db, t.ws.id, 'teder', { by: null }); // paid until 21.11.2026
-    // Before it falls due, on the paid month's last day: paid until that day, and the payment step done.
-    setNow('2026-11-21T10:00:00.000Z');
+    // Before the week it falls due in: paid until that day, and the payment step done.
+    setNow('2026-11-14T10:00:00.000Z');
     let b = signedIn(t, t.db, t.noa);
-    const before = (await b.get('/setup')).body;
+    let before = (await b.get('/setup')).body;
     assert.match(before, /<li>תדר, החבילה המלאה: שולם עד 21\.11\.2026<\/li>/);
-    assert.match(before, /<li class="step st-done"><span class="chip">✓ בוצע<\/span><span class="what"><b>התשלום על המנוי<\/b>/);
+    assert.match(before, /<li class="step st-done"><span class="chip">✓ בוצע<\/span><span class="what"><b>התשלום על המנוי<\/b><small>המנוי שולם\.<\/small>/);
+    assert.doesNotMatch(before, /נעצר עד שישולם/);
+    // On the paid month's last day: still done, and the next month can be paid already (test/pay-site.test.js).
+    setNow('2026-11-21T10:00:00.000Z');
+    b = signedIn(t, t.db, t.noa);
+    before = (await b.get('/setup')).body;
+    assert.match(before, /<li>תדר, החבילה המלאה: 790 ₪ לחודש, לא כולל מע״מ, על החודש שמתחיל ב-22\.11\.2026<\/li>/);
+    assert.match(before, /<li class="step st-done"><span class="chip">✓ בוצע<\/span><span class="what"><b>התשלום על המנוי<\/b><small>המנוי שולם\. אפשר כבר לשלם על החודש הבא\.<\/small>/);
     assert.doesNotMatch(before, /נעצר עד שישולם/);
 
     setNow('2026-11-23T10:00:00.000Z'); // the second of the 72 hours' 3 days

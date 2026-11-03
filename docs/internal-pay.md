@@ -57,11 +57,16 @@ ones too, until their last day), nothing; no price recorded, nothing; anything e
 grace is over), a month and, until the first payment, the setup fee. VAT is added to each price
 recorded without it and rounded to the agora (`payTotal()`).
 
-Toran is told one thing more than the card shows: **when nothing is owed today, a month that falls
-due within 7 days** (`PAY_AHEAD_DAYS`), never for a product that is cancelled or has a last day, so
-never a month after its end. That is what the billing emails a week and a day before
-ask for, so their button leads to that month and not to "nothing to pay". The card shows today's
-answer, so whenever the card has a button, Toran's amount is the card's.
+**When nothing is owed today, a month that falls due within 7 days** (`PAY_AHEAD_DAYS`) is owed
+too, a month ahead, never for a product that is cancelled or has a last day, so never a month after
+its end. Toran is told it (`dueForPay()`), and since 2026-11-03 `/setup`'s card shows it too, on the
+same days: from 6 days before the last paid day to that day (paid until 21.11.2026: 15.11 to 21.11),
+the days of the billing emails a week and a day before and of Teder's banner ("אפשר כבר לשלם על
+החודש הבא", which leads to `/setup`). The payment step stays done (the setup is not behind; its detail
+says "המנוי שולם. אפשר כבר לשלם על החודש הבא."), and the card lists the month ("תדר, החבילה המלאה: 790
+₪ לחודש, לא כולל מע״מ, על החודש שמתחיל ב-22.11.2026", Toran's words for it), the total, how to pay and
+the one button, the same as the emails'. So whenever the card has a button, Toran's amount is the
+card's.
 
 ## The code
 

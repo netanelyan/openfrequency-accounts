@@ -566,8 +566,9 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
         else if (d.status !== 200) return redirect('/');
         const wsId = d.body.workspace.id;
         const state = await setupFor(wsId);
-        // Paying over WhatsApp: the button's link with the workspace's code; read-only (view-as) makes no code.
-        const payWa = state.paid ? null : payOverWa(db, { env, workspaceId: wsId, business: d.body.workspace.name, mint: !d.body.readOnly });
+        // Paying over WhatsApp: the button's link with the workspace's code, while something is owed, now or the month
+        // ahead within the week (payOverWa() asks dueForPay()); read-only (view-as) makes no code.
+        const payWa = payOverWa(db, { env, workspaceId: wsId, business: d.body.workspace.name, mint: !d.body.readOnly });
         return page(200, SETUP.title, P.setupPage({ state, productUrls: urls, readOnly: d.body.readOnly, flash, access: accessAll(db, wsId), prices: subscriptionsOf(db, wsId), payHow: payHow(env), payWa }), { wide: true, banner });
       }
 

@@ -715,6 +715,8 @@ export const SETUP = {
   billingManual: (opens, how = '') => `${how ? 'משלמים לפי פרטי התשלום שכאן למטה.' : 'את פרטי התשלום אנחנו שולחים לכם במייל.'}${opens ? ` ${opens}` : ''}`,
   billingTodo: (opens) => `משלמים בכרטיס אשראי בדף התשלום.${opens ? ` ${opens}` : ''}`,
   billingDone: 'המנוי שולם.',
+  // Paid for today, in the week before the next month (billing.js PAY_AHEAD_DAYS): it can be paid already.
+  billingAheadDone: 'המנוי שולם. אפשר כבר לשלם על החודש הבא.',
   billingComp: 'החשבון הזה אצלנו ללא תשלום.',
   billingPay: 'לתשלום',
   billingWrite: 'כתבו לנו בוואטסאפ',
@@ -722,6 +724,8 @@ export const SETUP = {
   billingAsk: (wa) => (wa ? 'יש שאלה על התשלום? כתבו לנו בוואטסאפ, או ענו לאחד המיילים שקיבלתם מאיתנו.' : 'יש שאלה על התשלום? ענו לאחד המיילים שקיבלתם מאיתנו.'),
   billingPrice: (product, monthly, vat, setup) => `${product}: ${monthly} לחודש, ${vat}${setup ? `, ודמי הקמה של ${setup} פעם אחת` : ''}`,
   billingPaidUntil: (product, d) => `${product}: שולם עד ${d}`,
+  // The month ahead, in Toran's words for it (PAY.summaryItem): `from` the day it starts.
+  billingAhead: (product, monthly, vat, from) => `${SETUP.billingPrice(product, monthly, vat, '')}, על החודש שמתחיל ב-${from}`,
   // A product cancelled and stopped: nothing to pay for it.
   billingEnded: (product, d) => `${product}: המנוי הסתיים ב-${d}, ואין עליו מה לשלם`,
   endedTag: 'הסתיים',
