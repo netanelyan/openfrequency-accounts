@@ -16,11 +16,13 @@ import { payOverWa } from './pay.js';
 //
 // 1. Billing (ACC-01). For each subscription that has been paid and is not cancelled, comp or off, in a workspace that
 //    is open, each owner gets one email of each kind for each end of a paid period (billing_notices). The terms give
-//    72 hours after the paid month ends (subscriptions.js GRACE_HOURS): the 3 days after paid_until, to graceLast().
+//    72 hours after the paid month ends (subscriptions.js GRACE_HOURS): the 3 days after paid_until, to graceLast()
+//    (4 days when the clocks go forward in them, so never less than 72 hours).
 //      soon7    a week before the next payment falls due (the day after paid_until), on the first run in that week
 //      soon1    the day before: paid_until itself, the paid month's last day
 //      due      the first day after it: the month is over, the product goes on working to the end of graceLast(),
-//               and then it stops until paid (entitlement.js 'due'). Sent the next day if that day's run was missed
+//               and then it stops until paid (entitlement.js 'due'). Sent on a later day of it if that day's run
+//               was missed
 //      last     graceLast() itself: today is the last day to pay before it stops
 //      stopped  the grace is over (sent within the 7 days after)
 //    Each day owes one kind at most and the kinds follow each other day by day, at a month's end too (the days are

@@ -79,18 +79,37 @@ export function addMonths(day, n = 1) {
   return fromUtc(Date.UTC(y, m, Math.min(+day.slice(8, 10), last)));
 }
 
+/** The last millisecond of an Israel calendar day (YYYY-MM-DD), as an ISO instant: "2026-11-21T21:59:59.999Z". */
+export function endOfIsraelDay(day) {
+  const next = addDays(day, 1);
+  const utc = Date.UTC(+next.slice(0, 4), +next.slice(5, 7) - 1, +next.slice(8, 10));
+  // Israel is UTC+2 or UTC+3: midnight there is the first of these instants that is already the next day.
+  for (const h of [3, 2]) {
+    const t = utc - h * 3_600_000;
+    if (israelToday(t) === next && israelToday(t - 1) === day) return new Date(t - 1).toISOString();
+  }
+  return new Date(utc - 2 * 3_600_000 - 1).toISOString();
+}
+
 /**
  * How long a subscription keeps working after its paid month ends while the next month's payment has not come: 72
- * hours (the owner, 2026-11-03: "A user has 72 hours to pay for a new month once their subscription has ended"; the
- * terms, openfrequency.co.il/terms, say the same). The paid month ends at the end of the Israel day `paid_until`, so
- * the 72 hours are the 3 Israel days after it, to the end of the third; then it stops until paid. Counted in days, a
- * week with a clock change in it has 71 hours (March) or 73 (October). The emails before, on and at the end of them
- * are src/web/daily.js.
+ * hours at least (the owner, 2026-11-03: "A user has 72 hours to pay for a new month once their subscription has
+ * ended"; the terms, openfrequency.co.il/terms, say the same). The paid month ends at the end of the Israel day
+ * `paid_until`, and the 72 hours are the 3 Israel days after it, to the end of the third; then it stops until paid.
+ * When the clocks go forward in those days (the end of March), the 3 days are 71 hours, and it works to the end of the
+ * 4th instead (95 hours), so a customer never gets less; when they go back (the end of October), the 3 days are 73
+ * hours and stay 3. The emails before, on and at the end of them are src/web/daily.js.
  */
 export const GRACE_HOURS = 72;
 export const GRACE_DAYS = GRACE_HOURS / 24;
-/** The last day a subscription paid until `paidUntil` still works unpaid: the third day after it. */
-export const graceLast = (paidUntil) => addDays(paidUntil, GRACE_DAYS);
+/**
+ * The last day a subscription paid until `paidUntil` still works unpaid: the third day after it, or the fourth when the
+ * third would end less than 72 hours after it (paid until 23 to 25 March 2027: the 27th to the 29th).
+ */
+export function graceLast(paidUntil) {
+  const third = addDays(paidUntil, GRACE_DAYS);
+  return Date.parse(endOfIsraelDay(third)) - Date.parse(endOfIsraelDay(paidUntil)) < GRACE_HOURS * 3_600_000 ? addDays(third, 1) : third;
+}
 
 /** A workspace's subscription rows, by product. */
 export function subscriptionsOf(db, workspaceId) {

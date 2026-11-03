@@ -54,6 +54,14 @@ test('which billing email a day owes: a week before, the day before, the first d
   }
   assert.equal(addDays('2026-11-30', 3), '2026-12-03');
   assert.equal(addDays('2028-02-28', 3), '2028-03-02');
+  // The week the clocks go forward (26.3.2027): paid until the 24th, the 3 days are 71 hours, so the grace has a 4th
+  // day and last moves to it; the week they go back (31.10.2027) is 73 hours and stays as every other.
+  const march = [];
+  for (let n = -1; n <= 6; n++) march.push(billingKind('2027-03-24', addDays('2027-03-24', n)));
+  assert.deepEqual(march, ['soon7', 'soon1', 'due', 'due', 'due', 'last', 'stopped', 'stopped']);
+  const october = [];
+  for (let n = -10; n <= 12; n++) october.push(billingKind('2027-10-29', addDays('2027-10-29', n)));
+  assert.deepEqual(october, AROUND);
 });
 
 test('the billing emails: each kind once for each paid period, to the owners, the operator told when it is due and when it stops', async () => {
@@ -175,6 +183,30 @@ test("the 72 hours at a month's end, for Teder and Toran each: due on the 1st, l
       '2026-12-04': ['תדר נעצר עד שהתשלום יגיע', 'תורן נעצר עד שהתשלום יגיע'],
     });
     for (const kind of ['soon7', 'soon1', 'due', 'last', 'stopped']) assert.equal(t.db.get('SELECT COUNT(*) AS n FROM billing_notices WHERE kind = ?', kind).n, 2, `${kind}: one for each subscription`);
+  } finally {
+    t.cleanup();
+  }
+});
+
+test('the week the clocks go forward: due on the first day, last on the 4th, each saying the day it really stops', async () => {
+  const t = setup();
+  try {
+    const ws = makeWorkspace(t.db, 'noa-shop', { name: 'Noa Shop', products: ['teder'], members: { 'noa@example.com': 'client_owner' } });
+    ensureSubscription(t.db, ws.id, 'teder');
+    t.db.run("UPDATE subscriptions SET paid_until = '2027-03-24' WHERE workspace_id = ?", ws.id);
+    const sent = {};
+    for (let day = '2027-03-24'; day <= '2027-03-30'; day = addDays(day, 1)) {
+      t.mails.length = 0;
+      await t.run(`${day}T07:00:00.000Z`);
+      const m = t.mails.find((x) => x.to === 'noa@example.com');
+      if (m) sent[day] = [m.subject, linesOf(m.text)[1] + (m.subject.startsWith('התשלום על') ? ` ${linesOf(m.text)[2]}` : '')];
+    }
+    assert.deepEqual(sent, {
+      '2027-03-24': ['התשלום הבא על תדר: 25.3.2027', 'החודש הבא של תדר בחשבון של Noa Shop מתחיל ב-25.3.2027. הסכום: 790 ₪ ועוד מע״מ, 932.20 ₪ בסך הכול.'],
+      '2027-03-25': ['התשלום על החודש החדש של תדר עוד לא הגיע', 'המנוי לתדר בחשבון של Noa Shop שולם עד 24.3.2027, והתשלום על החודש החדש (790 ₪ ועוד מע״מ, 932.20 ₪ בסך הכול) עוד לא הגיע אלינו. תדר ממשיך לעבוד עד סוף יום ראשון, 28.3.2027. אם התשלום לא יגיע עד אז, תדר ייעצר עד שישולם.'],
+      '2027-03-28': ['תדר ייעצר מחר אם התשלום לא יגיע היום', 'היום האחרון לשלם על החודש החדש של תדר בחשבון של Noa Shop הוא היום, יום ראשון, 28.3.2027. הסכום: 790 ₪ ועוד מע״מ, 932.20 ₪ בסך הכול.'],
+      '2027-03-29': ['תדר נעצר עד שהתשלום יגיע', 'התשלום על תדר בחשבון של Noa Shop לא הגיע עד סוף תקופת החסד, אז תדר נעצר. הנתונים נשמרים, ותדר ייפתח שוב כשהתשלום יגיע.'],
+    });
   } finally {
     t.cleanup();
   }

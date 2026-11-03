@@ -7,7 +7,7 @@ import { signedIn, startSite, tokenOf } from './site.js';
 import { now, setNow } from '../src/core/clock.js';
 import { Db } from '../src/db/index.js';
 import { MIGRATIONS } from '../src/db/schema.js';
-import { ensureSubscription, GRACE_HOURS, graceLast, payMonth } from '../src/accounts/subscriptions.js';
+import { addDays, ensureSubscription, GRACE_HOURS, graceLast, payMonth } from '../src/accounts/subscriptions.js';
 import { openWorkspace, setProduct } from '../src/accounts/workspaces.js';
 import { accessOf, endOfIsraelDay, entitlement } from '../src/accounts/entitlement.js';
 import { setSuperadmin } from '../src/accounts/superadmin.js';
@@ -123,6 +123,22 @@ test('access from the rows: every state, and the days at their edges', () => {
   assert.equal(graceLast('2028-02-28'), '2028-03-02', 'a leap year: 29.2 is one of the 3 days');
   assert.equal(accessOf({ ...on, paidUntil: '2026-12-31' }, '2027-01-03').access, 'due');
   assert.equal(accessOf({ ...on, paidUntil: '2026-12-31' }, '2027-01-04').access, 'unpaid');
+  // Never less than 72 hours. The clocks go forward on Friday 26.3.2027: paid until the 23rd, 24th or 25th, the 3 days
+  // come to 71 hours, so it works to the end of the 4th (95 hours); paid until the 22nd or the 26th, 72, and 3 days.
+  const hours = (p) => (Date.parse(endOfIsraelDay(graceLast(p))) - Date.parse(endOfIsraelDay(p))) / 3_600_000;
+  for (const [p, last, h] of [['2027-03-22', '2027-03-25', 72], ['2027-03-23', '2027-03-27', 95], ['2027-03-24', '2027-03-28', 95], ['2027-03-25', '2027-03-29', 95], ['2027-03-26', '2027-03-29', 72]]) {
+    assert.deepEqual([graceLast(p), hours(p)], [last, h], p);
+  }
+  assert.equal(accessOf({ ...on, paidUntil: '2027-03-24' }, '2027-03-28').access, 'due', 'the 4th day, in March');
+  assert.equal(accessOf({ ...on, paidUntil: '2027-03-24' }, '2027-03-29').access, 'unpaid');
+  // The clocks go back on Sunday 31.10.2027: paid until the 28th, 29th or 30th, the 3 days are 73 hours and stay 3.
+  for (const p of ['2027-10-28', '2027-10-29', '2027-10-30']) assert.deepEqual([graceLast(p), hours(p)], [addDays(p, 3), 73], p);
+  assert.equal(accessOf({ ...on, paidUntil: '2027-10-29' }, '2027-11-02').access, 'unpaid', 'no 4th day in October');
+  // Every paid-until day of five years: at least 72 hours, and the 4th day only where 3 would be less.
+  for (let p = '2026-01-01'; p <= '2030-12-31'; p = addDays(p, 1)) {
+    assert.ok(hours(p) >= 72, p);
+    assert.equal(graceLast(p) === addDays(p, 4), (Date.parse(endOfIsraelDay(addDays(p, 3))) - Date.parse(endOfIsraelDay(p))) / 3_600_000 < 72, p);
+  }
   // Cancelled: open until the last day paid for, then closed, with no grace; cancelled with nothing paid, closed.
   const cancelled = { ...on, paidUntil: '2026-11-21', endsOn: '2026-11-21', cancelledAt: T0 };
   assert.deepEqual(accessOf(cancelled, '2026-11-21'), { access: 'cancelled', allowed: true, paidUntil: '2026-11-21', lastDay: '2026-11-21', graceUntil: null });
@@ -207,6 +223,17 @@ test('GET /internal/entitlement: the documented shape, each state as the console
     }
     setNow('2026-11-24T22:00:00.000Z'); // 00:00 on 25.11 in Israel
     assert.deepEqual([(await t.ent()).json.access, (await t.ent()).json.allowed, (await t.ent()).json.paidThrough, (await t.ent()).json.graceUntil], ['unpaid', false, END_21_11, null]);
+
+    // The week the clocks go forward: paid until 24.3.2027, graceUntil the end of 28.3, 95 hours on, never 71.
+    t.db.run("UPDATE subscriptions SET paid_until = '2027-03-24' WHERE workspace_id = ? AND product = 'teder'", t.ws.id);
+    for (const at of ['2027-03-25T08:00:00.000Z', '2027-03-28T20:59:59.999Z']) {
+      setNow(at);
+      const due = (await t.ent()).json;
+      assert.deepEqual([due.access, due.allowed, due.paidThrough, due.graceUntil], ['due', true, '2027-03-24T21:59:59.999Z', '2027-03-28T20:59:59.999Z'], at);
+      assert.equal(Date.parse(due.graceUntil) - Date.parse(due.paidThrough), 95 * 3_600_000, at);
+    }
+    setNow('2027-03-28T21:00:00.000Z'); // 00:00 on 29.3 in Israel, summer time
+    assert.deepEqual([(await t.ent()).json.access, (await t.ent()).json.allowed], ['unpaid', false]);
   } finally {
     await t.done();
   }

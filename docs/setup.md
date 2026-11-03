@@ -231,7 +231,7 @@ that marks it complimentary or takes that back (`comp_set`, `comp_cleared` in th
 | `comp` | The superadmin marked the product complimentary (free). | true |
 | `cancelled` | The customer cancelled online, or the superadmin set a last day. | until the last day paid for (and the last day, if that is earlier), then false. No grace. |
 | `paid` | A recorded payment covers today (`paid_until` is today or later). | true |
-| `due` | The last paid period is over and the next payment has not come: the 72 hours the terms give after the paid month ends, the 3 Israel days after `paid_until`, to the end of the third (`GRACE_HOURS`, `graceLast()` in src/accounts/subscriptions.js; counted in days, a week with a clock change in it has 71 or 73 hours). The owners are emailed a week before, the day before, on the first of the 3 days, on the last of them, and when they are over (src/web/daily.js). | true |
+| `due` | The last paid period is over and the next payment has not come: the 72 hours the terms give after the paid month ends, the 3 Israel days after `paid_until`, to the end of the third (`GRACE_HOURS`, `graceLast()` in src/accounts/subscriptions.js), or of the fourth when the clocks go forward in those days and the 3 days come to 71 hours, so it is never less than 72 (the end of October, 73, stays 3 days). The owners are emailed a week before, the day before, on the first of the 3 days, on the last of them, and when they are over (src/web/daily.js). | true |
 | `unpaid` | Anything else: on, nothing paid for today (never paid, or the grace is over). | false |
 
 They are checked in that order. Days are Israel calendar days.
@@ -267,7 +267,7 @@ The same, field by field, with an example for every status, is `docs/contracts/e
 | `access`, `allowed` | The table above. Decide on `allowed`; `access` says why. |
 | `paidThrough` | The end of the last day paid for, Israel time, as an ISO instant in UTC (the last millisecond of that day), or `null` when nothing was ever paid. It is given whatever the access, so it can be in the past. |
 | `cancelAt` | Set only while `access` is `cancelled`: the end of the last day it works, the same way. Otherwise `null`. |
-| `graceUntil` | Set only while `access` is `due`: the end of the grace's last day, the same way, 72 hours after `paidThrough` (paid until 21.11.2026: `2026-11-24T21:59:59.999Z`). Otherwise `null`. |
+| `graceUntil` | Set only while `access` is `due`: the end of the grace's last day, the same way, 72 hours after `paidThrough` (paid until 21.11.2026: `2026-11-24T21:59:59.999Z`), or more in the week of a clock change, never less (paid until 24.3.2027: `2027-03-28T20:59:59.999Z`, 95 hours). Otherwise `null`. |
 | `plan` | Teder only: its plan, `{ name: "full" \| "small", slideshows, redos }` (40 and 10, or 15 and 4), the month Teder counts for the whole workspace. The full plan when none is recorded. Toran's answer has no `plan`. |
 
 `400 {"error":"bad_workspace"}` for a workspace that is not a positive integer, `400
@@ -381,6 +381,12 @@ run today's again) and keeps each run in `daily_runs`:
   | `due` | 22.11, the first day after it (or 23.11, if that day's run was missed) | "התשלום על החודש החדש של תדר עוד לא הגיע", saying it works to the end of "יום שלישי, 24.11.2026" |
   | `last` | 24.11, the last of the 3 days | "תדר ייעצר מחר אם התשלום לא יגיע היום" |
   | `stopped` | 25.11 to 1.12 (it stopped at the end of 24.11) | "תדר נעצר עד שהתשלום יגיע" |
+
+  When the clocks go forward in the 3 days (paid until 23, 24 or 25 March 2027), they come to 71
+  hours, so it works to the end of the 4th instead: paid until Wednesday 24.3.2027, `due` on 25.3,
+  nothing on 26.3 and 27.3, `last` on Sunday 28.3 (it stops at its end, 95 hours after the paid
+  month), `stopped` from 29.3. When they go back (paid until 28, 29 or 30 October 2027), the 3 days
+  are 73 hours and stay 3 days.
 
   The days follow each other on the calendar, at a month's end too. `OF_SIGNUP_NOTIFY` hears of
   `due` and `stopped`. Not for a product that is complimentary, cancelled, off or never paid, nor

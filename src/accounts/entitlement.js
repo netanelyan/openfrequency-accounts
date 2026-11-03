@@ -2,7 +2,7 @@ import { nowIso } from '../core/clock.js';
 import { audit } from '../core/audit.js';
 import { PRODUCTS } from '../db/schema.js';
 import { WorkspaceError, getWorkspace } from './workspaces.js';
-import { addDays, ensureSubscription, graceLast, israelToday, planOut, PLANS } from './subscriptions.js';
+import { endOfIsraelDay, ensureSubscription, graceLast, israelToday, planOut, PLANS } from './subscriptions.js';
 
 // The paywall: may this workspace use this product today? Teder and Toran ask at GET /internal/entitlement
 // (docs/setup.md), and accounts' own pages lock what is not paid for. No payment provider is connected yet, so
@@ -16,8 +16,8 @@ import { addDays, ensureSubscription, graceLast, israelToday, planOut, PLANS } f
 //              for, and the last day, whichever is first, then stops
 //   paid       a recorded payment covers today
 //   due        the last paid period is over and the next payment has not come yet: it keeps working for the 72 hours
-//              the terms give (subscriptions.js GRACE_HOURS), the 3 days after the last paid day, while the owners are
-//              told (src/web/daily.js); then it is unpaid
+//              the terms give (subscriptions.js GRACE_HOURS, graceLast()), the 3 days after the last paid day (4 when
+//              the clocks go forward), while the owners are told (src/web/daily.js); then it is unpaid
 //   unpaid     anything else: on, nothing paid for today (never paid, or the grace is over)
 //
 // allowed = paid || comp || due || (cancelled && today is not past either day). Days are Israel calendar days. A
@@ -25,23 +25,14 @@ import { addDays, ensureSubscription, graceLast, israelToday, planOut, PLANS } f
 
 export const ACCESS = ['paid', 'comp', 'due', 'unpaid', 'cancelled', 'off'];
 
-/** The last millisecond of an Israel calendar day (YYYY-MM-DD), as an ISO instant: "2026-11-21T21:59:59.999Z". */
-export function endOfIsraelDay(day) {
-  const next = addDays(day, 1);
-  const utc = Date.UTC(+next.slice(0, 4), +next.slice(5, 7) - 1, +next.slice(8, 10));
-  // Israel is UTC+2 or UTC+3: midnight there is the first of these instants that is already the next day.
-  for (const h of [3, 2]) {
-    const t = utc - h * 3_600_000;
-    if (israelToday(t) === next && israelToday(t - 1) === day) return new Date(t - 1).toISOString();
-  }
-  return new Date(utc - 2 * 3_600_000 - 1).toISOString();
-}
+// The end of an Israel day, as GET /internal/entitlement gives its days (subscriptions.js, where graceLast() needs it).
+export { endOfIsraelDay };
 
 /**
  * What a workspace's product may do, from its rows. Pure.
  *   { enabled, comp, paidUntil, endsOn, cancelledAt } -> { access, allowed, paidUntil, lastDay, graceUntil }
  * `lastDay` is the day it stops when it is cancelled, else null. `graceUntil` is the last day of the 72 hours while it
- * is due (graceLast(), the third day after paidUntil), else null.
+ * is due (graceLast(): the third day after paidUntil, the fourth when the clocks go forward), else null.
  */
 export function accessOf({ enabled, comp = false, paidUntil = null, endsOn = null, cancelledAt = null }, today = israelToday()) {
   const none = { lastDay: null, graceUntil: null };
@@ -86,7 +77,8 @@ export const accessAll = (db, workspaceId, today = israelToday()) => Object.from
  * The answer of GET /internal/entitlement, exactly as docs/setup.md has it, or null for no such workspace:
  * { workspace, product, enabled, access, allowed, paidThrough, cancelAt, graceUntil, plan? }. paidThrough is the end of
  * the last day paid for, cancelAt the end of the last day of a cancelled subscription, graceUntil the end of the last
- * day of the grace while it is due (72 hours after paidThrough), all ISO instants (Israel days' ends, in UTC) or null.
+ * day of the grace while it is due (72 hours after paidThrough, or more when a clock change is in them: never less),
+ * all ISO instants (Israel days' ends, in UTC) or null.
  * `plan`, for a product with plans (Teder), is what its month gives: { name: "full" | "small", slideshows, redos } (the
  * full plan when none is recorded).
  */
