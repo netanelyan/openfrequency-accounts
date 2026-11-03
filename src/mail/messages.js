@@ -35,8 +35,9 @@ function build(subject, lines, button, footer = null, brand = 'openfrequency') {
   const text = [...lines.map((l) => (typeof l === 'object' ? l.link : l)), '', MAIL.signature, ...(footer ? [`${footer.text}\n${footer.href}`] : [])]
     .join('\n\n')
     .replace(/\n\n\n\n/g, '\n\n');
-  // The line an inbox shows beside the subject: the first one that says something, not the greeting.
-  const preview = lines.find((l) => typeof l === 'string' && l !== 'שלום,') || '';
+  // The line an inbox shows beside the subject: the first one that says something, not the greeting, and not the
+  // subject said again (the paid email's "תדר פתוח. אפשר להתחיל.").
+  const preview = lines.find((l) => typeof l === 'string' && l !== 'שלום,' && l !== `${subject}.`) || '';
   const body = lines
     .map((l) =>
       typeof l === 'object'
@@ -140,11 +141,30 @@ export const welcomeMail = (to, { business, link, payment = 'manual', opens = ''
   return { to, ...build(MAIL.welcomeSubject(b), MAIL.welcomeLines(b, link, payment, opens, [...[].concat(prices), ...manual], payment !== 'provider' && Boolean(how)), MAIL.welcomeButton) };
 };
 
-/** To each owner, when a month's payment is recorded on /admin: until when it is paid. */
-export const paidMail = (to, { business, product, until, link }) => ({
-  to,
-  ...build(MAIL.paidSubject(PRODUCT_NAMES[product]), MAIL.paidLines(plain(business, 80), PRODUCT_NAMES[product], dayHe(until), link), MAIL.paidButton),
-});
+/**
+ * What a recorded payment did to the product, for the first line of its email (paidMail): 'first', it opened it and
+ * nothing had been paid before; 'again', it opened it after it stopped (its grace over); 'on', it was open already and
+ * goes on (paid ahead, in its grace, or complimentary); null, it is not open even now (cancelled, turned off, the
+ * workspace disabled), and the email says only what was paid. `before` and `after` are entitlement.js accessFor() (or
+ * accessOf()) just before and just after the payment. A cancelled product gets null either way: a month paid does not
+ * move its last day, so nothing here says it goes on.
+ */
+export function paidOpening(before, after) {
+  if (!after?.allowed || after.access === 'cancelled') return null;
+  if (before?.allowed) return 'on';
+  return before?.paidUntil ? 'again' : 'first';
+}
+
+/**
+ * To each owner, when a month's payment is recorded on /admin: what was paid and until when, and the invoice's line.
+ * With `opening` (paidOpening()) and `productLink` (TEDER_URL, TORAN_URL), it opens with what the payment did ("תדר
+ * פתוח. אפשר להתחיל"), and its one button leads into the product; otherwise to `link`, the account, as before.
+ */
+export const paidMail = (to, { business, product, until, link, productLink = null, opening = null }) => {
+  const p = PRODUCT_NAMES[product];
+  const go = productLink && opening ? opening : null;
+  return { to, ...build(MAIL.paidSubject(p, go), MAIL.paidLines(plain(business, 80), p, dayHe(until), go ? productLink : link, go), go ? MAIL.paidGo(p) : MAIL.paidButton) };
+};
 
 /**
  * The billing emails to each owner (src/web/daily.js): `kind` soon7 or soon1 (before the payment falls due), due (the

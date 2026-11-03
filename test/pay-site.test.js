@@ -318,7 +318,7 @@ test('"התשלום הגיע": the month recorded, the owners told, the receipt 
     assert.equal(t.db.get('SELECT paid_until FROM subscriptions WHERE workspace_id = ?', t.ws.id).paid_until, '2026-11-21');
     const row = t.db.get('SELECT * FROM pay_receipts WHERE id = ?', id);
     assert.deepEqual([row.decision, row.decided_by, row.decided_at], ['paid', t.admin.id, T0]);
-    assert.deepEqual(t.mails.map((m) => [m.to, m.subject]), [['noa@example.com', 'קיבלנו את התשלום על תדר']]);
+    assert.deepEqual(t.mails.map((m) => [m.to, m.subject]), [['noa@example.com', 'תדר פתוח. אפשר להתחיל']]);
     assert.match(t.mails[0].text, /המנוי שולם עד 21\.11\.2026\./);
     assert.match((await op.get('/admin')).body, /Noa Shop: התשלום נרשם\. תדר שולם עד 21\.11\.2026\./);
     const a = t.db.get("SELECT * FROM audit WHERE action = 'pay_receipt_paid'");

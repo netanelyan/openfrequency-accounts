@@ -19,7 +19,7 @@ import { assistantWa, billingReady, checkoutUrl, payHow, paymentMode, supportWa 
 import { accessAll, accessFor, BillingError, cancelSubscription, resumeSubscription, setComp } from '../accounts/entitlement.js';
 import { eraseWorkspace, productsEver, sameName } from '../accounts/erase.js';
 import { prefsOf, savePrefs } from '../accounts/notify.js';
-import { cancelMail, cancelNoticeMail, deleteNoticeMail, existingAccountMail, inviteMail, magicLinkMail, paidMail, signupMail, signupNoticeMail, welcomeMail } from '../mail/messages.js';
+import { cancelMail, cancelNoticeMail, deleteNoticeMail, existingAccountMail, inviteMail, magicLinkMail, paidMail, paidOpening, signupMail, signupNoticeMail, welcomeMail } from '../mail/messages.js';
 import { CANCEL, ERASE, MAIL, MORNING, NOTIFY, OPS, PAY, PRODUCT_NAMES, SETUP, SIGNUP, T, dayHe, ils, opensAfter, phoneHe } from './copy.js';
 import { payOverWa } from './pay.js';
 import { setupClient, setupState } from './setup.js';
@@ -219,6 +219,18 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
       if (to.length) changes.tell(workspaceId, to, reason);
     } catch (e) {
       log(`[accounts] telling the products that workspace ${workspaceId} changed failed: ${e.message}`);
+    }
+  };
+  // Each owner of the workspace, once for each month recorded (`recorded`: [{ product, until }]), after the payment has
+  // committed: what was paid and until when, and what it did to the product ("תדר פתוח. אפשר להתחיל" when it opened
+  // it), with its one button into the product (src/mail/messages.js paidMail). `before` is each product's access read
+  // just before the payment, with nothing awaited between that read, the payment and this, so nothing else ran in
+  // between. A refused duplicate never gets here.
+  const tellPaid = (base, workspaceId, business, recorded, before) => {
+    const owners = db.all("SELECT u.email FROM memberships m JOIN users u ON u.id = m.user_id WHERE m.workspace_id = ? AND m.role = 'client_owner' AND u.disabled_at IS NULL", workspaceId);
+    for (const x of recorded) {
+      const opening = paidOpening(before[x.product], accessFor(db, workspaceId, x.product));
+      for (const o of owners) mailer.send(paidMail(o.email, { business, product: x.product, until: x.until, link: `${base}/`, productLink: urls[x.product], opening }));
     }
   };
   // The owner hears of each confirmed sign-up (OF_SIGNUP_NOTIFY). Called once its transaction has committed; the
@@ -1121,12 +1133,13 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
           if (!r) return page(404, T.notFound, P.messagePage({ title: T.notFound, lead: '', links: [['/admin', T.adminTitle]] }), { banner });
           const expects = Object.fromEntries(PRODUCTS.map((pr) => [pr, f(`expect_${pr}`)]));
           try {
+            // Each product's access just before, for what the owners' email says first (tellPaid()).
+            const before = accessAll(db, r.workspace_id);
             const { recorded } = decideReceipt(db, r.id, m[2] === 'paid' ? 'paid' : 'not_paid', { ...by, expects });
             if (m[2] === 'paid') {
               // Committed: each product paid for hears at once, before the emails and before Morning, which may be slow.
               accessChanged(r.workspace_id, recorded.map((x) => x.product), 'paid');
-              const owners = db.all("SELECT u.email FROM memberships m JOIN users u ON u.id = m.user_id WHERE m.workspace_id = ? AND m.role = 'client_owner' AND u.disabled_at IS NULL", r.workspace_id);
-              for (const x of recorded) for (const o of owners) mailer.send(paidMail(o.email, { business: r.business, product: x.product, until: x.until, link: `${base}/` }));
+              tellPaid(base, r.workspace_id, r.business, recorded, before);
               const paidLine = PAY.flashPaid(r.business, recorded.map((x) => PAY.flashPaidLine(PRODUCT_NAMES[x.product], dayHe(x.until))).join(' '));
               const inv = await invoiceReceipt(db, r.id, { client: morning, by: me, ip });
               if (inv.state === 'failed' || inv.state === 'blocked') {
@@ -1191,6 +1204,8 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
               // again records nothing, and comes back to the console with "התשלום כבר נרשם" (below). Without either,
               // payMonth() refuses a second month within 60 seconds.
               let until;
+              // The product's access just before, for what the owners' email says first (tellPaid()).
+              const before = { [product]: accessFor(db, w.id, product) };
               try {
                 until = payMonth(db, w.id, product, { ...by, expect: form.has('expect') ? f('expect') : undefined, once: f('once') || undefined });
               } catch (e) {
@@ -1202,8 +1217,7 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
               // Recorded and committed: the product hears at once (a refused duplicate, above, tells nobody), and each
               // owner that the payment is in.
               accessChanged(w.id, [product], 'paid');
-              const owners = db.all("SELECT u.email FROM memberships m JOIN users u ON u.id = m.user_id WHERE m.workspace_id = ? AND m.role = 'client_owner' AND u.disabled_at IS NULL", w.id);
-              for (const o of owners) mailer.send(paidMail(o.email, { business: w.name, product, until, link: `${base}/` }));
+              tellPaid(base, w.id, w.name, [{ product, until }], before);
               setFlash(T.flashSubPaid(PRODUCT_NAMES[product], w.name, dayHe(until)));
             } else {
               setSubscription(db, w.id, product, { plan: f('plan'), monthly: f('monthly'), setup: f('setup'), vat: f('vat'), started_on: f('started_on'), paid_until: f('paid_until'), ends_on: f('ends_on') }, by);

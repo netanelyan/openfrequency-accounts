@@ -158,7 +158,7 @@ test('a product that is down or does not answer never fails the payment or holds
     assert.ok(took < 800, `answered in ${took} ms, before Teder's 800 ms were up`);
     assert.equal(paidUntil(t, t.ws.id), '2026-11-21', 'recorded');
     assert.ok(res.setCookies.some((c) => /^(__Host-)?of_flash=/.test(c) && decodeURIComponent(c).includes('תדר שולם עד 21.11.2026')), 'and said so');
-    assert.equal(t.mails.filter((m) => /^קיבלנו את התשלום על /.test(m.subject)).length, 1, 'the owner was emailed');
+    assert.equal(t.mails.filter((m) => /^תדר פתוח\. אפשר להתחיל$/.test(m.subject)).length, 1, 'the owner was emailed');
 
     const out = await t.settled();
     assert.deepEqual(out, [{ teder: 'failed' }]);

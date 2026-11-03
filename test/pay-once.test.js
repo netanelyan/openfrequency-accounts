@@ -18,7 +18,9 @@ import { MORNING_URLS } from '../src/accounts/morning.js';
 
 const T0 = '2026-10-22T10:00:00.000Z';
 const ALREADY = 'התשלום כבר נרשם.';
-const PAID_SUBJECT = /^קיבלנו את התשלום על /;
+// The owners' email for a month recorded: "תדר פתוח. אפשר להתחיל" when it opened the product (test/paid-email.test.js),
+// else "קיבלנו את התשלום על ...".
+const PAID_SUBJECT = /^(קיבלנו את התשלום על |(תדר|תורן) פתוח)/;
 const PNG = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.from('a picture')]);
 /** Another picture of the same transfer (the bank's own confirmation, a second screenshot): other bytes. */
 const PNG_TOO = Buffer.concat([PNG, Buffer.from(', from the bank')]);
@@ -230,7 +232,7 @@ test('"התשלום הגיע" double-clicked while Morning is slow: one month fo
 
     assert.deepEqual([paidUntil(t, t.ws.id, 'teder'), paidUntil(t, t.ws.id, 'toran')], ['2026-11-21', '2026-11-21'], 'one month each, not two');
     assert.equal(morning.issued.length, 1, 'one invoice');
-    assert.deepEqual(paidMails(t).map((m) => `${m.to} ${m.subject}`).sort(), ['dan@example.com קיבלנו את התשלום על תדר', 'dan@example.com קיבלנו את התשלום על תורן', 'noa@example.com קיבלנו את התשלום על תדר', 'noa@example.com קיבלנו את התשלום על תורן']);
+    assert.deepEqual(paidMails(t).map((m) => `${m.to} ${m.subject}`).sort(), ['dan@example.com תדר פתוח. אפשר להתחיל', 'dan@example.com תורן פתוח. אפשר להתחיל', 'noa@example.com תדר פתוח. אפשר להתחיל', 'noa@example.com תורן פתוח. אפשר להתחיל']);
     assert.deepEqual([audits(t, 'pay_receipt_paid'), audits(t, 'subscription_paid'), audits(t, 'morning_issued')], [1, 2, 1]);
 
     // The receipt's page: decided once, its one invoice. (Both answers left a line for the next page, and the pretend

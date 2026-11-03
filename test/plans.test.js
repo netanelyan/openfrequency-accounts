@@ -134,10 +134,14 @@ test('the payment button records one month however often it is pressed, and each
     assert.match(page, /<input type="hidden" name="expect" value="2026-11-21">/);
     await t.admin.post(`/admin/workspaces/${t.ws.id}/subscription/pay`, { product: 'teder', expect: '2026-11-21' });
     assert.equal(sub(t.db, t.ws.id).paid_until, '2026-12-21');
-    // Both owners, once for each payment.
+    // Both owners, once for each payment: the first opened Teder, the second paid the next month while it was open
+    // (test/paid-email.test.js).
+    const opened = t.mails.filter((m) => m.subject === 'תדר פתוח. אפשר להתחיל');
     const paid = t.mails.filter((m) => m.subject === 'קיבלנו את התשלום על תדר');
-    assert.deepEqual(paid.map((m) => m.to).sort(), ['dan@example.com', 'dan@example.com', 'noa@example.com', 'noa@example.com']);
-    assert.match(paid[0].text, /קיבלנו את התשלום על תדר בחשבון של Noa Shop\. המנוי שולם עד 21\.11\.2026\./);
+    assert.deepEqual([...opened, ...paid].map((m) => m.to).sort(), ['dan@example.com', 'dan@example.com', 'noa@example.com', 'noa@example.com']);
+    assert.deepEqual([opened.length, paid.length], [2, 2]);
+    assert.match(opened[0].text, /קיבלנו את התשלום על תדר בחשבון של Noa Shop\. המנוי שולם עד 21\.11\.2026\./);
+    assert.match(paid[0].text, /תדר ממשיך לעבוד כרגיל\.\n\nקיבלנו את התשלום על תדר בחשבון של Noa Shop\. המנוי שולם עד 21\.12\.2026\./);
     // payMonth without `expect` or a form's token (a script): not within 60 seconds of the last month; a minute on, it
     // records.
     assert.throws(() => payMonth(t.db, t.ws.id, 'teder', { by: null }), (e) => e.code === 'already_paid');

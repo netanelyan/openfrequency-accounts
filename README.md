@@ -68,7 +68,10 @@ operator records it on `/admin/receipts/<id>` with one press. Toran never record
 ([docs/internal-pay.md](docs/internal-pay.md)). With Morning's API keys (`OF_MORNING_CLIENT_ID`,
 `OF_MORNING_CLIENT_SECRET`, `OF_MORNING_ENV`), that press also issues the חשבונית מס/קבלה in
 Morning, once, after the payment is recorded and only when Morning's VAT settings match what was
-charged, and its PDF goes onto the customer's page.
+charged, and its PDF goes onto the customer's page. Each owner gets one email for each month
+recorded: "תדר פתוח. אפשר להתחיל" with one button into Teder (`TEDER_URL`) when the payment opened it,
+"תדר ממשיך לעבוד כרגיל." when it was open already (a renewal), and what was paid and until when in
+every one ([docs/setup.md](docs/setup.md), "The email after a payment").
 Teder and Toran ask `GET /internal/entitlement?workspace=<id>&product=<p>`: `access` is `paid`,
 `comp`, `unpaid`, `cancelled` or `off`, and `allowed` says whether to open. They keep the answer 5
 minutes, so the moment a payment is recorded (and when comp, a subscription saved by hand, a

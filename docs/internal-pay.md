@@ -25,7 +25,9 @@ This file is accounts' half; the contract both sides are held to is
    `https://<PUBLIC_HOST>/admin/receipts/<id>`.
 5. On that page the operator sees the picture, checks the bank, and presses "התשלום הגיע" (a
    month recorded for each product it was for, exactly as the console's "התקבל תשלום לחודש",
-   and each owner gets "קיבלנו את התשלום על <product>") or "לא הגיע" (nothing recorded).
+   and each owner gets one email for each product, "תדר פתוח. אפשר להתחיל" when the payment opened
+   it, with a button into it: docs/setup.md, "The email after a payment") or "לא הגיע" (nothing
+   recorded, nobody emailed).
 
 ## When it is on
 

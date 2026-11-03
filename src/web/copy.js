@@ -478,15 +478,26 @@ export const MAIL = {
   /** Whom to ask about paying, in an email: a reply, or our WhatsApp (OF_SUPPORT_WA, international digits) when it is set. */
   payAsk: (wa) => (wa ? `יש שאלה על התשלום? ענו למייל הזה, או כתבו לנו בוואטסאפ ל-${phoneHe(wa)}.` : 'יש שאלה על התשלום? ענו למייל הזה.'),
 
-  // To each owner, when a payment is recorded (/admin).
-  paidSubject: (product) => `קיבלנו את התשלום על ${product}`,
-  paidLines: (business, product, until, link) => [
-    'שלום,',
-    `קיבלנו את התשלום על ${product} בחשבון של ${business}. המנוי שולם עד ${until}.`,
-    'כשהחשבונית מוכנה, היא תופיע בדף הראשי של החשבון, ואפשר יהיה להוריד אותה משם.',
-    { link },
-  ],
+  // To each owner, when a payment is recorded (/admin). `opening` is what the payment did to the product
+  // (src/mail/messages.js paidOpening()): 'first' opened it, nothing having been paid before (the owner's audit,
+  // 2026-11-02: "תדר פתוח. אפשר להתחיל"); 'again' opened it after it stopped; 'on' kept it working (paid ahead, in its
+  // grace, or complimentary). Each of those opens with its line, and its one button, `link`, leads into the product
+  // (paidGo). Without one (cancelled, turned off), the email as it was: what was paid, and the account's home page.
+  paidSubject: (product, opening = null) =>
+    opening === 'first' ? `${product} פתוח. אפשר להתחיל` : opening === 'again' ? `${product} פתוח שוב. אפשר להמשיך` : `קיבלנו את התשלום על ${product}`,
+  paidOpening: {
+    first: (product) => `${product} פתוח. אפשר להתחיל.`,
+    again: (product) => `${product} פתוח שוב. אפשר להמשיך.`,
+    on: (product) => `${product} ממשיך לעבוד כרגיל.`,
+  },
+  paidLines: (business, product, until, link, opening = null) => {
+    const paid = `קיבלנו את התשלום על ${product} בחשבון של ${business}. המנוי שולם עד ${until}.`;
+    const invoice = 'כשהחשבונית מוכנה, היא תופיע בדף הראשי של החשבון, ואפשר יהיה להוריד אותה משם.';
+    const first = Object.hasOwn(MAIL.paidOpening, opening ?? '') ? MAIL.paidOpening[opening] : null;
+    return first ? ['שלום,', first(product), paid, { link }, invoice] : ['שלום,', paid, invoice, { link }];
+  },
   paidButton: 'לדף הראשי',
+  paidGo: (product) => `להיכנס ל${product}`,
 
   // To each owner, before and when a payment falls due (src/web/daily.js). `pay` is how to pay (a line, or lines).
   soonSubject: (product, d) => `התשלום הבא על ${product}: ${d}`,

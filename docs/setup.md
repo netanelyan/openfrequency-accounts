@@ -332,11 +332,38 @@ the date was set back by hand) finds its token used; a form from before the subs
 emailed, no audit entry is written, and the console says "התשלום כבר נרשם" at the top with the day
 it is paid until. A request with neither (a script, an old page) is refused within 60 seconds of
 the last month recorded for that product of that workspace. Each month recorded is kept in
-`paid_months` (the token as its SHA-256 only). Each owner gets "קיבלנו את התשלום על <product>"
-with the day it is now paid until. The next month from the console drawn again, another product
-or another workspace each record, at the same moment too. A transfer's picture sent to Toran
-(paying over WhatsApp, docs/internal-pay.md) is recorded the same way, from its page,
-`/admin/receipts/<id>`: a receipt is decided once, so it is its own one-time token.
+`paid_months` (the token as its SHA-256 only). Each owner gets one email for the month (below). The
+next month from the console drawn again, another product or another workspace each record, at the
+same moment too. A transfer's picture sent to Toran (paying over WhatsApp, docs/internal-pay.md) is
+recorded the same way, from its page, `/admin/receipts/<id>`: a receipt is decided once, so it is
+its own one-time token.
+
+### The email after a payment
+
+Each owner of the workspace (not a member) gets one email for each month recorded, by the console's
+"התקבל תשלום לחודש" or a receipt's "התשלום הגיע" (one for each product a receipt paid for), once the
+payment has committed (the owner's audit, 2026-11-02, item 4: "After a payment is recorded, send the
+customer an email: "תדר פתוח. אפשר להתחיל" with a link"). It is the email that was already sent then,
+not a second one. A form sent again ("התשלום כבר נרשם") and "לא הגיע" send nothing. What it says
+first depends on what the payment did to the product, read from its access just before and just after
+(`paidOpening()` in `src/mail/messages.js`):
+
+| Before the payment | Subject, and the first line | The button |
+|---|---|---|
+| Never paid, so closed (a first payment) | "תדר פתוח. אפשר להתחיל" | "להיכנס לתדר", to Teder |
+| Paid before, and stopped (its 14 days of grace over) | "תדר פתוח שוב. אפשר להמשיך" | the same |
+| Open: paid ahead (a renewal before it falls due), in its grace, or complimentary | "קיבלנו את התשלום על תדר", then "תדר ממשיך לעבוד כרגיל." | the same |
+| Still closed after it (cancelled, turned off, the workspace disabled) | "קיבלנו את התשלום על תדר", as before | "לדף הראשי", to the account |
+
+Toran's is the same with its name ("תורן פתוח. אפשר להתחיל", "להיכנס לתורן"). Every one then says what
+was paid and until when ("קיבלנו את התשלום על תדר בחשבון של <business>. המנוי שולם עד 21.11.2026.")
+and that the invoice will be on the home page once it is ready. The button leads to the product's
+public address, `TEDER_URL` or `TORAN_URL` (default `https://teder.openfrequency.co.il/` and
+`https://toran.openfrequency.co.il/`, the addresses the home page links to), and is written out under
+it. On a receipt it goes out before Morning is asked for the invoice-receipt (docs/internal-pay.md),
+so it never waits on Morning, which emails the invoice itself; that is why it gives no invoice
+number. A transactional email, like the billing ones: no line to turn it off, and the plain-text
+part has every line and the link.
 
 ### The daily jobs
 
