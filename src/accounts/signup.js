@@ -28,9 +28,10 @@ import { DEFAULT_PLAN, PLANS } from './subscriptions.js';
 /**
  * What the form asks a business to accept, by the date it was last updated: the website's legal.signupUpdated
  * (openfrequency.co.il/terms), which since 2026-11-01 also names each product's short contract (CONTRACT_URLS, dated
- * legal.contractsUpdated) as part of the deal. Stored on the user and the workspace at sign-up.
+ * legal.contractsUpdated) as part of the deal, and since 2026-11-03 gives a new month's payment 72 hours after the
+ * paid month ends (subscriptions.js GRACE_HOURS) instead of 14 days. Stored on the user and the workspace at sign-up.
  */
-export const TERMS_VERSION = '2026-11-01';
+export const TERMS_VERSION = '2026-11-03';
 export const TERMS_URL = 'https://openfrequency.co.il/terms';
 /** Each product's short contract on the website (openfrequency-web src/pages/legal.mjs), linked beside the terms. */
 export const CONTRACT_URLS = { teder: 'https://openfrequency.co.il/teder/contract', toran: 'https://openfrequency.co.il/toran/contract' };

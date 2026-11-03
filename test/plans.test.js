@@ -10,7 +10,7 @@ import { newTotpSecret, stepAt, totpCode } from '../src/auth/totp.js';
 import { startProduct } from './setup-fake.js';
 
 // Teder's two plans (full: 790 ₪, 1,490 ₪ setup, 40 slideshows, 10 redos; small: 490 ₪, 990 ₪ setup, 15 and 4), from
-// the sign-up form to GET /internal/entitlement, the pages, the emails and the console; the 14 days of grace after a
+// the sign-up form to GET /internal/entitlement, the pages, the emails and the console; the 72 hours of grace after a
 // paid period ends (ACC-01) as the customer's pages show them; and the console's payment button, which records one
 // month however often it is pressed and tells the owners (ACC-03).
 
@@ -156,20 +156,29 @@ test('the grace on the pages: due, it still opens and asks to pay, with the day 
   const t = await setup();
   try {
     payMonth(t.db, t.ws.id, 'teder', { by: null }); // paid until 21.11.2026
-    setNow('2026-11-25T10:00:00.000Z');
+    // Before it falls due, on the paid month's last day: paid until that day, and the payment step done.
+    setNow('2026-11-21T10:00:00.000Z');
     let b = signedIn(t, t.db, t.noa);
+    const before = (await b.get('/setup')).body;
+    assert.match(before, /<li>תדר, החבילה המלאה: שולם עד 21\.11\.2026<\/li>/);
+    assert.match(before, /<li class="step st-done"><span class="chip">✓ בוצע<\/span><span class="what"><b>התשלום על המנוי<\/b>/);
+    assert.doesNotMatch(before, /נעצר עד שישולם/);
+
+    setNow('2026-11-23T10:00:00.000Z'); // the second of the 72 hours' 3 days
+    b = signedIn(t, t.db, t.noa);
     let home = (await b.get('/')).body;
-    assert.match(home, /התשלום לחודש שהתחיל ב-22\.11\.2026 עוד לא הגיע אלינו\. המנוי ממשיך לעבוד עד 6\.12\.2026, ואם התשלום לא יגיע עד אז הוא ייעצר עד שישולם\./);
+    assert.match(home, /התשלום לחודש שהתחיל ב-22\.11\.2026 עוד לא הגיע אלינו\. המנוי ממשיך לעבוד עד סוף יום שלישי, 24\.11\.2026, ואם התשלום לא יגיע עד אז הוא ייעצר עד שישולם\./);
     assert.match(home, /<a class="button primary" href="https:\/\/teder\.openfrequency\.co\.il\/">כניסה לתדר<\/a><a class="button quiet" href="\/setup#setup-billing">להסדיר תשלום<\/a>/);
     // The payment step is not done while it is owed, and says until when it works.
     const setup_ = (await b.get('/setup')).body;
-    assert.match(setup_, /<li>תדר, החבילה המלאה: התשלום על החודש הנוכחי עוד לא הגיע\. המנוי עובד עד 6\.12\.2026, ואחרי זה נעצר עד שישולם\.<\/li>/);
-    assert.match(setup_, /<li class="step st-todo"><span class="chip">עוד לא<\/span><span class="what"><b>התשלום על המנוי<\/b>/);
+    assert.match(setup_, /<li>תדר, החבילה המלאה: התשלום על החודש החדש עוד לא הגיע\. המנוי עובד עד סוף יום שלישי, 24\.11\.2026, ואחרי זה נעצר עד שישולם\.<\/li>/);
+    // Its step is not done, and its button is how to pay (here, our WhatsApp: OF_SUPPORT_WA without payment details).
+    assert.match(setup_, /<li class="step st-todo"><span class="chip">עוד לא<\/span><span class="what"><b>התשלום על המנוי<\/b><small>[^<]*<\/small><\/span><a class="button [a-z]+" href="https:\/\/wa\.me\/972500000100[^"]*">כתבו לנו בוואטסאפ<\/a><\/li>/);
     // The console: due, open, until the grace's last day.
     const admin = signedIn(t, t.db, t.db.get('SELECT * FROM users WHERE is_superadmin = 1'));
-    assert.match((await admin.get('/admin/accounts')).body, /גישה: מחכה לתשלום, בתקופת החסד, פתוח, עד 6\.12\.2026/);
+    assert.match((await admin.get('/admin/accounts')).body, /גישה: מחכה לתשלום, בתקופת החסד, פתוח, עד 24\.11\.2026/);
 
-    setNow('2026-12-07T10:00:00.000Z');
+    setNow('2026-11-25T10:00:00.000Z'); // the 72 hours are over
     b = signedIn(t, t.db, t.noa);
     home = (await b.get('/')).body;
     assert.match(home, /התשלום לחודש שהתחיל ב-22\.11\.2026 לא הגיע, אז המנוי נעצר\. הוא ייפתח שוב כשהתשלום יגיע\./);

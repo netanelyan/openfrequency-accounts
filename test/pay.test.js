@@ -118,13 +118,13 @@ test('amountDue: the first payment is the month and the setup fee with VAT; then
     assert.deepEqual(soon.items, [{ product: 'teder', productName: 'תדר', plan: 'full', monthly: 790, setup: 0, net: 790, total: 932.2, firstMonth: false }]);
     assert.equal(soon.lines[0].kind, 'ahead');
 
-    // Due, in its grace: the month, no setup fee.
-    setNow('2026-11-25T10:00:00.000Z');
+    // Due, in its 72 hours: the month, no setup fee.
+    setNow('2026-11-23T10:00:00.000Z');
     const due = amountDue(t.db, t.noa.id);
     assert.deepEqual(due.items, [{ product: 'teder', productName: 'תדר', plan: 'full', monthly: 790, setup: 0, net: 790, total: 932.2, firstMonth: false }]);
-    assert.deepEqual([due.lines[0].kind, due.lines[0].graceUntil, due.monthsAfter], ['due', '2026-12-06', null]);
+    assert.deepEqual([due.lines[0].kind, due.lines[0].graceUntil, due.monthsAfter], ['due', '2026-11-24', null]);
     // The grace over: still the month alone, never the setup fee again.
-    setNow('2026-12-08T10:00:00.000Z');
+    setNow('2026-11-25T10:00:00.000Z');
     assert.deepEqual(amountDue(t.db, t.noa.id).items.map((i) => [i.monthly, i.setup, i.firstMonth, i.total]), [[790, 0, false, 932.2]]);
     assert.equal(amountDue(t.db, t.noa.id).lines[0].kind, 'owed');
 

@@ -225,7 +225,7 @@ test('a renewal paid ahead (a week left): "קיבלנו את התשלום על �
 test('a renewal in the grace (the month ran out, Teder still works): the same "תדר ממשיך לעבוד כרגיל."', async () => {
   const t = await site();
   try {
-    t.sub('teder', { paid_until: '2026-10-15' }); // fell due on 16.10, the grace runs to 29.10
+    t.sub('teder', { paid_until: '2026-10-20' }); // fell due on 21.10, the 72 hours run to the end of 23.10
     const [m] = await t.pay('teder');
     assert.equal(t.paidUntil(), '2026-11-21');
     assert.equal(m.subject, 'קיבלנו את התשלום על תדר');
@@ -250,7 +250,7 @@ test('a payment for a complimentary product: it was open, so "ממשיך לעב�
 test('a payment after Teder stopped (the grace over): "תדר פתוח שוב. אפשר להמשיך"', async () => {
   const t = await site();
   try {
-    t.sub('teder', { paid_until: '2026-09-01' }); // the grace ended on 15.9
+    t.sub('teder', { paid_until: '2026-09-01' }); // the grace ended on 4.9
     const mails = await t.pay('teder');
     assert.deepEqual(mails.map((m) => m.to).sort(), OWNERS);
     const m = mails[0];
@@ -332,7 +332,8 @@ test('paidOpening(): what the payment did, from the access just before and just 
   assert.equal(paidOpening(at({}), after), 'first', 'never paid: opened');
   assert.equal(paidOpening(at({ paidUntil: '2026-09-01' }), after), 'again', 'stopped after its grace: opened again');
   assert.equal(paidOpening(at({ paidUntil: '2026-10-28' }), at({ paidUntil: '2026-11-28' })), 'on', 'paid ahead: goes on');
-  assert.equal(paidOpening(at({ paidUntil: '2026-10-15' }), after), 'on', 'in its grace: goes on');
+  assert.equal(paidOpening(at({ paidUntil: '2026-10-20' }), after), 'on', 'in its grace: goes on');
+  assert.equal(paidOpening(at({ paidUntil: '2026-10-18' }), after), 'again', 'its 72 hours over the day before: opened again');
   assert.equal(paidOpening(at({ comp: true }), at({ comp: true, paidUntil: '2026-11-21' })), 'on', 'complimentary: goes on');
   assert.equal(paidOpening(at({ paidUntil: '2026-10-10', endsOn: '2026-10-10' }), at({ paidUntil: '2026-11-21', endsOn: '2026-10-10' })), null, 'cancelled and ended: not open');
   assert.equal(paidOpening(at({ paidUntil: '2026-10-28', endsOn: '2026-10-28' }), at({ paidUntil: '2026-11-28', endsOn: '2026-10-28' })), null, 'cancelled, still running: said as before');

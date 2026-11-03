@@ -1,4 +1,4 @@
-import { MAIL, NOTIFY, PAY, PRODUCT_NAMES, dayHe, ils, phoneHe, when } from '../web/copy.js';
+import { MAIL, NOTIFY, PAY, PRODUCT_NAMES, dayHe, ils, phoneHe, weekdayHe, when } from '../web/copy.js';
 import { esc } from '../web/html.js';
 
 // The emails (a sign-in link, an invite, a sign-up to confirm, billing, a product's notice), as plain text and as
@@ -168,16 +168,18 @@ export const paidMail = (to, { business, product, until, link, productLink = nul
 
 /**
  * The billing emails to each owner (src/web/daily.js): `kind` soon7 or soon1 (before the payment falls due), due (the
- * day it does, which starts the grace), stopped (the grace is over). `pay` says how to pay (a line, or lines); `amount`
- * is said as written. The button of soon and due goes to `payLink` with `payButton` when there is one (the provider's
- * payment page, "לתשלום"); else, like stopped's, to `link`, the account.
+ * first day after the paid month, `paidUntil`, which starts the 72 hours), last (`graceUntil`, the last of them),
+ * stopped (the grace is over). `pay` says how to pay (a line, or lines); `amount` is said as written. due and last name
+ * the day it stops with its weekday ("יום שלישי, 24.11.2026"). The button of soon, due and last goes to `payLink` with
+ * `payButton` when there is one (the provider's payment page, "לתשלום"); else, like stopped's, to `link`, the account.
  */
-export const billingMail = (to, { kind, business, product, dueOn, graceUntil = null, amount, pay, link, payLink = null, payButton = MAIL.payButton }) => {
+export const billingMail = (to, { kind, business, product, paidUntil = null, dueOn, graceUntil = null, amount, pay, link, payLink = null, payButton = MAIL.payButton }) => {
   const b = plain(business, 80);
   const p = PRODUCT_NAMES[product];
   const go = payLink || link;
   const label = payLink ? payButton : MAIL.payButton;
-  if (kind === 'due') return { to, ...build(MAIL.dueSubject(p), MAIL.dueLines(b, p, dayHe(dueOn), dayHe(graceUntil), amount, pay, go), label) };
+  if (kind === 'due') return { to, ...build(MAIL.dueSubject(p), MAIL.dueLines(b, p, dayHe(paidUntil), weekdayHe(graceUntil), amount, pay, go), label) };
+  if (kind === 'last') return { to, ...build(MAIL.lastSubject(p), MAIL.lastLines(b, p, weekdayHe(graceUntil), amount, pay, go), label) };
   if (kind === 'stopped') return { to, ...build(MAIL.stoppedSubject(p), MAIL.stoppedLines(b, p, link), MAIL.payButton) };
   return { to, ...build(MAIL.soonSubject(p, dayHe(dueOn)), MAIL.soonLines(b, p, dayHe(dueOn), amount, pay, go), label) };
 };

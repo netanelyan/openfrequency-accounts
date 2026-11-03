@@ -15,17 +15,21 @@ import { payOverWa } from './pay.js';
 // hand). Each run is kept in daily_runs, and what it did is logged with its counts.
 //
 // 1. Billing (ACC-01). For each subscription that has been paid and is not cancelled, comp or off, in a workspace that
-//    is open, each owner gets one email of each kind for each end of a paid period (billing_notices):
-//      soon7    a week before the next payment falls due (the day after paid_until)
-//      soon1    the day before
-//      due      on the day: it has not come, and the product goes on working until graceLast() (14 days on), when
-//               it stops until paid (entitlement.js 'due'). This email is the notice the terms speak of
-//      stopped  the grace is over
-//    The operator (OF_SIGNUP_NOTIFY) hears of each due and stopped. A recorded payment moves paid_until on, and the
+//    is open, each owner gets one email of each kind for each end of a paid period (billing_notices). The terms give
+//    72 hours after the paid month ends (subscriptions.js GRACE_HOURS): the 3 days after paid_until, to graceLast().
+//      soon7    a week before the next payment falls due (the day after paid_until), on the first run in that week
+//      soon1    the day before: paid_until itself, the paid month's last day
+//      due      the first day after it: the month is over, the product goes on working to the end of graceLast(),
+//               and then it stops until paid (entitlement.js 'due'). Sent the next day if that day's run was missed
+//      last     graceLast() itself: today is the last day to pay before it stops
+//      stopped  the grace is over (sent within the 7 days after)
+//    Each day owes one kind at most and the kinds follow each other day by day, at a month's end too (the days are
+//    counted on the calendar, addDays()), so none is skipped and none goes with another. The operator
+//    (OF_SIGNUP_NOTIFY) hears of each due and stopped. A recorded payment moves paid_until on, and the
 //    next period's emails follow it. How to pay follows the payment mode (OF_PAYMENT, src/accounts/billing.js): with a
-//    provider, soon and due lead to its payment page ("לתשלום"); in manual mode, they say to pay by the details we
-//    emailed (and how, OF_PAYMENT_METHOD, when set) and whom to ask, and lead to the account. In manual mode with
-//    OF_PAYMENT_METHOD and OF_ASSISTANT_WA both set, soon and due lead instead to "לתשלום בוואטסאפ" (src/web/pay.js):
+//    provider, soon, due and last lead to its payment page ("לתשלום"); in manual mode, they say to pay by the details
+//    we emailed (and how, OF_PAYMENT_METHOD, when set) and whom to ask, and lead to the account. In manual mode with
+//    OF_PAYMENT_METHOD and OF_ASSISTANT_WA both set, they lead instead to "לתשלום בוואטסאפ" (src/web/pay.js):
 //    our owner line, with the message and the workspace's payment code written, where Toran gives the amount.
 //
 // 2. Retention (ACC-07, PRA-DB-005), the periods the privacy policy states:
@@ -57,8 +61,9 @@ export function billingKind(paidUntil, today) {
   const dueOn = addDays(paidUntil, 1);
   const last = graceLast(paidUntil);
   if (today > last) return today <= addDays(last, 7) ? 'stopped' : null;
+  if (today === last) return 'last';
   if (today >= dueOn) return 'due';
-  if (today === addDays(dueOn, -1)) return 'soon1';
+  if (today === paidUntil) return 'soon1';
   if (today >= addDays(dueOn, -7)) return 'soon7';
   return null;
 }
@@ -77,7 +82,7 @@ function billing(db, { mailer, env, base, notifyTo, today }) {
   // Paying over WhatsApp (src/web/pay.js): the same details, the line that says to send the message as it is in place
   // of the receipt's, and the button to our owner line with the message written.
   const payWa = [MAIL.welcomePayHow(payHow(env)), PAY.explain, MAIL.payAsk(supportWa(env))];
-  const sent = { soon7: 0, soon1: 0, due: 0, stopped: 0 };
+  const sent = { soon7: 0, soon1: 0, due: 0, last: 0, stopped: 0 };
   for (const s of rows) {
     const kind = billingKind(s.paid_until, today);
     if (!kind) continue;
@@ -86,7 +91,7 @@ function billing(db, { mailer, env, base, notifyTo, today }) {
     if (Number(fresh.changes) !== 1) continue;
     const to = ownersOf(db, s.workspace_id);
     const wa = !provider && kind !== 'stopped' ? payOverWa(db, { env, workspaceId: s.workspace_id, business: s.business, today }) : null;
-    const fields = { kind, business: s.business, product: s.product, dueOn, graceUntil: graceLast(s.paid_until), amount: MAIL.amount(ils(s.monthly ?? 0), s.vat !== 'included', ils(withVat(s.monthly ?? 0, s.vat))), pay: wa?.href ? payWa : pay, link: `${base}/setup` };
+    const fields = { kind, business: s.business, product: s.product, paidUntil: s.paid_until, dueOn, graceUntil: graceLast(s.paid_until), amount: MAIL.amount(ils(s.monthly ?? 0), s.vat !== 'included', ils(withVat(s.monthly ?? 0, s.vat))), pay: wa?.href ? payWa : pay, link: `${base}/setup` };
     const online = provider ? { payLink: checkoutUrl(s.workspace_id, env), payButton: MAIL.payOnlineButton } : wa?.href ? { payLink: wa.href, payButton: PAY.button } : {};
     for (const email of to) mailer.send(billingMail(email, { ...fields, ...online }));
     db.run('UPDATE billing_notices SET recipients = ? WHERE workspace_id = ? AND product = ? AND kind = ? AND due_on = ?', to.length, s.workspace_id, s.product, kind, dueOn);

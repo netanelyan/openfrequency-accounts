@@ -80,7 +80,7 @@ export function assistantWa(env = process.env) {
 // what Toran tells a customer who wants to pay on WhatsApp (GET /internal/pay) and what a transfer's receipt is held
 // against (src/accounts/pay.js). Product by product, among the products turned on:
 //   comp     complimentary: nothing
-//   due      the paid month is over, in its 14 days of grace: a month (no setup fee)
+//   due      the paid month is over, in its 72 hours of grace: a month (no setup fee)
 //   ended    cancelled (by the customer, or a last day set on /admin) and stopped: its last day has passed, or it
 //            was cancelled with nothing paid. Nothing, ever: a customer who cancelled is never asked to pay for a
 //            service that has ended

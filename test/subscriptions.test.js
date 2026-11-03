@@ -34,7 +34,7 @@ test('the states: on with nothing paid yet, active with the days left, waiting f
   assert.deepEqual(a.next, { on: '2026-11-01', monthly: 449, vat: 'excluded' });
   assert.equal(describe({ ...S, paid_until: '2026-10-31' }, '2026-10-31').left, 1, 'the last paid day');
   const due = describe({ ...S, paid_until: '2026-10-31' }, '2026-11-03');
-  assert.deepEqual([due.status, due.next.on], ['due', '2026-11-01']);
+  assert.deepEqual([due.status, due.next.on, due.graceUntil], ['due', '2026-11-01', '2026-11-03'], 'the 72 hours: to the end of the third day after');
   const ending = describe({ ...S, paid_until: '2026-10-31', ends_on: '2026-10-31' }, '2026-10-29');
   assert.deepEqual([ending.status, ending.left, ending.next], ['ending', 3, null]);
   assert.equal(describe({ ...S, ends_on: '2026-10-31' }, '2026-11-01').status, 'ended');
@@ -76,9 +76,9 @@ test('on the page: a <progress> with its numbers in words, the days left and the
   assert.match(first, /התשלום הבא: 790 ₪ ועוד מע״מ, ב-22\.11\.2026/);
   assert.match(page({ ...S, paid_until: '2026-11-21' }, '2026-11-21'), /<progress max="31" value="31"[^>]*aria-valuetext="יום 31 מתוך 31\. זה היום האחרון בחודש ששולם"/);
 
-  const due = page({ ...S, paid_until: '2026-11-21' }, '2026-11-25');
+  const due = page({ ...S, paid_until: '2026-11-21' }, '2026-11-23');
   assert.doesNotMatch(due, /<progress/);
-  assert.match(due, /<span class="tag">מחכה לתשלום<\/span>[^]*התשלום לחודש שהתחיל ב-22\.11\.2026 עוד לא הגיע אלינו/);
+  assert.match(due, /<span class="tag">מחכה לתשלום<\/span>[^]*התשלום לחודש שהתחיל ב-22\.11\.2026 עוד לא הגיע אלינו\. המנוי ממשיך לעבוד עד סוף יום שלישי, 24\.11\.2026,/);
   const ended = page({ ...S, paid_until: '2026-11-21', ends_on: '2026-11-21' }, '2026-11-25');
   assert.doesNotMatch(ended, /<progress/);
   assert.match(ended, /המנוי הסתיים ב-21\.11\.2026\./);

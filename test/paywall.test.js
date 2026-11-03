@@ -7,7 +7,7 @@ import { signedIn, startSite, tokenOf } from './site.js';
 import { now, setNow } from '../src/core/clock.js';
 import { Db } from '../src/db/index.js';
 import { MIGRATIONS } from '../src/db/schema.js';
-import { ensureSubscription, payMonth } from '../src/accounts/subscriptions.js';
+import { ensureSubscription, GRACE_HOURS, graceLast, payMonth } from '../src/accounts/subscriptions.js';
 import { openWorkspace, setProduct } from '../src/accounts/workspaces.js';
 import { accessOf, endOfIsraelDay, entitlement } from '../src/accounts/entitlement.js';
 import { setSuperadmin } from '../src/accounts/superadmin.js';
@@ -108,12 +108,21 @@ test('access from the rows: every state, and the days at their edges', () => {
   assert.deepEqual(accessOf({ enabled: false, comp: true }, '2026-10-22'), { access: 'off', allowed: false, paidUntil: null, ...none });
   assert.deepEqual(accessOf({ ...on, comp: true }, '2026-10-22'), { access: 'comp', allowed: true, paidUntil: null, ...none });
   assert.deepEqual(accessOf(on, '2026-10-22'), { access: 'unpaid', allowed: false, paidUntil: null, ...none });
-  // Paid through its last day; then due, still open, for the 14 days of grace from the day it fell due (ACC-01); then
-  // unpaid and closed.
+  // Paid through its last day; then due, still open, for the 72 hours the terms give (the owner, 2026-11-03: "A user
+  // has 72 hours to pay for a new month once their subscription has ended"): each of the 3 days after it, to the end
+  // of the third; then unpaid and closed, on the 4th day.
+  const due = { access: 'due', allowed: true, paidUntil: '2026-11-21', lastDay: null, graceUntil: '2026-11-24' };
+  assert.equal(GRACE_HOURS, 72);
   assert.deepEqual(accessOf({ ...on, paidUntil: '2026-11-21' }, '2026-11-21'), { access: 'paid', allowed: true, paidUntil: '2026-11-21', ...none });
-  assert.deepEqual(accessOf({ ...on, paidUntil: '2026-11-21' }, '2026-11-22'), { access: 'due', allowed: true, paidUntil: '2026-11-21', lastDay: null, graceUntil: '2026-12-06' });
-  assert.deepEqual(accessOf({ ...on, paidUntil: '2026-11-21' }, '2026-12-06').access, 'due');
-  assert.deepEqual(accessOf({ ...on, paidUntil: '2026-11-21' }, '2026-12-07'), { access: 'unpaid', allowed: false, paidUntil: '2026-11-21', ...none });
+  for (const day of ['2026-11-22', '2026-11-23', '2026-11-24']) assert.deepEqual(accessOf({ ...on, paidUntil: '2026-11-21' }, day), due, day);
+  assert.deepEqual(accessOf({ ...on, paidUntil: '2026-11-21' }, '2026-11-25'), { access: 'unpaid', allowed: false, paidUntil: '2026-11-21', ...none });
+  // Over a month's end and a year's: the same 3 calendar days.
+  assert.equal(graceLast('2026-11-30'), '2026-12-03');
+  assert.equal(graceLast('2026-12-31'), '2027-01-03');
+  assert.equal(graceLast('2027-02-28'), '2027-03-03');
+  assert.equal(graceLast('2028-02-28'), '2028-03-02', 'a leap year: 29.2 is one of the 3 days');
+  assert.equal(accessOf({ ...on, paidUntil: '2026-12-31' }, '2027-01-03').access, 'due');
+  assert.equal(accessOf({ ...on, paidUntil: '2026-12-31' }, '2027-01-04').access, 'unpaid');
   // Cancelled: open until the last day paid for, then closed, with no grace; cancelled with nothing paid, closed.
   const cancelled = { ...on, paidUntil: '2026-11-21', endsOn: '2026-11-21', cancelledAt: T0 };
   assert.deepEqual(accessOf(cancelled, '2026-11-21'), { access: 'cancelled', allowed: true, paidUntil: '2026-11-21', lastDay: '2026-11-21', graceUntil: null });
@@ -187,12 +196,16 @@ test('GET /internal/entitlement: the documented shape, each state as the console
     assert.equal((await t.owners('GET', `/internal/entitlement?workspace=${t.ws.id}&product=teder`, null, { authorization: 'Bearer nope' })).status, 401);
     assert.equal((await t.owners('POST', `/internal/entitlement?workspace=${t.ws.id}&product=teder`, {})).status, 405);
 
-    // Past the last day paid for: due, and still allowed, until the grace is over; then unpaid.
+    // Past the last day paid for: due, and still allowed, for the 72 hours; then unpaid. graceUntil is exactly 72 hours
+    // after paidThrough, the end of 24.11.2026 in Israel, and stays so on each of the 3 days; the instant after it, closed.
     await t.admin.post(`/admin/workspaces/${t.ws.id}/comp`, { product: 'teder', comp: '0' });
-    setNow('2026-11-22T10:00:00.000Z');
-    const due = (await t.ent()).json;
-    assert.deepEqual([due.access, due.allowed, due.paidThrough, due.graceUntil], ['due', true, END_21_11, endOfIsraelDay('2026-12-06')]);
-    setNow('2026-12-07T10:00:00.000Z');
+    for (const at of ['2026-11-21T22:00:00.000Z', '2026-11-22T10:00:00.000Z', '2026-11-23T10:00:00.000Z', '2026-11-24T21:59:59.999Z']) {
+      setNow(at);
+      const due = (await t.ent()).json;
+      assert.deepEqual([due.access, due.allowed, due.paidThrough, due.graceUntil], ['due', true, END_21_11, '2026-11-24T21:59:59.999Z'], at);
+      assert.equal(Date.parse(due.graceUntil) - Date.parse(due.paidThrough), 72 * 3_600_000, at);
+    }
+    setNow('2026-11-24T22:00:00.000Z'); // 00:00 on 25.11 in Israel
     assert.deepEqual([(await t.ent()).json.access, (await t.ent()).json.allowed, (await t.ent()).json.paidThrough, (await t.ent()).json.graceUntil], ['unpaid', false, END_21_11, null]);
   } finally {
     await t.done();

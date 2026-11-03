@@ -15,9 +15,9 @@ import { addDays, ensureSubscription, graceLast, israelToday, planOut, PLANS } f
 //   cancelled  the customer cancelled online (or the superadmin set a last day): it works until the last day paid
 //              for, and the last day, whichever is first, then stops
 //   paid       a recorded payment covers today
-//   due        the last paid period is over and the next payment has not come yet: it keeps working for the 14 days of
-//              grace the terms give (subscriptions.js GRACE_DAYS), from the day it fell due, while the owners are told
-//              (src/web/daily.js); then it is unpaid
+//   due        the last paid period is over and the next payment has not come yet: it keeps working for the 72 hours
+//              the terms give (subscriptions.js GRACE_HOURS), the 3 days after the last paid day, while the owners are
+//              told (src/web/daily.js); then it is unpaid
 //   unpaid     anything else: on, nothing paid for today (never paid, or the grace is over)
 //
 // allowed = paid || comp || due || (cancelled && today is not past either day). Days are Israel calendar days. A
@@ -40,8 +40,8 @@ export function endOfIsraelDay(day) {
 /**
  * What a workspace's product may do, from its rows. Pure.
  *   { enabled, comp, paidUntil, endsOn, cancelledAt } -> { access, allowed, paidUntil, lastDay, graceUntil }
- * `lastDay` is the day it stops when it is cancelled, else null. `graceUntil` is the last day of the grace while it is
- * due, else null.
+ * `lastDay` is the day it stops when it is cancelled, else null. `graceUntil` is the last day of the 72 hours while it
+ * is due (graceLast(), the third day after paidUntil), else null.
  */
 export function accessOf({ enabled, comp = false, paidUntil = null, endsOn = null, cancelledAt = null }, today = israelToday()) {
   const none = { lastDay: null, graceUntil: null };
@@ -86,9 +86,9 @@ export const accessAll = (db, workspaceId, today = israelToday()) => Object.from
  * The answer of GET /internal/entitlement, exactly as docs/setup.md has it, or null for no such workspace:
  * { workspace, product, enabled, access, allowed, paidThrough, cancelAt, graceUntil, plan? }. paidThrough is the end of
  * the last day paid for, cancelAt the end of the last day of a cancelled subscription, graceUntil the end of the last
- * day of the grace while it is due, all ISO instants (Israel days' ends, in UTC) or null. `plan`, for a product with
- * plans (Teder), is what its month gives: { name: "full" | "small", slideshows, redos } (the full plan when none is
- * recorded).
+ * day of the grace while it is due (72 hours after paidThrough), all ISO instants (Israel days' ends, in UTC) or null.
+ * `plan`, for a product with plans (Teder), is what its month gives: { name: "full" | "small", slideshows, redos } (the
+ * full plan when none is recorded).
  */
 export function entitlement(db, workspaceId, product, today = israelToday()) {
   const a = accessFor(db, workspaceId, product, today);

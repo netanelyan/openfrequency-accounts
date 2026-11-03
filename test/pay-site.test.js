@@ -137,7 +137,7 @@ test('the welcome email with both settings: the details, the line, then "לתש�
   }
 });
 
-test('the billing emails with both settings: soon and due lead to "לתשלום בוואטסאפ", whose code Toran answers with that month; stopped leads to the account', async () => {
+test('the billing emails with both settings: soon, due and last lead to "לתשלום בוואטסאפ", whose code Toran answers with that month; stopped leads to the account', async () => {
   const h = tempHome();
   try {
     setNow('2026-10-22T07:00:00.000Z');
@@ -154,12 +154,10 @@ test('the billing emails with both settings: soon and due lead to "לתשלום 
     // What Toran is told for that code that day: the month that starts on the 22nd.
     const answer = payAnswer(openPayCode(h.db, code), dueForPay(h.db, ws.id), env);
     assert.deepEqual([answer.total, answer.summary[0]], [932.2, 'תדר, החבילה המלאה: 790 ₪ לחודש, לא כולל מע״מ, על החודש שמתחיל ב-22.11.2026.']);
-    await day('2026-11-21T08:00:00.000Z');
-    await day('2026-11-22T08:00:00.000Z');
-    await day('2026-12-07T08:00:00.000Z');
+    for (const at of ['2026-11-21', '2026-11-22', '2026-11-23', '2026-11-24', '2026-11-25']) await day(`${at}T08:00:00.000Z`);
     const to = (subject) => mails.find((m) => m.to === 'noa@example.com' && m.subject === subject);
     const soon1 = mails.filter((m) => m.subject === 'התשלום הבא על תדר: 22.11.2026')[1];
-    for (const m of [soon7, soon1, to('התשלום על תדר עוד לא הגיע')]) {
+    for (const m of [soon7, soon1, to('התשלום על החודש החדש של תדר עוד לא הגיע'), to('תדר ייעצר מחר אם התשלום לא יגיע היום')]) {
       assert.equal(m.link, href, m.subject);
       assert.match(m.html, />לתשלום בוואטסאפ<\/a>/);
       assert.ok(m.text.includes(`איך משלמים: ${HOW}\n\n${EXPLAIN}\n\nיש שאלה על התשלום?`), m.text);

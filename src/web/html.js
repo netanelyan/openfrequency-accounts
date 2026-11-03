@@ -7,7 +7,7 @@ import { ISSUING_STALE_MS } from '../accounts/morning.js';
 import { now as clockNow } from '../core/clock.js';
 import { total } from '../accounts/invoices.js';
 import { KINDS } from '../accounts/notify.js';
-import { AUDIT_NAMES, CANCEL, ERASE, MORNING, NOTIFY, OPS, PAY, PLAN_NAMES, PRODUCT_NAMES, ROLE_NAMES, SETUP, SIGNUP, T, dayHe, hourHe, ils, opensAfter, phoneHe, planGives, when } from './copy.js';
+import { AUDIT_NAMES, CANCEL, ERASE, MORNING, NOTIFY, OPS, PAY, PLAN_NAMES, PRODUCT_NAMES, ROLE_NAMES, SETUP, SIGNUP, T, dayHe, hourHe, ils, opensAfter, phoneHe, planGives, weekdayHe, when } from './copy.js';
 import { CONTRACT_URLS, PRIVACY_URL, TERMS_URL } from '../accounts/signup.js';
 
 // Server-rendered pages: Hebrew, right to left, one stylesheet. Our own script files only: static/a11y.js (the
@@ -226,7 +226,7 @@ function subCard(p, s, href, { access = null, csrf = '', owner = false, provider
     if (s.next && providerReady) lines.push(`<p>${esc(T.subNext(dayHe(s.next.on), ils(s.next.monthly), s.next.vat === 'excluded'))}</p>`);
     lines.push(`<p class="muted">${esc(T.subPaidUntil(dayHe(s.paid_until)))}</p>`);
   } else if (status === 'due') {
-    lines.push(`<p class="warn">${esc(access && !access.allowed ? T.subDueStopped(dayHe(s.next.on)) : T.subDue(dayHe(s.next.on), dayHe(s.graceUntil)))}</p>`);
+    lines.push(`<p class="warn">${esc(access && !access.allowed ? T.subDueStopped(dayHe(s.next.on)) : T.subDue(dayHe(s.next.on), weekdayHe(s.graceUntil)))}</p>`);
   } else if (status === 'cancelled') {
     lines.push(`<p class="warn">${esc(access.allowed ? T.subCancelled(dayHe(s.ends_on)) : T.subCancelledNow)}</p>`);
     if (s.bar) lines.push(paidBar(s, { saysLeft: false }));
@@ -544,7 +544,7 @@ function billingCard(b, { readOnly, first, products, access, prices, payHow = ''
   const lines = due.lines
     .map((l) => {
       const name = productLabel(l.product, l.plan);
-      if (l.kind === 'due') return `<li>${esc(SETUP.billingDue(name, dayHe(l.graceUntil)))}</li>`;
+      if (l.kind === 'due') return `<li>${esc(SETUP.billingDue(name, weekdayHe(l.graceUntil)))}</li>`;
       if (l.kind === 'paid') return `<li>${esc(SETUP.billingPaidUntil(name, dayHe(l.paidUntil)))}</li>`;
       if (l.kind === 'ended') return `<li>${esc(SETUP.billingEnded(name, dayHe(l.lastDay)))}</li>`;
       if (l.kind !== 'owed') return '';

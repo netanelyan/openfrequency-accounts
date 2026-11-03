@@ -107,7 +107,8 @@ export const T = {
   subDay: (day, days) => `יום ${day} מתוך ${days}`,
   subBarLabel: (from, to) => `החודש ששולם, מ-${from} עד ${to}`,
   subNext: (d, amount, plusVat) => `התשלום הבא: ${amount}${plusVat ? ' ועוד מע״מ' : ''}, ב-${d}`,
-  subDue: (d, until) => `התשלום לחודש שהתחיל ב-${d} עוד לא הגיע אלינו. המנוי ממשיך לעבוד עד ${until}, ואם התשלום לא יגיע עד אז הוא ייעצר עד שישולם.`,
+  // `until`: the last of the 72 hours' days with its weekday (weekdayHe(), "יום שלישי, 24.11.2026").
+  subDue: (d, until) => `התשלום לחודש שהתחיל ב-${d} עוד לא הגיע אלינו. המנוי ממשיך לעבוד עד סוף ${until}, ואם התשלום לא יגיע עד אז הוא ייעצר עד שישולם.`,
   subDueStopped: (d) => `התשלום לחודש שהתחיל ב-${d} לא הגיע, אז המנוי נעצר. הוא ייפתח שוב כשהתשלום יגיע.`,
   subPlan: (name, gives) => `${name}: ${gives}`,
   subEnding: (d, n) => `המנוי מסתיים ב-${d}. ${n === 1 ? 'זה היום האחרון שלו.' : `נשארו ${n} ימים.`}`,
@@ -499,7 +500,9 @@ export const MAIL = {
   paidButton: 'לדף הראשי',
   paidGo: (product) => `להיכנס ל${product}`,
 
-  // To each owner, before and when a payment falls due (src/web/daily.js). `pay` is how to pay (a line, or lines).
+  // To each owner, before and after a payment falls due (src/web/daily.js). `pay` is how to pay (a line, or lines).
+  // soon: a week before and the day before. due: the first day after the paid month; `paid` is its last day and
+  // `until` the day the 72 hours end, with its weekday (weekdayHe()). last: that day.
   soonSubject: (product, d) => `התשלום הבא על ${product}: ${d}`,
   soonLines: (business, product, d, amount, pay, link) => [
     'שלום,',
@@ -508,11 +511,19 @@ export const MAIL = {
     { link },
     'כבר שילמתם? אפשר להתעלם מהמייל הזה. ביטלתם, או רוצים לבטל? אפשר לעשות את זה מהדף הראשי.',
   ],
-  dueSubject: (product) => `התשלום על ${product} עוד לא הגיע`,
-  dueLines: (business, product, d, until, amount, pay, link) => [
+  dueSubject: (product) => `התשלום על החודש החדש של ${product} עוד לא הגיע`,
+  dueLines: (business, product, paid, until, amount, pay, link) => [
     'שלום,',
-    `החודש של ${product} בחשבון של ${business} התחיל ב-${d}, והתשלום עליו (${amount}) עוד לא הגיע אלינו.`,
-    `${product} ממשיך לעבוד עד ${until}. אם התשלום לא יגיע עד אז, ${product} ייעצר עד שישולם. שום דבר לא נמחק.`,
+    `המנוי ל${product} בחשבון של ${business} שולם עד ${paid}, והתשלום על החודש החדש (${amount}) עוד לא הגיע אלינו.`,
+    `${product} ממשיך לעבוד עד סוף ${until}. אם התשלום לא יגיע עד אז, ${product} ייעצר עד שישולם.`,
+    ...[].concat(pay),
+    { link },
+  ],
+  lastSubject: (product) => `${product} ייעצר מחר אם התשלום לא יגיע היום`,
+  lastLines: (business, product, until, amount, pay, link) => [
+    'שלום,',
+    `היום האחרון לשלם על החודש החדש של ${product} בחשבון של ${business} הוא היום, ${until}. הסכום: ${amount}.`,
+    `אם התשלום לא יגיע עד סוף היום, ${product} ייעצר עד שישולם.`,
     ...[].concat(pay),
     { link },
   ],
@@ -715,7 +726,8 @@ export const SETUP = {
   billingEnded: (product, d) => `${product}: המנוי הסתיים ב-${d}, ואין עליו מה לשלם`,
   endedTag: 'הסתיים',
   endedLead: (product) => `המנוי ל${product} הסתיים, אז הצעדים שלו סגורים.`,
-  billingDue: (product, d) => `${product}: התשלום על החודש הנוכחי עוד לא הגיע. המנוי עובד עד ${d}, ואחרי זה נעצר עד שישולם.`,
+  // In the 72 hours after the paid month: `d` the day it stops, with its weekday (weekdayHe()).
+  billingDue: (product, d) => `${product}: התשלום על החודש החדש עוד לא הגיע. המנוי עובד עד סוף ${d}, ואחרי זה נעצר עד שישולם.`,
   billingHow: (how) => `איך משלמים: ${how}`,
   billingNow: (total, net, vat) => payNowLine(total, net, vat),
   billingThen: (monthly) => payThenLine(monthly),
@@ -966,6 +978,9 @@ export const when = (iso) => DATE.format(new Date(iso)).replace(/\s*,\s*/, ', ')
 
 /** A calendar day, YYYY-MM-DD, as Israel writes it: "25.10.2026". */
 export const dayHe = (d) => (d ? `${+d.slice(8, 10)}.${+d.slice(5, 7)}.${d.slice(0, 4)}` : '');
+const WEEKDAYS = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'];
+/** A calendar day with its weekday, for a deadline: "יום שלישי, 24.11.2026". */
+export const weekdayHe = (d) => (d ? `יום ${WEEKDAYS[new Date(Date.UTC(+d.slice(0, 4), +d.slice(5, 7) - 1, +d.slice(8, 10))).getUTCDay()]}, ${dayHe(d)}` : '');
 const HOUR_HE = new Intl.DateTimeFormat('he-IL', { timeZone: 'Asia/Jerusalem', hour: '2-digit', minute: '2-digit' });
 /** An Israel-time hour, like "13:00". */
 export const hourHe = (iso) => HOUR_HE.format(new Date(iso));

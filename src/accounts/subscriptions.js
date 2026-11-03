@@ -80,13 +80,17 @@ export function addMonths(day, n = 1) {
 }
 
 /**
- * Days a subscription keeps working after its paid period ends, counted from the day the payment fell due: the terms
- * (openfrequency.co.il/terms) let us stop the service 14 days after we wrote about an unpaid payment, and that email
- * goes out on the day it falls due (src/web/daily.js).
+ * How long a subscription keeps working after its paid month ends while the next month's payment has not come: 72
+ * hours (the owner, 2026-11-03: "A user has 72 hours to pay for a new month once their subscription has ended"; the
+ * terms, openfrequency.co.il/terms, say the same). The paid month ends at the end of the Israel day `paid_until`, so
+ * the 72 hours are the 3 Israel days after it, to the end of the third; then it stops until paid. Counted in days, a
+ * week with a clock change in it has 71 hours (March) or 73 (October). The emails before, on and at the end of them
+ * are src/web/daily.js.
  */
-export const GRACE_DAYS = 14;
-/** The last day a subscription paid until `paidUntil` still works unpaid: the day the payment fell due and 14 more. */
-export const graceLast = (paidUntil) => addDays(paidUntil, 1 + GRACE_DAYS);
+export const GRACE_HOURS = 72;
+export const GRACE_DAYS = GRACE_HOURS / 24;
+/** The last day a subscription paid until `paidUntil` still works unpaid: the third day after it. */
+export const graceLast = (paidUntil) => addDays(paidUntil, GRACE_DAYS);
 
 /** A workspace's subscription rows, by product. */
 export function subscriptionsOf(db, workspaceId) {

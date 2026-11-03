@@ -138,10 +138,10 @@ const RUN = {
     payMonth(w.db, w.dana.id, 'teder', { by: w.admin });
     return ent(w, w.dana.id);
   },
-  'entitlement /internal/entitlement :: due: the paid period is over, the 14 days of grace': (w) => {
+  'entitlement /internal/entitlement :: due: the paid period is over, in its 72 hours of grace': (w) => {
     const ws = fresh(w, 'due-shop');
     payMonth(w.db, ws.id, 'teder', { by: w.admin });
-    setNow('2026-11-25T10:00:00.000Z');
+    setNow('2026-11-24T10:00:00.000Z'); // paid until 21.11: the last of the 3 days
     return ent(w, ws.id);
   },
   'entitlement /internal/entitlement :: unpaid: never paid, or the grace is over': (w) => ent(w, fresh(w, 'unpaid-shop').id),

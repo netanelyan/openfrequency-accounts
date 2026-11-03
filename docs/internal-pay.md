@@ -11,7 +11,8 @@ This file is accounts' half; the contract both sides are held to is
 ## The flow
 
 1. The customer presses "לתשלום בוואטסאפ" on `/setup`'s payment card, or in the welcome email or
-   a billing email (a week before, a day before, the day it falls due). It opens
+   a billing email (a week before, a day before, the first and the last of the 72 hours after the
+   paid month). It opens
    `https://wa.me/<OF_ASSISTANT_WA>?text=...` with this written:
    `היי, אני רוצה לשלם על המנוי של <business>. PAY-XXXXXX`. The code rides at the end of the
    message; nothing on the page or in the email explains it.
@@ -40,7 +41,7 @@ button to `OF_SUPPORT_WA`, or the questions button), and no code is made. The se
 |---|---|
 | `/setup`'s payment card | The one blue button is "לתשלום בוואטסאפ" (in place of "לשלוח אסמכתא בוואטסאפ"); "איך משלמים: <OF_PAYMENT_METHOD>" stays; under it, in place of the receipt's line, "לוחצים על הכפתור ושולחים את ההודעה כמו שהיא. תורן עונה בוואטסאפ עם הסכום ופרטי ההעברה." In view-as, the same card without its button, and no code is made. |
 | The welcome email | The details, that line, then the button "לתשלום בוואטסאפ", before the setup's button. |
-| The billing emails, soon7, soon1, due | The details, that line, and the email's button is "לתשלום בוואטסאפ". "stopped" still leads to the account. |
+| The billing emails, soon7, soon1, due, last | The details, that line, and the email's button is "לתשלום בוואטסאפ". "stopped" still leads to the account. |
 
 In the HTML part the WhatsApp address is not printed under its button (it would show the
 message's words, encoded); the text part has it, as it has every link.
@@ -49,7 +50,7 @@ message's words, encoded); the text part has it, as it has every link.
 
 One function answers it for the card and for Toran: `amountDue()` in `src/accounts/billing.js`
 (`dueOf()`, pure, is what `/setup`'s card renders from). For each product turned on:
-complimentary, nothing; in its 14 days of grace (`due`), a month; cancelled and stopped (its last
+complimentary, nothing; in its 72 hours of grace (`due`), a month; cancelled and stopped (its last
 day passed, or it was cancelled with nothing paid; by the customer or a last day set on `/admin`),
 nothing, ever, and `/setup` says it ended and asks no payment for it; paid for today (cancelled
 ones too, until their last day), nothing; no price recorded, nothing; anything else (never paid, or the

@@ -111,8 +111,8 @@ customer pays, and every place that describes paying follows it (`src/accounts/b
 | The sign-up form and its confirmation page | we email the payment details after the account opens, and the products open once the payment reaches us | they pay by card in the account, and the products open once the payment is confirmed |
 | The welcome email | the same, with "איך משלמים: ..." (`OF_PAYMENT_METHOD`, when set) and questions to a reply or our WhatsApp's number | pay by card on the setup page, "לתשלום"; the products open once the payment is confirmed |
 | `/setup`'s payment step | the same; its button (quiet: nothing to start) asks us on WhatsApp, "יש לנו שאלה על התשלום" written | "לתשלום", the one blue button, opens `OF_PAYMENT_URL` |
-| The billing emails (soon, due) | pay by the details we emailed, how, and whom to ask; the button goes to the account | pay by card on the payment page; the button "לתשלום" goes to `OF_PAYMENT_URL` |
-| With `OF_PAYMENT_METHOD` and `OF_ASSISTANT_WA` both set | `/setup`'s button, the welcome email's and the billing emails' (soon, due) are "לתשלום בוואטסאפ", to the owner line with the message written; Toran answers with the amount (docs/internal-pay.md) | the same as above: the setting is manual mode's |
+| The billing emails (soon, due, last) | pay by the details we emailed, how, and whom to ask; the button goes to the account | pay by card on the payment page; the button "לתשלום" goes to `OF_PAYMENT_URL` |
+| With `OF_PAYMENT_METHOD` and `OF_ASSISTANT_WA` both set | `/setup`'s button, the welcome email's and the billing emails' (soon, due, last) are "לתשלום בוואטסאפ", to the owner line with the message written; Toran answers with the amount (docs/internal-pay.md) | the same as above: the setting is manual mode's |
 | The home page | no next-payment line | "התשלום הבא: <amount>, ב-<date>" |
 | The owner's sign-up notice | email the payment details to the customer's address, then record the payment | record the payment once it has gone through |
 
@@ -231,7 +231,7 @@ that marks it complimentary or takes that back (`comp_set`, `comp_cleared` in th
 | `comp` | The superadmin marked the product complimentary (free). | true |
 | `cancelled` | The customer cancelled online, or the superadmin set a last day. | until the last day paid for (and the last day, if that is earlier), then false. No grace. |
 | `paid` | A recorded payment covers today (`paid_until` is today or later). | true |
-| `due` | The last paid period is over and the next payment has not come: the 14 days of grace the terms give, from the day it fell due (the day after `paid_until`) to 14 days after it. The owners are emailed a week before, the day before and on that day, and when it ends (src/web/daily.js). | true |
+| `due` | The last paid period is over and the next payment has not come: the 72 hours the terms give after the paid month ends, the 3 Israel days after `paid_until`, to the end of the third (`GRACE_HOURS`, `graceLast()` in src/accounts/subscriptions.js; counted in days, a week with a clock change in it has 71 or 73 hours). The owners are emailed a week before, the day before, on the first of the 3 days, on the last of them, and when they are over (src/web/daily.js). | true |
 | `unpaid` | Anything else: on, nothing paid for today (never paid, or the grace is over). | false |
 
 They are checked in that order. Days are Israel calendar days.
@@ -267,7 +267,7 @@ The same, field by field, with an example for every status, is `docs/contracts/e
 | `access`, `allowed` | The table above. Decide on `allowed`; `access` says why. |
 | `paidThrough` | The end of the last day paid for, Israel time, as an ISO instant in UTC (the last millisecond of that day), or `null` when nothing was ever paid. It is given whatever the access, so it can be in the past. |
 | `cancelAt` | Set only while `access` is `cancelled`: the end of the last day it works, the same way. Otherwise `null`. |
-| `graceUntil` | Set only while `access` is `due`: the end of the grace's last day, the same way. Otherwise `null`. |
+| `graceUntil` | Set only while `access` is `due`: the end of the grace's last day, the same way, 72 hours after `paidThrough` (paid until 21.11.2026: `2026-11-24T21:59:59.999Z`). Otherwise `null`. |
 | `plan` | Teder only: its plan, `{ name: "full" \| "small", slideshows, redos }` (40 and 10, or 15 and 4), the month Teder counts for the whole workspace. The full plan when none is recorded. Toran's answer has no `plan`. |
 
 `400 {"error":"bad_workspace"}` for a workspace that is not a positive integer, `400
@@ -351,7 +351,7 @@ first depends on what the payment did to the product, read from its access just 
 | Before the payment | Subject, and the first line | The button |
 |---|---|---|
 | Never paid, so closed (a first payment) | "תדר פתוח. אפשר להתחיל" | "להיכנס לתדר", to Teder |
-| Paid before, and stopped (its 14 days of grace over) | "תדר פתוח שוב. אפשר להמשיך" | the same |
+| Paid before, and stopped (its 72 hours of grace over) | "תדר פתוח שוב. אפשר להמשיך" | the same |
 | Open: paid ahead (a renewal before it falls due), in its grace, or complimentary | "קיבלנו את התשלום על תדר", then "תדר ממשיך לעבוד כרגיל." | the same |
 | Still closed after it (cancelled, turned off, the workspace disabled) | "קיבלנו את התשלום על תדר", as before | "לדף הראשי", to the account |
 
@@ -370,11 +370,22 @@ part has every line and the link.
 `src/web/daily.js` runs once an Israel day from 09:00 (`npm run daily` by hand, `-- --again` to
 run today's again) and keeps each run in `daily_runs`:
 
-- **Billing** (each owner, once of each kind for each paid period, kept in `billing_notices`): a
-  week before the payment falls due, the day before, on the day (this is the notice the terms
-  speak of; the product works 14 more days), and when the grace ends. `OF_SIGNUP_NOTIFY` hears of
-  the last two. Not for a product that is complimentary, cancelled, off or never paid, nor in a
-  disabled workspace.
+- **Billing** (each owner, once of each kind for each paid period, kept in `billing_notices`; the
+  terms give 72 hours after the paid month ends, the 3 days after `paid_until`). Paid until
+  21.11.2026 (a Saturday), each goes on the first daily run of its days:
+
+  | Kind | Days | Subject |
+  |---|---|---|
+  | `soon7` | 15.11 to 20.11 (a week before it falls due) | "התשלום הבא על תדר: 22.11.2026" |
+  | `soon1` | 21.11, the last paid day | the same |
+  | `due` | 22.11, the first day after it (or 23.11, if that day's run was missed) | "התשלום על החודש החדש של תדר עוד לא הגיע", saying it works to the end of "יום שלישי, 24.11.2026" |
+  | `last` | 24.11, the last of the 3 days | "תדר ייעצר מחר אם התשלום לא יגיע היום" |
+  | `stopped` | 25.11 to 1.12 (it stopped at the end of 24.11) | "תדר נעצר עד שהתשלום יגיע" |
+
+  The days follow each other on the calendar, at a month's end too. `OF_SIGNUP_NOTIFY` hears of
+  `due` and `stopped`. Not for a product that is complimentary, cancelled, off or never paid, nor
+  in a disabled workspace. A payment recorded moves `paid_until` on, and the next period's emails
+  follow it.
 - **Retention**, the periods the privacy policy states: a sign-up never confirmed, 30 days after
   the form; magic links, invites, WhatsApp link codes and payment codes, 30 days after they
   ended; sessions, 90 days after they expired or were signed out; the notification log, 90 days;

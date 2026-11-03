@@ -260,12 +260,12 @@ test('/setup names the products still closed: both, or only the one not paid for
   }
 });
 
-test("the billing emails: manual gives the owner's details (without them, points to the ones we emailed) and whom to ask; provider leads soon and due to the payment page", async () => {
+test("the billing emails: manual gives the owner's details (without them, points to the ones we emailed) and whom to ask; provider leads soon, due and last to the payment page", async () => {
   for (const [env, check] of [
     [
       { OF_SUPPORT_WA: '972500000100' },
-      (soon, due) => {
-        for (const m of [soon, due]) {
+      (soon, due, last) => {
+        for (const m of [soon, due, last]) {
           assert.match(m.text, /משלמים לפי פרטי התשלום ששלחנו לכם במייל\.\n\nיש שאלה על התשלום\?/);
           assert.doesNotMatch(m.text, /איך משלמים/);
         }
@@ -273,8 +273,8 @@ test("the billing emails: manual gives the owner's details (without them, points
     ],
     [
       MANUAL,
-      (soon, due, stopped) => {
-        for (const m of [soon, due]) {
+      (soon, due, last, stopped) => {
+        for (const m of [soon, due, last]) {
           // The owner's details are in the email itself; nothing points to an earlier one.
           assert.match(m.text, /איך משלמים: העברה בנקאית או ביט\n\nאחרי ההעברה, שלחו לנו את האסמכתא בוואטסאפ ל-050-000-0100\. ככה נמצא את ההעברה ונרשום את התשלום\.\n\nיש שאלה על התשלום\? ענו למייל הזה, או כתבו לנו בוואטסאפ ל-050-000-0100\./);
           assert.doesNotMatch(m.text, /ששלחנו לכם במייל/);
@@ -287,8 +287,8 @@ test("the billing emails: manual gives the owner's details (without them, points
     ],
     [
       PROVIDER,
-      (soon, due, stopped) => {
-        for (const m of [soon, due]) {
+      (soon, due, last, stopped) => {
+        for (const m of [soon, due, last]) {
           assert.match(m.text, /משלמים בכרטיס אשראי, בדף התשלום:\n\nhttps:\/\/pay\.example\.com\/openfrequency/);
           assert.equal(m.link, PAY_URL);
           assert.match(m.html, /<a href="https:\/\/pay\.example\.com\/openfrequency"[^>]*>לתשלום<\/a>/);
@@ -308,11 +308,9 @@ test("the billing emails: manual gives the owner's details (without them, points
       payMonth(h.db, ws.id, 'teder', { by: null }); // paid until 21.11.2026
       const mails = [];
       const day = async (at) => (setNow(at), runDaily(h.db, { env: { PUBLIC_HOST: 'accounts.openfrequency.co.il', ...env }, mailer: { send: (m) => mails.push(m) }, eraser: { erase: async () => ({ results: {}, ok: true, failed: [] }) }, log: () => {} }));
-      await day('2026-11-15T08:00:00.000Z');
-      await day('2026-11-22T08:00:00.000Z');
-      await day('2026-12-07T08:00:00.000Z');
+      for (const at of ['2026-11-15', '2026-11-22', '2026-11-24', '2026-11-25']) await day(`${at}T08:00:00.000Z`);
       const to = (subject) => mails.find((m) => m.to === 'noa@example.com' && m.subject === subject);
-      check(to('התשלום הבא על תדר: 22.11.2026'), to('התשלום על תדר עוד לא הגיע'), to('תדר נעצר עד שהתשלום יגיע'));
+      check(to('התשלום הבא על תדר: 22.11.2026'), to('התשלום על החודש החדש של תדר עוד לא הגיע'), to('תדר ייעצר מחר אם התשלום לא יגיע היום'), to('תדר נעצר עד שהתשלום יגיע'));
     } finally {
       h.cleanup();
     }
