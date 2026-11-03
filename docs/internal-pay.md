@@ -16,6 +16,10 @@ This file is accounts' half; the contract both sides are held to is
    `https://wa.me/<OF_ASSISTANT_WA>?text=...` with this written:
    `היי, אני רוצה לשלם על המנוי של <business>. PAY-XXXXXX`. The code rides at the end of the
    message; nothing on the page or in the email explains it.
+   Or, in a payment reminder on WhatsApp (the day before, the first and the last of the 72 hours;
+   docs/setup.md, "The daily jobs"), the customer presses its one button, "לתשלום": a quick reply
+   whose payload is the code, never shown, which reaches Toran as "לתשלום PAY-XXXXXX" in that same
+   chat. The rest is the same.
 2. Toran reads `PAY-XXXXXX` from the message and asks `GET /internal/pay?code=PAY-XXXXXX`. It
    answers the customer with the amount (`total`, VAT included), what it is for (`summary`) and
    how to pay (`payHow`).
@@ -42,6 +46,7 @@ button to `OF_SUPPORT_WA`, or the questions button), and no code is made. The se
 | `/setup`'s payment card | The one blue button is "לתשלום בוואטסאפ" (in place of "לשלוח אסמכתא בוואטסאפ"); "איך משלמים: <OF_PAYMENT_METHOD>" stays; under it, in place of the receipt's line, "לוחצים על הכפתור ושולחים את ההודעה כמו שהיא. תורן עונה בוואטסאפ עם הסכום ופרטי ההעברה." In view-as, the same card without its button, and no code is made. |
 | The welcome email | The details, that line, then the button "לתשלום בוואטסאפ", before the setup's button. |
 | The billing emails, soon7, soon1, due, last | The details, that line, and the email's button is "לתשלום בוואטסאפ". "stopped" still leads to the account. |
+| The payment reminders on WhatsApp, soon1, due, last | To an owner's linked number, with the code as its button's payload. These need `OF_PAYMENT_METHOD` alone, since they come from our number already. |
 
 In the HTML part the WhatsApp address is not printed under its button (it would show the
 message's words, encoded); the text part has it, as it has every link.

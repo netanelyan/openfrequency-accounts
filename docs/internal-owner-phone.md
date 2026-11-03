@@ -110,6 +110,11 @@ The later of the two speaks for now, and on a tie the opt-out. So: **updates may
 when `optIn` is set and `optOut` is null.** Sources are `accounts` (the box on the link form,
 the toggle on the home page) and whatever Toran sends (`whatsapp`).
 
+The reminders to pay for the new month (docs/setup.md, "The daily jobs"; since 2026-11-03) are
+not updates: they are about the owner's own subscription, the same as its billing emails. They go
+to an owner's number with no opt-in recorded too, and never to one whose `optOut` is set (a
+"הפסק" on WhatsApp is the latest word). A member's number never gets them.
+
 ## The routes
 
 | Route | Answers |

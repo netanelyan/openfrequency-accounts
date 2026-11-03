@@ -231,7 +231,7 @@ that marks it complimentary or takes that back (`comp_set`, `comp_cleared` in th
 | `comp` | The superadmin marked the product complimentary (free). | true |
 | `cancelled` | The customer cancelled online, or the superadmin set a last day. | until the last day paid for (and the last day, if that is earlier), then false. No grace. |
 | `paid` | A recorded payment covers today (`paid_until` is today or later). | true |
-| `due` | The last paid period is over and the next payment has not come: the 72 hours the terms give after the paid month ends, the 3 Israel days after `paid_until`, to the end of the third (`GRACE_HOURS`, `graceLast()` in src/accounts/subscriptions.js), or of the fourth when the clocks go forward in those days and the 3 days come to 71 hours, so it is never less than 72 (the end of October, 73, stays 3 days). A workspace on the terms from before 2026-11-03 keeps their 14 days from the day it fell due for a payment due before its change date ("The terms from before the 72 hours", below). The owners are emailed a week before, the day before, on the first of the 3 days, on the last of them, and when they are over (src/web/daily.js). | true |
+| `due` | The last paid period is over and the next payment has not come: the 72 hours the terms give after the paid month ends, the 3 Israel days after `paid_until`, to the end of the third (`GRACE_HOURS`, `graceLast()` in src/accounts/subscriptions.js), or of the fourth when the clocks go forward in those days and the 3 days come to 71 hours, so it is never less than 72 (the end of October, 73, stays 3 days). A workspace on the terms from before 2026-11-03 keeps their 14 days from the day it fell due for a payment due before its change date ("The terms from before the 72 hours", below). The owners are emailed a week before, the day before, on the first of the 3 days, on the last of them, and when they are over, and get the day before, the first day and the last on WhatsApp too, at a number they linked (src/web/daily.js). | true |
 | `unpaid` | Anything else: on, nothing paid for today (never paid, or the grace is over). | false |
 
 They are checked in that order. Days are Israel calendar days.
@@ -392,6 +392,48 @@ run today's again) and keeps each run in `daily_runs`:
   `due` and `stopped`. Not for a product that is complimentary, cancelled, off or never paid, nor
   in a disabled workspace. A payment recorded moves `paid_until` on, and the next period's emails
   follow it.
+- **The same reminders on WhatsApp** (the owner, 2026-11-03: "add a reminder to pay for the new
+  month, whatsapp, email and dashboard"; `whatsappReminders`, src/web/remind.js). `soon1`, `due`
+  and `last` also go on WhatsApp, never `soon7` or `stopped`: three a paid month at most. Paid until
+  21.11.2026, on the 72 hours: on 21.11, 22.11 and 24.11; on the older terms' 14 days
+  (below): on 21.11, 22.11 and 6.12. Each goes once, when its email does (the same
+  `billing_notices` row; a day run again sends nothing twice), after that day's emails, to each
+  number in `user_phones` of the workspace's owners (`client_owner`; not a member's, and not one
+  whose latest word is an opt-out, "הפסק" on WhatsApp). A workspace with no linked number gets the
+  email alone. A workspace's products that owe the same kind on the same dates are one message.
+
+  Only in manual mode with `OF_PAYMENT_METHOD` set (else one line in the log, "... would also go
+  on WhatsApp, and none does: ..."): the message's one button, "לתשלום", carries the workspace's
+  payment code (`PAY-XXXXXX`, the live one, never shown), and pressing it asks Toran in that same
+  chat, which answers with the amount and the transfer's details and then takes the transfer's
+  picture, as it does for "לתשלום בוואטסאפ" (docs/internal-pay.md).
+
+  Each is handed to Toran on this machine, which sends the approved template `payment_reminder`
+  from our number (Toran's src/billing/remind.ts and docs/whatsapp-templates.md):
+
+  ```
+  POST <OF_TORAN_INTERNAL>/internal/pay/remind
+  Authorization: Bearer <OF_INTERNAL_TOKEN>
+  { "workspace": 7, "phone": "972500000123", "kind": "due", "business": "Noa Shop",
+    "products": ["teder"], "paidUntil": "2026-11-21", "graceUntil": "2026-11-24", "code": "PAY-AB2CD3" }
+  ```
+
+  `paidUntil` and `graceUntil` are ours (`graceLast()`, with the workspace's terms), and Toran
+  counts no day itself. Toran answers `200 { ok, sent, why }`; `why` is `already` (it went to that
+  phone before), `held` (Toran's limit, 3 to a phone in 7 days, or the hour after Meta refused one)
+  or `failed` (Meta refused or did not answer): a line in our log, "[accounts] daily: WhatsApp
+  reminder to …0123 (workspace 7, due) not sent: Toran said held; the email went as always", and the
+  next one is tried. Anything else (Toran down, 20 seconds with no answer, another status,
+  `OF_INTERNAL_TOKEN` unset) is a line, "... Toran did not take it (ECONNREFUSED); the email went as
+  always, and the 2 other WhatsApp reminders of today are not tried. None is sent again later", and
+  that run tries no more. Nothing is ever sent again later: the email is what always goes. Each try
+  is in the audit log (`billing_whatsapp`, with the kind, the products, the number's last four
+  digits and the outcome), and the day's line counts them (`WhatsApp reminders {"sent":1,
+  "notSent":0,"notTried":0}`); a number in a log line is its last four digits. Nothing new to set:
+  Toran is at `OF_TORAN_INTERNAL` (default `http://127.0.0.1:4710`) with `OF_INTERNAL_TOKEN`, as
+  for `/setup`. The contract is docs/contracts/pay-remind.json. The template must be created and
+  approved in WhatsApp Manager first (Toran's docs/whatsapp-templates.md); until then Toran answers
+  `failed` and the customer has the email.
 - **The terms from before the 72 hours** (`termsNotices`, `terms_notices`). The 72 hours came with
   the terms of 2026-11-03 (`TERMS_72H` in src/accounts/subscriptions.js; `TERMS_VERSION` in
   src/accounts/signup.js is that or later). The terms before them gave a payment that did not come

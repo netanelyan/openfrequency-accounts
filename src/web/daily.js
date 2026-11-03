@@ -1,15 +1,19 @@
 import { DAY, HOUR, now, nowIso } from '../core/clock.js';
 import { audit } from '../core/audit.js';
 import { j } from '../db/index.js';
+import { PRODUCTS } from '../db/schema.js';
 import { addDays, addMonths, graceChange, graceLast, israelToday, NOTICE_DAYS, TERMS_72H, withVat } from '../accounts/subscriptions.js';
 import { eraseWorkspace, productsEver } from '../accounts/erase.js';
 import { checkoutUrl, payHow, paymentMode, supportWa } from '../accounts/billing.js';
+import { payCodeFor } from '../accounts/pay.js';
+import { ownersOf as linkedNumbers } from '../accounts/phones.js';
 import { signupNotify, TERMS_URL } from '../accounts/signup.js';
 import { billingMail, billingNoticeMail, idleMail, idleNoticeMail, termsNoticeMail } from '../mail/messages.js';
 import { MAIL, PAY, ils } from './copy.js';
 import { eraseClient } from './erase.js';
 import { accountsBase } from './internal.js';
 import { payOverWa } from './pay.js';
+import { remindClient, REMIND_KINDS } from './remind.js';
 
 // The daily jobs, once an Israel day from 09:00 (startDaily(), which scripts/web.js runs; `npm run daily` runs them by
 // hand). Each run is kept in daily_runs, and what it did is logged with its counts.
@@ -35,6 +39,18 @@ import { payOverWa } from './pay.js';
 //    our owner line, with the message and the workspace's payment code written, where Toran gives the amount.
 //    A workspace on the terms from before 2026-11-03 keeps their 14 days for a payment that falls due before its
 //    change date (subscriptions.js graceChange()), and its emails say so: due on the first of them, last on the 14th.
+//
+//    On WhatsApp too (whatsappReminders, src/web/remind.js; the owner, 2026-11-03: "add a reminder to pay for the new
+//    month, whatsapp, email and dashboard"): soon1, due and last, never soon7 or stopped, so three a paid month at
+//    most. Each goes once, when its email does (the same billing_notices row), to each number in user_phones of the
+//    workspace's owners whose latest word is not an opt-out ("הפסק"), after the emails and whatever happens to it. A
+//    workspace's products that owe the same kind on the same dates are one message. Only in manual mode with
+//    OF_PAYMENT_METHOD set: the message's one button, "לתשלום", carries the workspace's payment code (never shown), and
+//    Toran answers it with the amount and the transfer's details, as it answers "לתשלום בוואטסאפ". Each is handed to
+//    Toran on this machine (POST /internal/pay/remind, docs/contracts/pay-remind.json), which sends the approved
+//    template payment_reminder from our number. Toran not taking one (down, slow, refusing the request) is a line in
+//    the log and stops that run's other reminders; nothing is sent again later. A workspace with no linked number gets
+//    the email alone.
 //
 //    Before the billing, the change to the 72 hours (termsNotices): each workspace on the old terms that can be billed
 //    (open, with a product on that is not complimentary) is emailed it, to each owner, on the first run after
@@ -103,6 +119,8 @@ function billing(db, { mailer, env, base, notifyTo, today }) {
   // of the receipt's, and the button to our owner line with the message written.
   const payWa = [MAIL.welcomePayHow(payHow(env)), PAY.explain, MAIL.payAsk(supportWa(env))];
   const sent = { soon7: 0, soon1: 0, due: 0, last: 0, stopped: 0 };
+  // What goes on WhatsApp too, once its emails went (whatsappReminders).
+  const owed = [];
   for (const s of rows) {
     const change = graceChange(s.terms_version, s.terms_change_on);
     const kind = billingKind(s.paid_until, today, change);
@@ -119,8 +137,62 @@ function billing(db, { mailer, env, base, notifyTo, today }) {
     if (kind === 'due' || kind === 'stopped') for (const op of notifyTo) mailer.send(billingNoticeMail(op, { ...fields, link: `${base}/admin/accounts#ws-${s.workspace_id}` }));
     audit(db, { action: `billing_${kind}`, workspaceId: s.workspace_id, detail: { product: s.product, due_on: dueOn, recipients: to.length } });
     sent[kind]++;
+    if (REMIND_KINDS.includes(kind)) owed.push({ workspace: s.workspace_id, business: s.business, product: s.product, kind, paidUntil: s.paid_until, graceUntil: fields.graceUntil });
   }
-  return sent;
+  return { sent, owed };
+}
+
+/** A number in a log line or the audit log: its last four digits. */
+const lastFour = (phone) => `…${String(phone).slice(-4)}`;
+
+/**
+ * Today's billing emails that also go on WhatsApp (above, 1), handed to Toran one by one (`reminder`, src/web/remind.js).
+ * Returns { sent, notSent, notTried }: sent by Toran; answered and not sent (already, held, failed); not taken by Toran,
+ * with the run's others after it, which are not tried.
+ */
+async function whatsappReminders(db, { env, owed, reminder, log }) {
+  const out = { sent: 0, notSent: 0, notTried: 0 };
+  if (!owed.length) return out;
+  if (!payHow(env)) {
+    const why = paymentMode(env) === 'provider' ? 'with a payment provider on, the reminder has no transfer details to give' : 'OF_PAYMENT_METHOD is unset, so the reminder would have no transfer details to give';
+    log(`[accounts] daily: ${owed.length} of today's billing emails would also go on WhatsApp, and none does: ${why}`);
+    return out;
+  }
+  const groups = new Map();
+  for (const o of owed) {
+    const key = `${o.workspace}:${o.kind}:${o.paidUntil}:${o.graceUntil}`;
+    if (!groups.has(key)) groups.set(key, { ...o, products: [] });
+    groups.get(key).products.push(o.product);
+  }
+  const list = [];
+  for (const g of groups.values()) {
+    const phones = linkedNumbers(db, g.workspace).filter((p) => p.role === 'client_owner' && !p.optOut && !p.workspace.disabled);
+    if (!phones.length) continue;
+    const code = payCodeFor(db, g.workspace).code;
+    const products = PRODUCTS.filter((p) => g.products.includes(p));
+    for (const p of phones) list.push({ workspace: g.workspace, phone: p.phone, kind: g.kind, business: g.business, products, paidUntil: g.paidUntil, graceUntil: g.graceUntil, code });
+  }
+  for (let i = 0; i < list.length; i++) {
+    const r = list[i];
+    const who = `WhatsApp reminder to ${lastFour(r.phone)} (workspace ${r.workspace}, ${r.kind})`;
+    const a = await reminder.remind(r);
+    audit(db, { action: 'billing_whatsapp', workspaceId: r.workspace, detail: { kind: r.kind, products: r.products, paid_until: r.paidUntil, phone: lastFour(r.phone), outcome: a.taken ? (a.sent ? 'sent' : a.why) : 'not_taken' } });
+    if (a.taken && a.sent) {
+      out.sent++;
+      continue;
+    }
+    if (a.taken) {
+      out.notSent++;
+      log(`[accounts] daily: ${who} not sent: Toran said ${a.why}; the email went as always`);
+      continue;
+    }
+    // Toran down, slow, or refusing the request itself: the rest would fare the same, so they are not tried.
+    const rest = list.length - i - 1;
+    out.notTried += rest + 1;
+    log(`[accounts] daily: ${who}: Toran did not take it (${a.why}); the email went as always${rest ? `, and the ${rest} other WhatsApp reminder${rest === 1 ? '' : 's'} of today ${rest === 1 ? 'is' : 'are'} not tried` : ''}. None is sent again later`);
+    break;
+  }
+  return out;
 }
 
 /**
@@ -248,22 +320,27 @@ async function retention(db, { mailer, base, notifyTo, eraser, log, today, t }) 
 
 /**
  * Run today's jobs, once: { ran: false } when today's run is done (or another started within the hour), else
- * { ran: true, day, billing, retention }. `eraser` stands in for the products in the tests.
+ * { ran: true, day, notices, billing, whatsapp, retention }. `eraser` and `reminder` stand in for the products in the
+ * tests.
  */
-export async function runDaily(db, { env = process.env, mailer, log = console.log, t = now(), eraser = eraseClient({ env, log }), base = accountsBase(env) } = {}) {
+export async function runDaily(db, { env = process.env, mailer, log = console.log, t = now(), eraser = eraseClient({ env, log }), base = accountsBase(env), reminder = remindClient({ env }) } = {}) {
   const today = israelToday(t);
   const at = new Date(t).toISOString();
   const row = db.get('SELECT * FROM daily_runs WHERE day = ?', today);
   if (row && (row.finished_at || Date.parse(row.started_at) > t - HOUR)) return { ran: false, day: today };
   db.run('INSERT INTO daily_runs (day, started_at) VALUES (?, ?) ON CONFLICT(day) DO UPDATE SET started_at = excluded.started_at', today, at);
   const notifyTo = signupNotify(env);
+  const notices = await termsNotices(db, { mailer, today, log });
+  const billed = billing(db, { mailer, env, base, notifyTo, today });
   const detail = {
-    notices: await termsNotices(db, { mailer, today, log }),
-    billing: billing(db, { mailer, env, base, notifyTo, today }),
+    notices,
+    billing: billed.sent,
+    // A bug here costs the day's WhatsApp reminders, never the emails before them or the retention after.
+    whatsapp: await whatsappReminders(db, { env, owed: billed.owed, reminder, log }).catch((e) => (log(`[accounts] daily: the WhatsApp reminders stopped: ${e?.stack || e?.message || e}; the emails went as always`), { failed: true })),
     retention: await retention(db, { mailer, base, notifyTo, eraser, log, today, t }),
   };
   db.run('UPDATE daily_runs SET finished_at = ?, detail_json = ? WHERE day = ?', nowIso(), detail, today);
-  log(`[accounts] daily ${today}: terms notices ${detail.notices}; billing emails ${JSON.stringify(detail.billing)}; deleted ${JSON.stringify(detail.retention)}`);
+  log(`[accounts] daily ${today}: terms notices ${detail.notices}; billing emails ${JSON.stringify(detail.billing)}; WhatsApp reminders ${JSON.stringify(detail.whatsapp)}; deleted ${JSON.stringify(detail.retention)}`);
   return { ran: true, day: today, ...detail };
 }
 

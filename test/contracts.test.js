@@ -19,6 +19,8 @@ import { readSetup } from '../src/web/setup.js';
 import { eraseClient } from '../src/web/erase.js';
 import { changedClient, CHANGED_PATH, REASONS } from '../src/web/changed.js';
 import { toranClient } from '../src/web/toran.js';
+import { remindClient, REMIND_KINDS, REMIND_PATH } from '../src/web/remind.js';
+import { PAY_CODE } from '../src/accounts/pay.js';
 import { sampleSetup } from './setup-fake.js';
 import { sampleOps } from './toran-fake.js';
 
@@ -55,7 +57,7 @@ export function shapeProblems(actual, example, nullable = [], at = '$') {
 }
 
 test('every contract file is complete: who serves it, who calls it, and every answer with a status and an example', () => {
-  assert.deepEqual(Object.keys(contracts).sort(), ['admin-toran-operator', 'entitlement', 'entitlement-changed', 'notify', 'ops-customers', 'owner-phone', 'pay', 'session', 'setup', 'signup', 'toran-ops', 'workspaces-delete']);
+  assert.deepEqual(Object.keys(contracts).sort(), ['admin-toran-operator', 'entitlement', 'entitlement-changed', 'notify', 'ops-customers', 'owner-phone', 'pay', 'pay-remind', 'session', 'setup', 'signup', 'toran-ops', 'workspaces-delete']);
   for (const [name, c] of Object.entries(contracts)) {
     assert.equal(c.name, name);
     assert.ok(c.doc && c.servedBy.length && c.calledBy.length, name);
@@ -351,6 +353,39 @@ test('entitlement-changed: accounts sends the request the contract has, to the p
     assert.deepEqual(bodies, [r.request.body]);
   } finally {
     await new Promise((ok) => (p.closeAllConnections(), p.close(ok)));
+  }
+});
+
+test('pay-remind: accounts sends the request the contract has, to the path it names; each of the four 200s is read as the case says, anything else is not taken', async () => {
+  const r = contracts['pay-remind'].routes[0];
+  assert.deepEqual([r.method, r.path], ['POST', REMIND_PATH]);
+  const ex = r.request.body;
+  assert.ok(REMIND_KINDS.includes(ex.kind) && PAY_CODE.test(ex.code), 'the example kind and code are ones accounts sends');
+  for (const a of r.answers) {
+    const seen = [];
+    const p = createServer(async (req, res) => {
+      const chunks = [];
+      for await (const c of req) chunks.push(c);
+      seen.push({ method: req.method, url: req.url, auth: req.headers.authorization, type: req.headers['content-type'], body: JSON.parse(Buffer.concat(chunks).toString('utf8')) });
+      res.writeHead(a.status, { 'content-type': 'application/json' });
+      res.end(JSON.stringify(a.body));
+    });
+    await new Promise((ok) => p.listen(0, '127.0.0.1', ok));
+    try {
+      const out = await remindClient({ env: { OF_INTERNAL_TOKEN: TOKEN, OF_TORAN_INTERNAL: `http://127.0.0.1:${p.address().port}` } }).remind(ex);
+      if (a.status === 200) assert.deepEqual(out, { taken: true, sent: a.body.sent, why: a.body.why }, a.case);
+      else assert.deepEqual(out, { taken: false, why: `${a.status} ${a.body.error}` }, a.case);
+      assert.deepEqual(seen, [{ method: 'POST', url: REMIND_PATH, auth: `Bearer ${TOKEN}`, type: 'application/json', body: ex }], a.case);
+    } finally {
+      await new Promise((ok) => (p.closeAllConnections(), p.close(ok)));
+    }
+  }
+  // An answer not in the contract's shape is not taken either.
+  const odd = await answering(() => ({ status: 200, body: { ok: true, sent: false, why: 'maybe' } }));
+  try {
+    assert.equal((await remindClient({ env: { OF_INTERNAL_TOKEN: TOKEN, OF_TORAN_INTERNAL: odd.url } }).remind(ex)).taken, false);
+  } finally {
+    await odd.close();
   }
 });
 
