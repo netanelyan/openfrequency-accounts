@@ -26,7 +26,7 @@ import { setupClient, setupState } from './setup.js';
 import { eraseClient } from './erase.js';
 import { changedClient } from './changed.js';
 import { createLinkCode, openLinkCode, phoneIn, phonesFor, removePhone } from '../accounts/phones.js';
-import { describe, listPrice, payMonth, payTotal, setSubscription, subscriptionsOf } from '../accounts/subscriptions.js';
+import { describe, graceChangeOf, listPrice, payMonth, payTotal, setSubscription, subscriptionsOf } from '../accounts/subscriptions.js';
 import { addInvoice, invoiceIn, invoicesOf, PDF_MAX, removeInvoice } from '../accounts/invoices.js';
 import { decideReceipt, PayError, RECEIPT_TYPES, receiptById, receiptProducts, receiptsWaiting } from '../accounts/pay.js';
 import { invoiceReceipt, morningClient, morningConfig } from '../accounts/morning.js';
@@ -491,7 +491,8 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
         // While setup is not finished: the card when a product says so, the link in the header until we know it is.
         const st = await setupFor(wsId);
         const mine = memberships(db, found.user.id).filter((m) => !m.disabled_at);
-        const subscriptions = Object.fromEntries(Object.entries(subscriptionsOf(db, wsId)).map(([prod, row]) => [prod, describe(row)]));
+        const change = graceChangeOf(db, wsId);
+        const subscriptions = Object.fromEntries(Object.entries(subscriptionsOf(db, wsId)).map(([prod, row]) => [prod, describe(row, undefined, change)]));
         const others = PRODUCTS.filter((prod) => !d.body.products.includes(prod));
         const body = P.homePage({
           csrf,

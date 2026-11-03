@@ -534,6 +534,17 @@ export const MAIL = {
     { link },
   ],
   payButton: 'לחשבון',
+  // To each owner of a workspace on the terms from before 2026-11-03, once: the change to the 72 hours, from `d` (the
+  // day after the 30 whole days that follow this email, src/accounts/subscriptions.js graceChange()).
+  termsSubject: (d) => `שינוי אחד בהסכם שלנו מ-${d}`,
+  termsLines: (business, d, link) => [
+    'שלום,',
+    `אנחנו משנים דבר אחד בהסכם שלנו עם ${business}. מ-${d}, אם התשלום על חודש חדש לא יגיע אלינו תוך 72 שעות מסוף החודש ששולם, השירות ייעצר עד שישולם.`,
+    'עד אז הכול נשאר כמו שהוא היום.',
+    'לפני שכל חודש נגמר, נזכיר לכם במייל לשלם על החודש הבא.',
+    { link },
+  ],
+  termsButton: 'לתנאי השימוש',
   // `total`: the sum with VAT, when VAT is added to it.
   amount: (sum, plusVat, total = '') => (plusVat ? `${sum} ועוד מע״מ${total ? `, ${total} בסך הכול` : ''}` : sum),
   // With a provider, the email's button is its payment page (OF_PAYMENT_URL), "לתשלום"; in manual mode, the account.

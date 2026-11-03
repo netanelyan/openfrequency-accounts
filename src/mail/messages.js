@@ -184,6 +184,13 @@ export const billingMail = (to, { kind, business, product, paidUntil = null, due
   return { to, ...build(MAIL.soonSubject(p, dayHe(dueOn)), MAIL.soonLines(b, p, dayHe(dueOn), amount, pay, go), label) };
 };
 
+/**
+ * To each owner of a workspace on the terms from before 2026-11-03, once (src/web/daily.js termsNotices): from
+ * `changeOn` a new month's payment has 72 hours, until then nothing changes, a reminder before each month ends, and one
+ * button to the terms (`link`). The billing emails' look.
+ */
+export const termsNoticeMail = (to, { business, changeOn, link }) => ({ to, ...build(MAIL.termsSubject(dayHe(changeOn)), MAIL.termsLines(plain(business, 80), dayHe(changeOn), link), MAIL.termsButton) });
+
 /** To the owner (OF_SIGNUP_NOTIFY): a customer's payment fell due (`kind` due), or its grace ended (stopped). */
 export const billingNoticeMail = (to, { kind, business, product, dueOn, graceUntil = null, link }) => {
   const b = plain(business, 80);

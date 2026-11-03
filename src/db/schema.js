@@ -380,4 +380,18 @@ export const MIGRATIONS = [
   );
   CREATE INDEX paid_months_recent ON paid_months(workspace_id, product, at);
   `,
+  `
+  -- The change to the 72 hours (src/web/daily.js termsNotices, subscriptions.js graceChange()): a workspace on terms
+  -- accepted before 2026-11-03 (workspaces.terms_version older, or none recorded) is emailed the change once, and keeps
+  -- the 14 days of grace those terms gave for every payment that falls due before change_on, the day after the 30 whole
+  -- days that follow sent_on (an Israel day). One row a workspace, never sent twice, never moved. Deleted with the
+  -- workspace's data (src/accounts/erase.js).
+  CREATE TABLE terms_notices (
+    workspace_id    INTEGER PRIMARY KEY REFERENCES workspaces(id) ON DELETE CASCADE,
+    sent_at         TEXT NOT NULL,
+    sent_on         TEXT NOT NULL,
+    change_on       TEXT NOT NULL,
+    recipients      INTEGER NOT NULL
+  );
+  `,
 ];

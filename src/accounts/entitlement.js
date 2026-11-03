@@ -2,7 +2,7 @@ import { nowIso } from '../core/clock.js';
 import { audit } from '../core/audit.js';
 import { PRODUCTS } from '../db/schema.js';
 import { WorkspaceError, getWorkspace } from './workspaces.js';
-import { endOfIsraelDay, ensureSubscription, graceLast, israelToday, planOut, PLANS } from './subscriptions.js';
+import { endOfIsraelDay, ensureSubscription, graceChange, graceLast, israelToday, planOut, PLANS } from './subscriptions.js';
 
 // The paywall: may this workspace use this product today? Teder and Toran ask at GET /internal/entitlement
 // (docs/setup.md), and accounts' own pages lock what is not paid for. No payment provider is connected yet, so
@@ -17,7 +17,9 @@ import { endOfIsraelDay, ensureSubscription, graceLast, israelToday, planOut, PL
 //   paid       a recorded payment covers today
 //   due        the last paid period is over and the next payment has not come yet: it keeps working for the 72 hours
 //              the terms give (subscriptions.js GRACE_HOURS, graceLast()), the 3 days after the last paid day (4 when
-//              the clocks go forward), while the owners are told (src/web/daily.js); then it is unpaid
+//              the clocks go forward), while the owners are told (src/web/daily.js); then it is unpaid. A workspace on
+//              the terms from before 2026-11-03 keeps their 14 days until its change date (subscriptions.js
+//              graceChange())
 //   unpaid     anything else: on, nothing paid for today (never paid, or the grace is over)
 //
 // allowed = paid || comp || due || (cancelled && today is not past either day). Days are Israel calendar days. A
@@ -30,11 +32,12 @@ export { endOfIsraelDay };
 
 /**
  * What a workspace's product may do, from its rows. Pure.
- *   { enabled, comp, paidUntil, endsOn, cancelledAt } -> { access, allowed, paidUntil, lastDay, graceUntil }
+ *   { enabled, comp, paidUntil, endsOn, cancelledAt, graceChange } -> { access, allowed, paidUntil, lastDay, graceUntil }
  * `lastDay` is the day it stops when it is cancelled, else null. `graceUntil` is the last day of the 72 hours while it
- * is due (graceLast(): the third day after paidUntil, the fourth when the clocks go forward), else null.
+ * is due (graceLast(): the third day after paidUntil, the fourth when the clocks go forward; the old terms' 14 days for
+ * a workspace on them, by its `graceChange`, subscriptions.js), else null.
  */
-export function accessOf({ enabled, comp = false, paidUntil = null, endsOn = null, cancelledAt = null }, today = israelToday()) {
+export function accessOf({ enabled, comp = false, paidUntil = null, endsOn = null, cancelledAt = null, graceChange: change = null }, today = israelToday()) {
   const none = { lastDay: null, graceUntil: null };
   if (!enabled) return { access: 'off', allowed: false, paidUntil, ...none };
   if (comp) return { access: 'comp', allowed: true, paidUntil, ...none };
@@ -43,13 +46,14 @@ export function accessOf({ enabled, comp = false, paidUntil = null, endsOn = nul
     const lastDay = endsOn || paidUntil || today;
     return { access: 'cancelled', allowed: paid && today <= lastDay, paidUntil, lastDay, graceUntil: null };
   }
-  if (!paid && paidUntil && today <= graceLast(paidUntil)) return { access: 'due', allowed: true, paidUntil, lastDay: null, graceUntil: graceLast(paidUntil) };
+  const last = paidUntil ? graceLast(paidUntil, change) : null;
+  if (!paid && paidUntil && today <= last) return { access: 'due', allowed: true, paidUntil, lastDay: null, graceUntil: last };
   return { access: paid ? 'paid' : 'unpaid', allowed: paid, paidUntil, ...none };
 }
 
 /** A workspace's rows for one product, read fresh. Null when there is no such workspace. */
 function rowsOf(db, workspaceId, product) {
-  const w = db.get('SELECT id, disabled_at, deleted_at FROM workspaces WHERE id = ?', Number(workspaceId));
+  const w = db.get('SELECT w.id, w.disabled_at, w.deleted_at, w.terms_version, n.change_on FROM workspaces w LEFT JOIN terms_notices n ON n.workspace_id = w.id WHERE w.id = ?', Number(workspaceId));
   if (!w) return null;
   const wp = db.get('SELECT enabled, comp FROM workspace_products WHERE workspace_id = ? AND product = ?', w.id, product);
   const s = db.get('SELECT paid_until, ends_on, cancelled_at FROM subscriptions WHERE workspace_id = ? AND product = ?', w.id, product);
@@ -66,7 +70,7 @@ export function accessFor(db, workspaceId, product, today = israelToday()) {
   const r = rowsOf(db, workspaceId, product);
   if (!r) return null;
   const enabled = Boolean(r.wp?.enabled) && !r.w.disabled_at && !r.w.deleted_at;
-  const a = accessOf({ enabled, comp: Boolean(r.wp?.comp), paidUntil: r.s?.paid_until ?? null, endsOn: r.s?.ends_on ?? null, cancelledAt: r.s?.cancelled_at ?? null }, today);
+  const a = accessOf({ enabled, comp: Boolean(r.wp?.comp), paidUntil: r.s?.paid_until ?? null, endsOn: r.s?.ends_on ?? null, cancelledAt: r.s?.cancelled_at ?? null, graceChange: graceChange(r.w.terms_version, r.w.change_on) }, today);
   return { workspace: r.w.id, product, enabled, comp: Boolean(r.wp?.comp), cancelled: Boolean(r.s?.cancelled_at), ...a };
 }
 

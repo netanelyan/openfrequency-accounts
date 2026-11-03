@@ -231,7 +231,7 @@ that marks it complimentary or takes that back (`comp_set`, `comp_cleared` in th
 | `comp` | The superadmin marked the product complimentary (free). | true |
 | `cancelled` | The customer cancelled online, or the superadmin set a last day. | until the last day paid for (and the last day, if that is earlier), then false. No grace. |
 | `paid` | A recorded payment covers today (`paid_until` is today or later). | true |
-| `due` | The last paid period is over and the next payment has not come: the 72 hours the terms give after the paid month ends, the 3 Israel days after `paid_until`, to the end of the third (`GRACE_HOURS`, `graceLast()` in src/accounts/subscriptions.js), or of the fourth when the clocks go forward in those days and the 3 days come to 71 hours, so it is never less than 72 (the end of October, 73, stays 3 days). The owners are emailed a week before, the day before, on the first of the 3 days, on the last of them, and when they are over (src/web/daily.js). | true |
+| `due` | The last paid period is over and the next payment has not come: the 72 hours the terms give after the paid month ends, the 3 Israel days after `paid_until`, to the end of the third (`GRACE_HOURS`, `graceLast()` in src/accounts/subscriptions.js), or of the fourth when the clocks go forward in those days and the 3 days come to 71 hours, so it is never less than 72 (the end of October, 73, stays 3 days). A workspace on the terms from before 2026-11-03 keeps their 14 days from the day it fell due for a payment due before its change date ("The terms from before the 72 hours", below). The owners are emailed a week before, the day before, on the first of the 3 days, on the last of them, and when they are over (src/web/daily.js). | true |
 | `unpaid` | Anything else: on, nothing paid for today (never paid, or the grace is over). | false |
 
 They are checked in that order. Days are Israel calendar days.
@@ -267,7 +267,7 @@ The same, field by field, with an example for every status, is `docs/contracts/e
 | `access`, `allowed` | The table above. Decide on `allowed`; `access` says why. |
 | `paidThrough` | The end of the last day paid for, Israel time, as an ISO instant in UTC (the last millisecond of that day), or `null` when nothing was ever paid. It is given whatever the access, so it can be in the past. |
 | `cancelAt` | Set only while `access` is `cancelled`: the end of the last day it works, the same way. Otherwise `null`. |
-| `graceUntil` | Set only while `access` is `due`: the end of the grace's last day, the same way, 72 hours after `paidThrough` (paid until 21.11.2026: `2026-11-24T21:59:59.999Z`), or more in the week of a clock change, never less (paid until 24.3.2027: `2027-03-28T20:59:59.999Z`, 95 hours). Otherwise `null`. |
+| `graceUntil` | Set only while `access` is `due`: the end of the grace's last day, the same way, 72 hours after `paidThrough` (paid until 21.11.2026: `2026-11-24T21:59:59.999Z`), or more in the week of a clock change, never less (paid until 24.3.2027: `2027-03-28T20:59:59.999Z`, 95 hours); for a workspace still on the terms from before 2026-11-03, the end of the 15th day after it (paid until 21.11.2026: `2026-12-06T21:59:59.999Z`). Otherwise `null`. |
 | `plan` | Teder only: its plan, `{ name: "full" \| "small", slideshows, redos }` (40 and 10, or 15 and 4), the month Teder counts for the whole workspace. The full plan when none is recorded. Toran's answer has no `plan`. |
 
 `400 {"error":"bad_workspace"}` for a workspace that is not a positive integer, `400
@@ -392,6 +392,24 @@ run today's again) and keeps each run in `daily_runs`:
   `due` and `stopped`. Not for a product that is complimentary, cancelled, off or never paid, nor
   in a disabled workspace. A payment recorded moves `paid_until` on, and the next period's emails
   follow it.
+- **The terms from before the 72 hours** (`termsNotices`, `terms_notices`). The 72 hours came with
+  the terms of 2026-11-03 (`TERMS_72H` in src/accounts/subscriptions.js; `TERMS_VERSION` in
+  src/accounts/signup.js is that or later). The terms before them gave a payment that did not come
+  14 days, and promise "על שינוי במחיר או בהסכם נודיע לכם לפחות 30 יום מראש". A workspace is on
+  them when `workspaces.terms_version`, the version its owner accepted at sign-up, is older, or
+  when none is recorded (a workspace opened on `/admin`). Each such workspace that can be billed
+  (open, a product on that is not complimentary) is emailed once, to each owner, on the first run
+  (after 2026-11-03, or once it can be billed): "שינוי אחד בהסכם שלנו מ-<change date>", with one
+  button to the terms. `terms_notices` keeps the day it went (`sent_on`) and the change date
+  (`change_on`): the day after the 30 whole days that follow it, so sent on 3.11.2026, the days
+  4.11 to 3.12 pass and the 72 hours apply from 4.12.2026. It never moves and is never sent again.
+  Until then the workspace keeps the 14 days, decided by the day a payment falls due: due before
+  the change date, 14 days from that day, even past it (paid until 21.11: works until 6.12, its
+  `last` email on 6.12; paid until 2.12: until 17.12); due on it or later, the 72 hours (paid
+  until 3.12: until 6.12). The access, `graceUntil`, the emails' days, the home page and `/setup`
+  all follow it. A workspace with no owner to email gets nothing kept and keeps the 14 days; it is
+  tried each day. A complimentary one is emailed once it can be billed, with its own 30 days. A
+  sign-up on today's terms has the 72 hours from the start and is never emailed this.
 - **Retention**, the periods the privacy policy states: a sign-up never confirmed, 30 days after
   the form; magic links, invites, WhatsApp link codes and payment codes, 30 days after they
   ended; sessions, 90 days after they expired or were signed out; the notification log, 90 days;

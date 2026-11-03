@@ -4,6 +4,7 @@ import path from 'node:path';
 import { Db } from '../src/db/index.js';
 import { setNow } from '../src/core/clock.js';
 import { claimPhone, createLinkCode } from '../src/accounts/phones.js';
+import { TERMS_VERSION } from '../src/accounts/signup.js';
 
 // Every test runs against a throwaway OF_HOME and a fresh database, never
 // against ./private/. No key is ever set, so no email can leave the machine.
@@ -33,8 +34,10 @@ export function makeUser(db, email, { superadmin = false, name = '' } = {}) {
  * migration, it is unpaid, as a new sign-up is; `comp: true` marks its products complimentary (free), as every
  * workspace that existed before the paywall is, for the tests that are not about paying.
  */
-export function makeWorkspace(db, slug, { products = ['teder'], members = {}, name = slug, comp = false } = {}) {
-  const id = db.insert('workspaces', { slug, name, created_at: T0 });
+// `terms`: the terms version its owner accepted, as a sign-up keeps it (workspaces.terms_version): today's by default,
+// an older one or null (none recorded, as on /admin) for a workspace on the terms from before the 72 hours.
+export function makeWorkspace(db, slug, { products = ['teder'], members = {}, name = slug, comp = false, terms = TERMS_VERSION } = {}) {
+  const id = db.insert('workspaces', { slug, name, created_at: T0, terms_version: terms });
   for (const p of products) db.insert('workspace_products', { workspace_id: id, product: p, enabled: 1, comp: comp ? 1 : 0, updated_at: T0 });
   for (const [email, role] of Object.entries(members)) {
     const u = db.get('SELECT id FROM users WHERE email = ?', email) || makeUser(db, email);

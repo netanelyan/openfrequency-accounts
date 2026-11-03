@@ -102,11 +102,42 @@ export function endOfIsraelDay(day) {
  */
 export const GRACE_HOURS = 72;
 export const GRACE_DAYS = GRACE_HOURS / 24;
+
+/**
+ * The terms the 72 hours came with: TERMS_VERSION (src/accounts/signup.js) from 2026-11-03. A workspace whose owner
+ * accepted an older version when signing up (workspaces.terms_version), or that has none recorded (opened on /admin,
+ * which records none), is on the old terms. Those gave a payment that did not come 14 days, and promise "על שינוי
+ * במחיר או בהסכם נודיע לכם לפחות 30 יום מראש", so such a workspace keeps the 14 days (OLD_GRACE_DAYS, from the day
+ * the payment fell due) until its change date: the day after the 30 whole days that follow the day its owners were
+ * emailed the change (src/web/daily.js termsNotices, kept in terms_notices; emailed on 3.11.2026, the 72 hours from
+ * 4.12.2026). The date is kept and never moves. A workspace on the old terms never emailed (no owner to email) keeps
+ * the 14 days (NEVER).
+ */
+export const TERMS_72H = '2026-11-03';
+export const OLD_GRACE_DAYS = 14;
+export const NOTICE_DAYS = 30;
+/** A day after every other: the change date of a workspace on the old terms that was never told of the change. */
+export const NEVER = '9999-12-31';
+/** Whether terms accepted at `version` are from before the 72 hours; none recorded counts as before. */
+export const onOldTerms = (version) => !version || String(version) < TERMS_72H;
+/** The change date a workspace's grace follows: null on the new terms (the 72 hours always), else its kept date or NEVER. */
+export const graceChange = (termsVersion, changeOn = null) => (onOldTerms(termsVersion) ? changeOn || NEVER : null);
+/** graceChange() for a workspace, read fresh; null for no such workspace. */
+export function graceChangeOf(db, workspaceId) {
+  const r = db.get('SELECT w.terms_version, n.change_on FROM workspaces w LEFT JOIN terms_notices n ON n.workspace_id = w.id WHERE w.id = ?', Number(workspaceId));
+  return r ? graceChange(r.terms_version, r.change_on) : null;
+}
+
 /**
  * The last day a subscription paid until `paidUntil` still works unpaid: the third day after it, or the fourth when the
- * third would end less than 72 hours after it (paid until 23 to 25 March 2027: the 27th to the 29th).
+ * third would end less than 72 hours after it (paid until 23 to 25 March 2027: the 27th to the 29th). `change` is the
+ * workspace's graceChange(): a payment that falls due (the day after paidUntil) before it has the old terms' 14 days
+ * from that day instead. It is decided by the day it falls due, not by today, so a grace that began under the old terms
+ * runs its 14 days even past the change date (change date 4.12.2026: paid until 2.12, it works until 17.12; paid until
+ * 3.12, until 6.12).
  */
-export function graceLast(paidUntil) {
+export function graceLast(paidUntil, change = null) {
+  if (change && addDays(paidUntil, 1) < change) return addDays(paidUntil, 1 + OLD_GRACE_DAYS);
   const third = addDays(paidUntil, GRACE_DAYS);
   return Date.parse(endOfIsraelDay(third)) - Date.parse(endOfIsraelDay(paidUntil)) < GRACE_HOURS * 3_600_000 ? addDays(third, 1) : third;
 }
@@ -249,7 +280,8 @@ export function paidMonth(paidUntil, today, last = paidUntil) {
 }
 
 /**
- * What the customer sees of one subscription, on a given day. Pure.
+ * What the customer sees of one subscription, on a given day. Pure. `change` is its workspace's graceChange(), for
+ * the day it stops while due.
  *   status   'active' | 'due' (the paid month is over: it works until graceUntil, then stops until paid) | 'ending'
  *            (stopped, its last day ahead) | 'ended' | 'open' (on, no payment recorded yet)
  *   plan     Teder's plan name (PLANS), or null
@@ -259,7 +291,7 @@ export function paidMonth(paidUntil, today, last = paidUntil) {
  *            the paid month is over, or once it has ended
  *   next     the next charge: { on, monthly, vat }, or null when it is ending or ended
  */
-export function describe(s, today = israelToday()) {
+export function describe(s, today = israelToday(), change = null) {
   if (!s) return null;
   const base = { plan: s.plan ?? null, monthly: s.monthly, vat: s.vat, setup: s.setup, started_on: s.started_on, paid_until: s.paid_until, ends_on: s.ends_on };
   if (s.ends_on && s.ends_on < today) return { ...base, status: 'ended', left: 0, period: null, bar: null, next: null };
@@ -268,7 +300,7 @@ export function describe(s, today = israelToday()) {
     return { ...base, status: 'ending', left: daysBetween(today, s.ends_on) + 1, period: bar?.days ?? null, bar, next: null };
   }
   if (!s.paid_until) return { ...base, status: 'open', left: null, period: null, bar: null, next: null };
-  if (s.paid_until < today) return { ...base, status: 'due', left: 0, period: null, bar: null, graceUntil: graceLast(s.paid_until), next: { on: addDays(s.paid_until, 1), monthly: s.monthly, vat: s.vat } };
+  if (s.paid_until < today) return { ...base, status: 'due', left: 0, period: null, bar: null, graceUntil: graceLast(s.paid_until, change), next: { on: addDays(s.paid_until, 1), monthly: s.monthly, vat: s.vat } };
   const bar = paidMonth(s.paid_until, today);
   return {
     ...base,

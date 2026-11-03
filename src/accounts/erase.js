@@ -37,7 +37,7 @@ export function eraseWorkspace(db, workspaceId, { by, ip = null, source = 'owner
     const t = nowIso();
     const people = db.all('SELECT u.id, u.email, u.is_superadmin FROM memberships m JOIN users u ON u.id = m.user_id WHERE m.workspace_id = ?', w.id);
     const invoicesKept = Number(db.run('UPDATE invoices SET customer_name = ?, detached_at = ? WHERE workspace_id = ?', w.name, t, w.id).changes);
-    for (const table of ['signups', 'tokens', 'phone_links', 'user_phones', 'notify_prefs', 'notify_log', 'billing_notices', 'retention_notices', 'pay_codes', 'pay_receipts', 'paid_months', 'subscriptions', 'workspace_products', 'memberships'])
+    for (const table of ['signups', 'tokens', 'phone_links', 'user_phones', 'notify_prefs', 'notify_log', 'billing_notices', 'retention_notices', 'terms_notices', 'pay_codes', 'pay_receipts', 'paid_months', 'subscriptions', 'workspace_products', 'memberships'])
       db.run(`DELETE FROM ${table} WHERE workspace_id = ?`, w.id);
     db.run('UPDATE sessions SET workspace_id = NULL WHERE workspace_id = ?', w.id);
     db.run('UPDATE sessions SET view_as_workspace_id = NULL, view_as_since = NULL WHERE view_as_workspace_id = ?', w.id);
