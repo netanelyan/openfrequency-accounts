@@ -10,6 +10,7 @@ import { eraseWorkspace } from '../src/accounts/erase.js';
 import { TERMS_URL, TERMS_VERSION } from '../src/accounts/signup.js';
 import { billingKind, runDaily } from '../src/web/daily.js';
 import { startProduct } from './setup-fake.js';
+import { createMailer } from '../src/mail/send.js';
 
 // The 72 hours and the terms customers accepted before them (2026-11-03). Those terms gave a payment that did not come
 // 14 days, and promise "על שינוי במחיר או בהסכם נודיע לכם לפחות 30 יום מראש". So a workspace on them (an older
@@ -25,7 +26,9 @@ function setup() {
   const h = tempHome();
   setNow('2026-10-22T07:00:00.000Z');
   const mails = [];
-  const run = (at) => (setNow(at), runDaily(h.db, { env: ENV, mailer: { send: (m) => mails.push(m) }, eraser: { erase: async () => ({ results: {}, ok: true, failed: [] }) }, log: () => {} }));
+  // A stand-in mailer whose every email goes (deliver() answers sent), as Resend answering ok; the real one is below.
+  const mailer = { send: (m) => mails.push(m), deliver: async (m) => (mails.push(m), { sent: true }) };
+  const run = (at) => (setNow(at), runDaily(h.db, { env: ENV, mailer, eraser: { erase: async () => ({ results: {}, ok: true, failed: [] }) }, log: () => {} }));
   // Noa Shop accepted the terms of 1 November and paid a month on 22.10: paid until 21.11.2026.
   const old = makeWorkspace(h.db, 'noa-shop', { name: 'Noa Shop', terms: '2026-11-01', members: { 'noa@example.com': 'client_owner', 'dan@example.com': 'client_owner', 'ron@example.com': 'client_member' } });
   ensureSubscription(h.db, old.id, 'teder');
@@ -96,7 +99,7 @@ test('the notice: once, on the first run, to each owner of each workspace on the
 
     // Kept: the day it went, and the change date, the day after the 30 whole days that follow it (4.11 to 3.12).
     const row = t.db.get('SELECT * FROM terms_notices WHERE workspace_id = ?', t.old.id);
-    assert.deepEqual([row.sent_on, row.change_on, row.recipients], ['2026-11-03', '2026-12-04', 2]);
+    assert.deepEqual([row.sent_on, row.change_on, JSON.parse(row.told_json).length], ['2026-11-03', '2026-12-04', 2]);
     assert.equal(row.sent_at, '2026-11-03T07:00:00.000Z');
     assert.equal(row.change_on, addDays(row.sent_on, NOTICE_DAYS + 1));
     const startOfChange = Date.parse(endOfIsraelDay('2026-12-03')) + 1;
@@ -148,6 +151,97 @@ test('no owner to email: nothing kept, the 14 days stay; an owner later is email
     // The workspace's data deleted: its notice goes with it.
     eraseWorkspace(t.db, lone.id, { by: null });
     assert.equal(t.db.get('SELECT 1 FROM terms_notices WHERE workspace_id = ?', lone.id), null);
+  } finally {
+    t.cleanup();
+  }
+});
+
+// ---- sent means sent: Resend's answer, with the accounts' own mailer (src/mail/send.js deliver())
+
+/** The real mailer against a stand-in for Resend: `answers` is what it says to each email, in order (200 or a status). */
+function resend(answers, { key = 'test-key' } = {}) {
+  const asked = [];
+  const subjects = [];
+  const fetchImpl = async (url, init) => {
+    const body = JSON.parse(init.body);
+    asked.push(body.to[0]);
+    subjects.push([body.to[0], body.subject]);
+    const status = answers.length ? answers.shift() : 200;
+    return new Response(status === 200 ? '{"id":"x"}' : '{"message":"no"}', { status });
+  };
+  return { asked, subjects, mailer: createMailer({ env: { OF_HOME: process.env.OF_HOME, RESEND_API_KEY: key }, fetchImpl, log: () => {} }) };
+}
+const daily = (t, mailer, at, logs = []) => (setNow(at), runDaily(t.db, { env: ENV, mailer, eraser: { erase: async () => ({ results: {}, ok: true, failed: [] }) }, log: (l) => logs.push(l) }));
+const noticeOf = (t) => t.db.get('SELECT * FROM terms_notices WHERE workspace_id = ?', t.old.id);
+
+test('Resend refusing the notice: nothing kept, the 14 days stay, it is logged loudly; the next day it goes, and the 30 days count from then', async () => {
+  const t = setup();
+  try {
+    const { asked, mailer } = resend([500, 500]); // both owners refused on 3.11, then accepted
+    const logs = [];
+    assert.equal((await daily(t, mailer, '2026-11-03T07:00:00.000Z', logs)).notices, 0);
+    assert.deepEqual(asked.sort(), ['dan@example.com', 'noa@example.com']);
+    assert.equal(noticeOf(t), null, 'nothing kept for a notice nobody received');
+    assert.equal(graceChangeOf(t.db, t.old.id), NEVER);
+    const loud = logs.filter((l) => l.startsWith('[terms]'));
+    assert.equal(loud.length, 2);
+    assert.match(loud[0], /^\[terms\] notice to [dn]\*\*\*@example\.com \(workspace \d+\) FAILED: Resend answered 500: \{"message":"no"\}; tried again tomorrow$/);
+    assert.ok(!loud.join().includes('noa@') && !loud.join().includes('dan@'), 'the address masked');
+    // The next run sends both, and the change date is 31 days from that day.
+    assert.equal((await daily(t, mailer, '2026-11-04T07:00:00.000Z')).notices, 1);
+    const row = noticeOf(t);
+    assert.deepEqual([row.sent_on, row.change_on, JSON.parse(row.told_json).length], ['2026-11-04', '2026-12-05', 2]);
+    assert.equal(graceChangeOf(t.db, t.old.id), '2026-12-05');
+    // And never again.
+    asked.length = 0;
+    await daily(t, mailer, '2026-11-05T07:00:00.000Z');
+    assert.deepEqual(asked, []);
+  } finally {
+    t.cleanup();
+  }
+});
+
+test('with no RESEND_API_KEY the notice goes to the outbox and never counts as sent', async () => {
+  const t = setup();
+  try {
+    const mailer = createMailer({ env: { OF_HOME: process.env.OF_HOME }, log: () => {} });
+    assert.equal(mailer.sending, 'outbox');
+    const logs = [];
+    for (const day of ['2026-11-03', '2026-11-04']) assert.equal((await daily(t, mailer, `${day}T07:00:00.000Z`, logs)).notices, 0, day);
+    assert.equal(noticeOf(t), null);
+    assert.equal(graceChangeOf(t.db, t.old.id), NEVER, 'still the 14 days');
+    assert.equal(logs.filter((l) => /^\[terms\] notice to .* FAILED: no RESEND_API_KEY, written to the outbox and not sent; tried again tomorrow$/.test(l)).length, 4, 'two owners, two days');
+  } finally {
+    t.cleanup();
+  }
+});
+
+test('Resend accepting: kept once, with the day of the first email; an owner it refused is tried again the next days under the same date', async () => {
+  const t = setup();
+  try {
+    // Owners in id order: noa first, then dan. Noa's is accepted, Dan's refused, then refused again, then accepted.
+    const { asked, subjects, mailer } = resend([200, 503, 503, 200]);
+    assert.equal((await daily(t, mailer, '2026-11-03T07:00:00.000Z')).notices, 1);
+    let row = noticeOf(t);
+    assert.deepEqual([row.sent_on, row.change_on, row.sent_at], ['2026-11-03', '2026-12-04', '2026-11-03T07:00:00.000Z']);
+    const noa = t.db.get("SELECT id FROM users WHERE email = 'noa@example.com'").id;
+    const dan = t.db.get("SELECT id FROM users WHERE email = 'dan@example.com'").id;
+    assert.deepEqual(JSON.parse(row.told_json), [noa]);
+    await daily(t, mailer, '2026-11-04T07:00:00.000Z');
+    await daily(t, mailer, '2026-11-05T07:00:00.000Z');
+    assert.deepEqual(asked, ['noa@example.com', 'dan@example.com', 'dan@example.com', 'dan@example.com'], 'Noa once, Dan until it went');
+    row = noticeOf(t);
+    assert.deepEqual([row.sent_on, row.change_on, JSON.parse(row.told_json).sort((a, b) => a - b)], ['2026-11-03', '2026-12-04', [noa, dan].sort((a, b) => a - b)], 'the date never moves');
+    assert.equal(t.db.get('SELECT COUNT(*) AS n FROM terms_notices').n, 1);
+    assert.equal(t.db.get("SELECT COUNT(*) AS n FROM audit WHERE action = 'terms_notice_sent'").n, 2, 'one for each run that reached someone');
+    // Done: nothing more, and from the change date on nobody new is emailed it.
+    await daily(t, mailer, '2026-11-06T07:00:00.000Z');
+    t.db.insert('memberships', { user_id: makeUser(t.db, 'late@example.com').id, workspace_id: t.old.id, role: 'client_owner', created_at: '2026-12-04T07:00:00.000Z' });
+    await daily(t, mailer, '2026-12-04T07:00:00.000Z'); // (that day's billing email goes to every owner, through send())
+    await mailer.flush();
+    const notices = subjects.filter(([, subject]) => subject.startsWith('שינוי אחד בהסכם'));
+    assert.deepEqual(notices.map(([to]) => to), ['noa@example.com', 'dan@example.com', 'dan@example.com', 'dan@example.com'], 'no notice to an owner added on the change date');
+    assert.ok(subjects.some(([to, subject]) => to === 'late@example.com' && subject === 'התשלום על החודש החדש של תדר עוד לא הגיע'), 'the billing email reaches them as before');
   } finally {
     t.cleanup();
   }

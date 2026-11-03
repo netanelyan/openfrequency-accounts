@@ -400,9 +400,15 @@ run today's again) and keeps each run in `daily_runs`:
   when none is recorded (a workspace opened on `/admin`). Each such workspace that can be billed
   (open, a product on that is not complimentary) is emailed once, to each owner, on the first run
   (after 2026-11-03, or once it can be billed): "שינוי אחד בהסכם שלנו מ-<change date>", with one
-  button to the terms. `terms_notices` keeps the day it went (`sent_on`) and the change date
-  (`change_on`): the day after the 30 whole days that follow it, so sent on 3.11.2026, the days
-  4.11 to 3.12 pass and the 72 hours apply from 4.12.2026. It never moves and is never sent again.
+  button to the terms. Each is sent with the mailer's `deliver()` (src/mail/send.js), which waits
+  for Resend's answer; only once Resend has accepted the first does `terms_notices` keep the day it
+  went (`sent_on`) and the change date (`change_on`): the day after the 30 whole days that follow
+  it, so sent on 3.11.2026, the days 4.11 to 3.12 pass and the 72 hours apply from 4.12.2026. It
+  never moves. An email Resend refused, or only written to the outbox (no `RESEND_API_KEY`), is not
+  sent: the log says "[terms] notice to n***@example.com (workspace 7) FAILED: ...; tried again
+  tomorrow", nothing is kept, and the next run tries again with 30 days from the day it goes. An
+  owner it did not reach while another got it (`told_json`) is tried each day until the change
+  date, under the same date; an owner added from the change date on is not emailed it.
   Until then the workspace keeps the 14 days, decided by the day a payment falls due: due before
   the change date, 14 days from that day, even past it (paid until 21.11: works until 6.12, its
   `last` email on 6.12; paid until 2.12: until 17.12); due on it or later, the 72 hours (paid

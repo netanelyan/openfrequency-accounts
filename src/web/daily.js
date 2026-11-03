@@ -37,12 +37,16 @@ import { payOverWa } from './pay.js';
 //    change date (subscriptions.js graceChange()), and its emails say so: due on the first of them, last on the 14th.
 //
 //    Before the billing, the change to the 72 hours (termsNotices): each workspace on the old terms that can be billed
-//    (open, with a product on that is not complimentary) is emailed it once, to each owner, on the first run after
+//    (open, with a product on that is not complimentary) is emailed it, to each owner, on the first run after
 //    2026-11-03 or the first once it can be billed: from <change date> a new month's payment that has not come within
 //    72 hours of the end of the paid month stops the service until paid; until then nothing changes; a reminder comes
-//    before each month ends; a button to the terms. Kept in terms_notices with the day it went and the change date,
-//    the day after the 30 whole days that follow it (the terms' 30 days' notice). With no owner to email, nothing is
-//    kept and the workspace keeps the 14 days; it is tried again each day. A complimentary workspace is not emailed
+//    before each month ends; a button to the terms. Each email is sent with the mailer's deliver(), which waits for
+//    Resend: terms_notices is written only once Resend has accepted the first one, with that day and the change date,
+//    the day after the 30 whole days that follow it (the terms' 30 days' notice), and never moves after. An email
+//    Resend refused, or one only written to the outbox (no RESEND_API_KEY), counts as not sent: it is logged loudly and
+//    tried again on the next run, and with none sent nothing is kept, so the 30 days start from the day one is. An
+//    owner not reached while others were is tried again each day until the change date, under the same date. With no
+//    owner to email, nothing is kept and the workspace keeps the 14 days. A complimentary workspace is not emailed
 //    until it can be billed.
 //
 // 2. Retention (ACC-07, PRA-DB-005), the periods the privacy policy states:
@@ -66,6 +70,8 @@ export const RUN_HOUR = 9;
 
 const israelHour = (t) => Number(new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Jerusalem', hour: '2-digit', hourCycle: 'h23' }).format(new Date(t)));
 const isoBefore = (days, t) => new Date(t - days * DAY).toISOString();
+/** An address in a log line: its first letter and its domain ("n***@example.com"). */
+const masked = (email) => String(email).replace(/^(.).*?(@|$)/, (_, a, at) => `${a}***${at}`);
 const ownersOf = (db, workspaceId) =>
   db.all("SELECT u.email FROM memberships m JOIN users u ON u.id = m.user_id WHERE m.workspace_id = ? AND m.role = 'client_owner' AND u.disabled_at IS NULL", workspaceId).map((r) => r.email);
 
@@ -118,30 +124,55 @@ function billing(db, { mailer, env, base, notifyTo, today }) {
 }
 
 /**
- * The change to the 72 hours, emailed once to each workspace on the old terms that can be billed (above, 1). Returns
- * how many workspaces were emailed.
+ * The change to the 72 hours, emailed to each owner of each workspace on the old terms that can be billed (above, 1),
+ * each email awaited (mailer.deliver()). Returns how many workspaces it reached someone in on this run.
  */
-function termsNotices(db, { mailer, today }) {
+async function termsNotices(db, { mailer, today, log }) {
   const rows = db.all(
-    `SELECT w.id, w.name FROM workspaces w
+    `SELECT w.id, w.name, n.change_on, n.told_json FROM workspaces w
+       LEFT JOIN terms_notices n ON n.workspace_id = w.id
       WHERE w.deleted_at IS NULL AND w.disabled_at IS NULL
         AND (w.terms_version IS NULL OR w.terms_version < ?)
-        AND NOT EXISTS (SELECT 1 FROM terms_notices n WHERE n.workspace_id = w.id)
+        AND (n.workspace_id IS NULL OR n.change_on > ?)
         AND EXISTS (SELECT 1 FROM workspace_products wp WHERE wp.workspace_id = w.id AND wp.enabled = 1 AND wp.comp = 0)`,
-    TERMS_72H
+    TERMS_72H,
+    today
   );
-  let sent = 0;
+  // A mailer that cannot say whether an email went (a stand-in without deliver()) never counts as sent.
+  const deliver = (msg) => (typeof mailer.deliver === 'function' ? mailer.deliver(msg) : Promise.resolve({ sent: false, error: 'this mailer cannot confirm a send' }));
+  let reached = 0;
   for (const w of rows) {
-    const to = ownersOf(db, w.id);
-    if (!to.length) continue;
-    const changeOn = addDays(today, NOTICE_DAYS + 1);
-    const fresh = db.run('INSERT INTO terms_notices (workspace_id, sent_at, sent_on, change_on, recipients) VALUES (?, ?, ?, ?, ?) ON CONFLICT DO NOTHING', w.id, nowIso(), today, changeOn, to.length);
-    if (Number(fresh.changes) !== 1) continue;
-    for (const email of to) mailer.send(termsNoticeMail(email, { business: w.name, changeOn, link: `${TERMS_URL}#t-price` }));
-    audit(db, { action: 'terms_notice_sent', workspaceId: w.id, detail: { sent_on: today, change_on: changeOn, recipients: to.length } });
-    sent++;
+    const told = new Set(j(w.told_json, []));
+    const owners = db
+      .all("SELECT u.id, u.email FROM memberships m JOIN users u ON u.id = m.user_id WHERE m.workspace_id = ? AND m.role = 'client_owner' AND u.disabled_at IS NULL ORDER BY u.id", w.id)
+      .filter((o) => !told.has(o.id));
+    if (!owners.length) continue;
+    // Not kept yet: the date if the first email goes today. Kept: its own date, which never moves.
+    const changeOn = w.change_on || addDays(today, NOTICE_DAYS + 1);
+    let now_ = 0;
+    for (const o of owners) {
+      const r = await deliver(termsNoticeMail(o.email, { business: w.name, changeOn, link: `${TERMS_URL}#t-price` }));
+      if (!r.sent) {
+        log(`[terms] notice to ${masked(o.email)} (workspace ${w.id}) FAILED: ${r.outbox ? 'no RESEND_API_KEY, written to the outbox and not sent' : r.error}; tried again tomorrow`);
+        continue;
+      }
+      told.add(o.id);
+      now_++;
+      // Kept at once after each email that went, so a run cut short loses none of them.
+      db.run(
+        'INSERT INTO terms_notices (workspace_id, sent_at, sent_on, change_on, told_json) VALUES (?, ?, ?, ?, ?) ON CONFLICT(workspace_id) DO UPDATE SET told_json = excluded.told_json',
+        w.id,
+        nowIso(),
+        today,
+        changeOn,
+        JSON.stringify([...told])
+      );
+    }
+    if (!now_) continue;
+    audit(db, { action: 'terms_notice_sent', workspaceId: w.id, detail: { change_on: changeOn, now: now_, reached: told.size } });
+    reached++;
   }
-  return sent;
+  return reached;
 }
 
 /**
@@ -227,7 +258,7 @@ export async function runDaily(db, { env = process.env, mailer, log = console.lo
   db.run('INSERT INTO daily_runs (day, started_at) VALUES (?, ?) ON CONFLICT(day) DO UPDATE SET started_at = excluded.started_at', today, at);
   const notifyTo = signupNotify(env);
   const detail = {
-    notices: termsNotices(db, { mailer, today }),
+    notices: await termsNotices(db, { mailer, today, log }),
     billing: billing(db, { mailer, env, base, notifyTo, today }),
     retention: await retention(db, { mailer, base, notifyTo, eraser, log, today, t }),
   };

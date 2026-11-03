@@ -11,7 +11,10 @@ import { ensureDir, outboxDir } from '../core/paths.js';
 //
 // send() returns at once and delivers in the background. The login page answers
 // in the same time whether or not the address has an account, because the slow
-// part (the call to Resend) never happens while the browser waits.
+// part (the call to Resend) never happens while the browser waits. deliver() is
+// for an email whose sending must be known before anything is recorded (the
+// notice of the 72 hours, src/web/daily.js): it waits for Resend's answer, and
+// the outbox never counts as sent.
 
 const RESEND = 'https://api.resend.com/emails';
 
@@ -45,6 +48,24 @@ export function createMailer({ env = process.env, fetchImpl = globalThis.fetch, 
       const p = (async () => (key ? viaResend(msg) : toOutbox(msg)))().catch((e) => log(`mail to ${msg.to} failed: ${e.message}`));
       pending.add(p);
       p.finally(() => pending.delete(p));
+    },
+    /**
+     * Send one email and wait: { sent: true } once Resend answered ok; { sent: false, outbox: true } with no
+     * RESEND_API_KEY (written to the outbox, never sent); { sent: false, error } when Resend refused it or did not
+     * answer within 15 seconds. Never throws, and logs nothing: the caller says what a failure means.
+     */
+    deliver(msg) {
+      const p = (async () => {
+        if (!key) {
+          toOutbox(msg);
+          return { sent: false, outbox: true };
+        }
+        await viaResend(msg);
+        return { sent: true };
+      })().catch((e) => ({ sent: false, error: e.message }));
+      pending.add(p);
+      p.finally(() => pending.delete(p));
+      return p;
     },
     /** Wait for everything queued (the tests, and a clean shutdown). */
     flush: () => Promise.all([...pending]),
