@@ -298,6 +298,18 @@ run('the switch on the main pages, phone and desk: one tap away beside the acces
           const foot = await pg.locator('.site-foot a').boundingBox();
           const [s2, a2] = [await pg.locator('[data-theme-toggle]').boundingBox(), await pg.locator('.a11y-btn').boundingBox()];
           assert.ok(gap(foot, s2) >= 8 && gap(foot, a2) >= 8, `${where}: the foot's link clear of the corner (${gap(foot, s2)}, ${gap(foot, a2)})`);
+          // And nothing of the page itself is under them there: its last words and controls scroll clear of the corner
+          // (main's padding and the foot's row below it). Looked at scrolled to the end, as a phone shows it: a
+          // full-page screenshot draws the corner where the first screen ends, over whatever is there.
+          const under = await pg.evaluate(() => {
+            const corner = [...document.querySelectorAll('.a11y-btn, [data-theme-toggle]')].map((e) => e.getBoundingClientRect());
+            const over = (a, b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
+            const said = (e) => [...e.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim()) || e.matches('a, button, input, select, textarea, progress, img, svg');
+            return [...document.querySelectorAll('main *')]
+              .filter((e) => e.getClientRects().length && said(e) && corner.some((b) => over(e.getBoundingClientRect(), b)))
+              .map((e) => `${e.tagName.toLowerCase()}: ${e.textContent.trim().slice(0, 40)}`);
+          });
+          assert.deepEqual(under, [], `${where}: the page's last content clear of the corner`);
           assert.equal(await pg.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth), 0, `${where}: no sideways scroll`);
         }
         await c.close();
