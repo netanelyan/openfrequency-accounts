@@ -259,3 +259,62 @@ test("the older terms: the dates are accounts' own rule, 14 days from the day it
     await t.done();
   }
 });
+
+test('the number a workspace last paid from gets them too: its latest receipt marked paid, never a waiting or refused one, never after an opt-out, one message with a linked number; Toran\'s "stopped" a line', async () => {
+  const t = await setup();
+  const [ONE, TWO, THREE, FOUR, FIVE] = ['972500000127', '972500000128', '972500000129', '972500000130', '972500000131'];
+  try {
+    /** A receipt from `phone`, decided `decision` ('paid', 'not_paid', or null: still waiting) at `at`. */
+    const receipt = (ws, phone, decision, at) =>
+      t.db.insert('pay_receipts', { workspace_id: ws.id, code: 'PAY-AB2CD3', phone, created_at: at, name: 'shot.png', type: 'image/png', size: 8, file: null, items_json: '{}', decided_at: decision ? at : null, decision });
+    // Paid from a number nobody linked: it gets them.
+    const only = t.shop('only-paid', { owner: 'only@example.com' });
+    receipt(only, GAL, 'paid', '2026-10-22T08:00:00.000Z');
+    // The owner's linked number is the one it paid from: one message, not two.
+    const both = t.shop('both-shop', { owner: 'both@example.com', phone: NOA });
+    receipt(both, NOA, 'paid', '2026-10-22T08:00:00.000Z');
+    // Paid from DAN; since then, a picture from RON marked "לא הגיע" and one from ONE still waiting: DAN alone.
+    const later = t.shop('later-shop', { owner: 'later@example.com' });
+    receipt(later, DAN, 'paid', '2026-10-22T08:00:00.000Z');
+    receipt(later, RON, 'not_paid', '2026-10-23T08:00:00.000Z');
+    receipt(later, ONE, null, '2026-10-24T08:00:00.000Z');
+    // Paid twice, from THREE and then from FOUR: the latest, FOUR.
+    const twice = t.shop('twice-shop', { owner: 'twice@example.com' });
+    receipt(twice, THREE, 'paid', '2026-10-01T08:00:00.000Z');
+    receipt(twice, FOUR, 'paid', '2026-10-22T08:00:00.000Z');
+    // Paid from the owner's linked number, which then said "הפסק": nothing to it, as linked or as paid from.
+    const stopped = t.shop('stopped-shop', { owner: 'stopped@example.com', phone: TWO });
+    receipt(stopped, TWO, 'paid', '2026-10-22T08:00:00.000Z');
+    setNow('2026-11-01T07:00:00.000Z');
+    setConsent(t.db, TWO, { optIn: false, source: 'whatsapp' });
+    // Only waiting and refused receipts, nothing linked: email alone.
+    const none = t.shop('none-shop', { owner: 'none@example.com' });
+    receipt(none, FIVE, 'not_paid', '2026-10-22T08:00:00.000Z');
+    receipt(none, FIVE, null, '2026-10-23T08:00:00.000Z');
+
+    await days(t, '2026-11-21', '2026-11-25');
+    const by = (ws) => t.toran.calls.filter((c) => c.body.workspace === ws.id).map((c) => [c.day, c.body.kind, c.body.phone]);
+    assert.deepEqual(by(only), [['2026-11-21', 'soon1', GAL], ['2026-11-22', 'due', GAL], ['2026-11-24', 'last', GAL]]);
+    assert.deepEqual(by(both), [['2026-11-21', 'soon1', NOA], ['2026-11-22', 'due', NOA], ['2026-11-24', 'last', NOA]], 'one message a kind');
+    assert.deepEqual(by(later), [['2026-11-21', 'soon1', DAN], ['2026-11-22', 'due', DAN], ['2026-11-24', 'last', DAN]]);
+    assert.deepEqual(by(twice).map((c) => c[2]), [FOUR, FOUR, FOUR]);
+    assert.deepEqual(by(stopped), []);
+    assert.deepEqual(by(none), []);
+    for (const email of ['stopped@example.com', 'none@example.com']) assert.equal(subjects(t, email).length, 4, `${email}: soon1, due, last, stopped by email`);
+    // Why each number was on the list, in the audit log.
+    const via = t.db.all("SELECT workspace_id, detail_json FROM audit WHERE action = 'billing_whatsapp' AND detail_json LIKE '%\"kind\":\"due\"%' ORDER BY id").map((r) => [r.workspace_id, JSON.parse(r.detail_json).via]);
+    assert.deepEqual(via, [[only.id, ['paid']], [both.id, ['linked', 'paid']], [later.id, ['paid']], [twice.id, ['paid']]]);
+
+    // "הפסק" from a number accounts knows only by its receipt is Toran's to keep: it answers stopped, a line here.
+    t.toran.state.queue = [{ ok: true, sent: false, why: 'stopped' }];
+    t.logs.length = 0;
+    t.db.run("UPDATE subscriptions SET paid_until = '2026-12-21' WHERE workspace_id = ?", only.id);
+    await t.run('2026-12-21T07:00:00.000Z');
+    assert.deepEqual(t.toran.calls.at(-1).body.phone, GAL);
+    assert.ok(t.logs.some((l) => new RegExp(`^\\[accounts\\] daily: WhatsApp reminder to …0126 \\(workspace ${only.id}, soon1\\) not sent: Toran said stopped; the email went as always$`).test(l)), t.logs.join('\n'));
+    const all = t.logs.join('\n') + JSON.stringify(t.db.all("SELECT detail_json FROM audit WHERE action = 'billing_whatsapp'"));
+    for (const n of [GAL, NOA, DAN, RON, ONE, TWO, THREE, FOUR, FIVE]) assert.ok(!all.includes(n), `${n} in full`);
+  } finally {
+    await t.done();
+  }
+});

@@ -194,6 +194,13 @@ const out = (r) => (r ? { ...r, due: j(r.items_json, { items: [], lines: [], tot
 /** One receipt, with its business and what was owed when it came (`due`), or null. */
 export const receiptById = (db, id) => out(db.get(`${RECEIPT} WHERE r.id = ?`, Number(id)));
 
+/**
+ * The number a workspace last paid from: the phone of its latest receipt the operator marked paid ("התשלום הגיע"), or
+ * null. That number wrote to us about this very payment, and the money was found; one waiting, or marked "לא הגיע", may
+ * be a mistake or someone else's, so it counts for nothing. The payment reminders on WhatsApp go to it (src/web/daily.js).
+ */
+export const paidFrom = (db, workspaceId) => db.get("SELECT phone FROM pay_receipts WHERE workspace_id = ? AND decision = 'paid' ORDER BY decided_at DESC, id DESC LIMIT 1", workspaceId)?.phone ?? null;
+
 /** The receipts nobody has decided on yet, newest first, without their files: the list on /admin. */
 export const receiptsWaiting = (db) =>
   db.all(`SELECT r.id, r.workspace_id, r.phone, r.created_at, r.type, r.items_json, w.name AS business FROM pay_receipts r JOIN workspaces w ON w.id = r.workspace_id WHERE r.decided_at IS NULL AND w.deleted_at IS NULL ORDER BY r.created_at DESC, r.id DESC`).map(out);

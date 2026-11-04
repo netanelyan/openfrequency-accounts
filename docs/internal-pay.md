@@ -46,7 +46,7 @@ button to `OF_SUPPORT_WA`, or the questions button), and no code is made. The se
 | `/setup`'s payment card | The one blue button is "לתשלום בוואטסאפ" (in place of "לשלוח אסמכתא בוואטסאפ"); "איך משלמים: <OF_PAYMENT_METHOD>" stays; under it, in place of the receipt's line, "לוחצים על הכפתור ושולחים את ההודעה כמו שהיא. תורן עונה בוואטסאפ עם הסכום ופרטי ההעברה." In view-as, the same card without its button, and no code is made. |
 | The welcome email | The details, that line, then the button "לתשלום בוואטסאפ", before the setup's button. |
 | The billing emails, soon7, soon1, due, last | The details, that line, and the email's button is "לתשלום בוואטסאפ". "stopped" still leads to the account. |
-| The payment reminders on WhatsApp, soon1, due, last | To an owner's linked number, with the code as its button's payload. These need `OF_PAYMENT_METHOD` alone, since they come from our number already. |
+| The payment reminders on WhatsApp, soon1, due, last | To an owner's linked number and to the number the workspace last paid from (its latest receipt marked "התשלום הגיע"), with the code as its button's payload. These need `OF_PAYMENT_METHOD` alone, since they come from our number already. |
 
 In the HTML part the WhatsApp address is not printed under its button (it would show the
 message's words, encoded); the text part has it, as it has every link.

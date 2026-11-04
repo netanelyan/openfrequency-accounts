@@ -5,8 +5,8 @@ import { PRODUCTS } from '../db/schema.js';
 import { addDays, addMonths, graceChange, graceLast, israelToday, NOTICE_DAYS, TERMS_72H, withVat } from '../accounts/subscriptions.js';
 import { eraseWorkspace, productsEver } from '../accounts/erase.js';
 import { checkoutUrl, payHow, paymentMode, supportWa } from '../accounts/billing.js';
-import { payCodeFor } from '../accounts/pay.js';
-import { ownersOf as linkedNumbers } from '../accounts/phones.js';
+import { paidFrom, payCodeFor } from '../accounts/pay.js';
+import { ownerOf, ownersOf as linkedNumbers, validPhone } from '../accounts/phones.js';
 import { signupNotify, TERMS_URL } from '../accounts/signup.js';
 import { billingMail, billingNoticeMail, idleMail, idleNoticeMail, termsNoticeMail } from '../mail/messages.js';
 import { MAIL, PAY, ils } from './copy.js';
@@ -42,15 +42,18 @@ import { remindClient, REMIND_KINDS } from './remind.js';
 //
 //    On WhatsApp too (whatsappReminders, src/web/remind.js; the owner, 2026-11-03: "add a reminder to pay for the new
 //    month, whatsapp, email and dashboard"): soon1, due and last, never soon7 or stopped, so three a paid month at
-//    most. Each goes once, when its email does (the same billing_notices row), to each number in user_phones of the
-//    workspace's owners whose latest word is not an opt-out ("הפסק"), after the emails and whatever happens to it. A
-//    workspace's products that owe the same kind on the same dates are one message. Only in manual mode with
+//    most. Each goes once, when its email does (the same billing_notices row), after the emails and whatever happens to
+//    it, to each number in user_phones of the workspace's owners whose latest word is not an opt-out, and to the number
+//    the workspace last paid from (pay.js paidFrom(): its latest receipt marked paid), unless that number's latest word
+//    here is an opt-out: each number once. "הפסק" on WhatsApp after a reminder is kept by Toran, which answers stopped
+//    for that number from then on, whoever it is. A workspace's products that owe the same kind on the same dates are
+//    one message. Only in manual mode with
 //    OF_PAYMENT_METHOD set: the message's one button, "לתשלום", carries the workspace's payment code (never shown), and
 //    Toran answers it with the amount and the transfer's details, as it answers "לתשלום בוואטסאפ". Each is handed to
 //    Toran on this machine (POST /internal/pay/remind, docs/contracts/pay-remind.json), which sends the approved
 //    template payment_reminder from our number. Toran not taking one (down, slow, refusing the request) is a line in
-//    the log and stops that run's other reminders; nothing is sent again later. A workspace with no linked number gets
-//    the email alone.
+//    the log and stops that run's other reminders; nothing is sent again later. A workspace with no linked number and
+//    no payment from WhatsApp gets the email alone.
 //
 //    Before the billing, the change to the 72 hours (termsNotices): each workspace on the old terms that can be billed
 //    (open, with a product on that is not complimentary) is emailed it, to each owner, on the first run after
@@ -147,7 +150,7 @@ const lastFour = (phone) => `…${String(phone).slice(-4)}`;
 
 /**
  * Today's billing emails that also go on WhatsApp (above, 1), handed to Toran one by one (`reminder`, src/web/remind.js).
- * Returns { sent, notSent, notTried }: sent by Toran; answered and not sent (already, held, failed); not taken by Toran,
+ * Returns { sent, notSent, notTried }: sent by Toran; answered and not sent (already, held, stopped, failed); not taken,
  * with the run's others after it, which are not tried.
  */
 async function whatsappReminders(db, { env, owed, reminder, log }) {
@@ -166,17 +169,22 @@ async function whatsappReminders(db, { env, owed, reminder, log }) {
   }
   const list = [];
   for (const g of groups.values()) {
-    const phones = linkedNumbers(db, g.workspace).filter((p) => p.role === 'client_owner' && !p.optOut && !p.workspace.disabled);
-    if (!phones.length) continue;
+    // Each number once, with why it is on the list: an owner's linked number, the number it last paid from, or both.
+    const numbers = new Map();
+    const add = (phone, via) => numbers.set(phone, [...(numbers.get(phone) || []), via]);
+    for (const p of linkedNumbers(db, g.workspace)) if (p.role === 'client_owner' && !p.optOut && !p.workspace.disabled) add(p.phone, 'linked');
+    const paid = paidFrom(db, g.workspace);
+    if (paid && validPhone(paid) && !ownerOf(db, paid)?.optOut) add(paid, 'paid');
+    if (!numbers.size) continue;
     const code = payCodeFor(db, g.workspace).code;
     const products = PRODUCTS.filter((p) => g.products.includes(p));
-    for (const p of phones) list.push({ workspace: g.workspace, phone: p.phone, kind: g.kind, business: g.business, products, paidUntil: g.paidUntil, graceUntil: g.graceUntil, code });
+    for (const [phone, via] of numbers) list.push({ via, body: { workspace: g.workspace, phone, kind: g.kind, business: g.business, products, paidUntil: g.paidUntil, graceUntil: g.graceUntil, code } });
   }
   for (let i = 0; i < list.length; i++) {
-    const r = list[i];
+    const { via, body: r } = list[i];
     const who = `WhatsApp reminder to ${lastFour(r.phone)} (workspace ${r.workspace}, ${r.kind})`;
     const a = await reminder.remind(r);
-    audit(db, { action: 'billing_whatsapp', workspaceId: r.workspace, detail: { kind: r.kind, products: r.products, paid_until: r.paidUntil, phone: lastFour(r.phone), outcome: a.taken ? (a.sent ? 'sent' : a.why) : 'not_taken' } });
+    audit(db, { action: 'billing_whatsapp', workspaceId: r.workspace, detail: { kind: r.kind, products: r.products, paid_until: r.paidUntil, phone: lastFour(r.phone), via, outcome: a.taken ? (a.sent ? 'sent' : a.why) : 'not_taken' } });
     if (a.taken && a.sent) {
       out.sent++;
       continue;

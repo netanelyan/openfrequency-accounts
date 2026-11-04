@@ -9,8 +9,9 @@ import { setupBases } from './setup.js';
 //   Authorization: Bearer OF_INTERNAL_TOKEN
 //   { "workspace", "phone", "kind", "business", "products", "paidUntil", "graceUntil", "code" }
 //
-//   200 { ok: true, sent, why }   sent, or not: why is already (it went before), held (Toran's limits for a phone) or
-//                                 failed (Meta refused it or did not answer)
+//   200 { ok: true, sent, why }   sent, or not: why is already (it went before), held (Toran's limits for a phone),
+//                                 stopped (the number wrote "הפסק" after a reminder) or failed (Meta refused it or did
+//                                 not answer)
 //   anything else                 (another status, no answer in REMIND_MS, no token configured): Toran did not take it
 //
 // Never throws: every answer is an outcome, and the caller logs it. Nothing is ever sent again: the email beside it is
@@ -21,7 +22,7 @@ export const REMIND_PATH = '/internal/pay/remind';
 /** The billing emails that also go on WhatsApp: the last paid day, the first day after it, the last day of the grace. */
 export const REMIND_KINDS = ['soon1', 'due', 'last'];
 const MIN_TOKEN = 32;
-const WHY = ['already', 'held', 'failed'];
+const WHY = ['already', 'held', 'stopped', 'failed'];
 
 export function remindClient({ env = process.env, fetchImpl = globalThis.fetch, timeoutMs = REMIND_MS } = {}) {
   const base = setupBases(env).toran;

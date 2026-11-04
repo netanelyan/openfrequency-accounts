@@ -399,8 +399,13 @@ run today's again) and keeps each run in `daily_runs`:
   (below): on 21.11, 22.11 and 6.12. Each goes once, when its email does (the same
   `billing_notices` row; a day run again sends nothing twice), after that day's emails, to each
   number in `user_phones` of the workspace's owners (`client_owner`; not a member's, and not one
-  whose latest word is an opt-out, "הפסק" on WhatsApp). A workspace with no linked number gets the
-  email alone. A workspace's products that owe the same kind on the same dates are one message.
+  whose latest word is an opt-out), and to the number the workspace last paid from (the phone of
+  its latest receipt marked "התשלום הגיע", src/accounts/pay.js `paidFrom`; never a receipt still
+  waiting or marked "לא הגיע"), unless that number's latest word here is an opt-out: each number
+  once, and the audit says why it was on the list (`via`: linked, paid, or both). "הפסק" written
+  to our number after a reminder is Toran's to keep, for any number (docs/internal-owner-phone.md),
+  and Toran answers `stopped` for it from then on. A workspace with neither gets the email alone.
+  A workspace's products that owe the same kind on the same dates are one message.
 
   Only in manual mode with `OF_PAYMENT_METHOD` set (else one line in the log, "... would also go
   on WhatsApp, and none does: ..."): the message's one button, "לתשלום", carries the workspace's
@@ -420,8 +425,9 @@ run today's again) and keeps each run in `daily_runs`:
 
   `paidUntil` and `graceUntil` are ours (`graceLast()`, with the workspace's terms), and Toran
   counts no day itself. Toran answers `200 { ok, sent, why }`; `why` is `already` (it went to that
-  phone before), `held` (Toran's limit, 3 to a phone in 7 days, or the hour after Meta refused one)
-  or `failed` (Meta refused or did not answer): a line in our log, "[accounts] daily: WhatsApp
+  phone before), `held` (Toran's limit, 3 to a phone in 7 days, or the hour after Meta refused one),
+  `stopped` (the number wrote "הפסק") or `failed` (Meta refused or did not answer): a line in our
+  log, "[accounts] daily: WhatsApp
   reminder to …0123 (workspace 7, due) not sent: Toran said held; the email went as always", and the
   next one is tried. Anything else (Toran down, 20 seconds with no answer, another status,
   `OF_INTERNAL_TOKEN` unset) is a line, "... Toran did not take it (ECONNREFUSED); the email went as

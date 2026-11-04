@@ -111,9 +111,21 @@ when `optIn` is set and `optOut` is null.** Sources are `accounts` (the box on t
 the toggle on the home page) and whatever Toran sends (`whatsapp`).
 
 The reminders to pay for the new month (docs/setup.md, "The daily jobs"; since 2026-11-03) are
-not updates: they are about the owner's own subscription, the same as its billing emails. They go
-to an owner's number with no opt-in recorded too, and never to one whose `optOut` is set (a
-"הפסק" on WhatsApp is the latest word). A member's number never gets them.
+not updates: they are billing messages about the workspace's own subscription, the same as its
+billing emails. They go to the workspace's owners' linked numbers, with no opt-in recorded too,
+and to the number it last paid from: the phone of its latest receipt the operator marked paid
+(src/accounts/pay.js `paidFrom`), which wrote to us about that payment, whoever it is linked to
+(a receipt still waiting, or marked "לא הגיע", counts for nothing). Each number gets one message.
+They never go after "הפסק":
+
+- a number whose `optOut` is set here (the latest word, from the home page or a "הפסק" Toran
+  told us) gets none, as linked or as paid from;
+- "הפסק" written to our number after a reminder is kept by Toran (its `pay_remind_stops`), for
+  any number, including one linked to nobody here, and it answers `stopped` for it until the
+  number writes "התחל". Toran also tells us through `consent` above, which counts for a linked
+  number.
+
+A member's linked number never gets them, unless it is the number the workspace paid from.
 
 ## The routes
 
