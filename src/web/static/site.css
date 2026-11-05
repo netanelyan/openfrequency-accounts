@@ -878,3 +878,8 @@ html.a-still *, html.a-still *::before, html.a-still *::after { animation: none 
 html.a-contrast { --ink-2: #1d1d1f; --ink-3: #424245; --ink-p: #1d1d1f; --line: #8e8e93; --line-2: #424245; --surface: #ffffff; --surface-hi: #ffffff; --edge: #424245; --inset: #ffffff; --field: #ffffff; --bar-float: #fff4e5; --bar-edge: #a44200; }
 html.a-contrast[data-theme='dark'] { --ink-2: #f5f5f7; --ink-3: #e5e5ea; --ink-p: #f5f5f7; --line: #8e8e93; --line-2: #d2d2d7; --surface: #000000; --surface-hi: #000000; --edge: #d2d2d7; --inset: #000000; --field: #000000; --bar-float: #2d1f08; --bar-edge: #ff9f0a; }
 html.a-contrast[data-theme='dark'] .a11y-p { background: #000000; }
+
+/* On a phone a field is never under 16px: an iPhone zooms the page in on tapping a smaller one (the owner, 2026-11-05,
+   "make zooming in on mobile not available"). Pinch-zoom itself stays: blocking it fails WCAG 1.4.4 and the
+   accessibility statement, and Safari ignores user-scalable=no anyway. */
+@media (max-width: 699px) { input, select, textarea { font-size: max(16px, 1em) !important; } }
