@@ -1037,6 +1037,11 @@ export const OPS = {
   tabToday: 'היום',
   tabAccounts: 'חשבונות',
   tabToran: 'תורן',
+  tabTeder: 'תדר',
+  tools: 'הכלים של תדר',
+  toolTederLeads: 'הלידים של תדר',
+  toolTederDemos: 'הדמואים',
+  toolTederAll: 'כל החשבונות בתדר',
   pageTitle: 'מה עושים היום',
 
   kpiContact: 'לפנות היום',

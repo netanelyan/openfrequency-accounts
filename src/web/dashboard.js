@@ -1,6 +1,6 @@
 import { opsCustomersStage, opsMoney } from '../accounts/ops.js';
 import { OPS, PAY, PRODUCT_NAMES, agoHe, dayHe, ils, stampHe } from './copy.js';
-import { adminTop, csrfField, esc, productMark } from './html.js';
+import { adminTop, csrfField, esc, productMark, tederBase } from './html.js';
 import { LOST_REASONS } from './toran.js';
 
 // The operator's dashboard, /admin: who to write to today about Toran or Teder, with the message ready; who asked
@@ -278,6 +278,7 @@ ${d.noContact.length ? `<details class="card no-contact"><summary>${esc(OPS.noCo
 ${d ? numberLine(d.demoLine) : ''}
 ${receiptsSection(receipts, at)}
 ${kpis}
+<nav class="row tools" aria-label="${esc(OPS.tools)}">${[['leads', OPS.toolTederLeads], ['demos', OPS.toolTederDemos], ['all', OPS.toolTederAll]].map(([path, label]) => `<a class="button" href="${esc(tederBase() + path)}">${esc(label)}</a>`).join('')}</nav>
 ${d && !d.teder.ok ? `<p class="muted note">${esc(OPS.tederStale)}</p>` : ''}
 <section id="contact"><div class="list-h"><h2>${esc(OPS.contactTitle)}</h2><p class="muted">${esc(OPS.contactOrder)}</p></div>
 ${contact}

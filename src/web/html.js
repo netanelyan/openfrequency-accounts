@@ -765,8 +765,15 @@ ${error ? `<p class="error" role="alert">${esc(error)}</p>` : ''}
  */
 export const adminTop = ({ csrf, tab }) => {
   const a = (href, label, on) => `<a href="${href}"${on ? ' aria-current="page"' : ''}>${esc(label)}</a>`;
-  return `<header class="top admin-top"><div class="brand">${ofMark()}<h1>${esc(tab === 'today' ? OPS.pageTitle : T.adminTitle)}</h1></div><nav class="tabs" aria-label="${esc(OPS.tabs)}">${a('/admin', OPS.tabToday, tab === 'today')}${a('/admin/accounts', OPS.tabAccounts, tab === 'accounts')}${a('/admin/toran/', OPS.tabToran, false)}</nav>${button('/logout', T.adminSignOut, csrf, { kind: 'quiet' })}</header>`;
+  return `<header class="top admin-top"><div class="brand">${ofMark()}<h1>${esc(tab === 'today' ? OPS.pageTitle : T.adminTitle)}</h1></div><nav class="tabs" aria-label="${esc(OPS.tabs)}">${a('/admin', OPS.tabToday, tab === 'today')}${a('/admin/accounts', OPS.tabAccounts, tab === 'accounts')}${a('/admin/toran/', OPS.tabToran, false)}${a(esc(`${tederBase()}leads`), OPS.tabTeder, false)}</nav>${button('/logout', T.adminSignOut, csrf, { kind: 'quiet' })}</header>`;
 };
+
+/**
+ * Teder's own address (TEDER_URL, as app.js productUrls reads it), with a slash at its end: its operator pages are
+ * there, on Teder's host, signed in with the same account (the owner, 2026-11-05: "admin dashboard should be the
+ * workspace, with everything in there"): the leads to write to, the demos, and every account at once.
+ */
+export const tederBase = (env = process.env) => (String(env.TEDER_URL || '').trim() || 'https://teder.openfrequency.co.il/').replace(/\/?$/, '/');
 
 const roleSelect = (name) =>
   `<select name="${name}" aria-label="${esc(T.inviteRole)}">${['client_member', 'client_owner'].map((r) => `<option value="${r}">${esc(ROLE_NAMES[r])}</option>`).join('')}</select>`;
