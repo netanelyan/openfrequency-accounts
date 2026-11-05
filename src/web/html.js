@@ -521,9 +521,8 @@ function stepRow(s, { readOnly, first, locked = false }) {
  * today, a month that falls due within the week (PAY_AHEAD_DAYS, the days of the billing emails a week and a day
  * before, and of Teder's banner "אפשר כבר לשלם על החודש הבא") is offered ahead. The step stays done then (the setup is
  * not behind), and the card shows that month, its total and how to pay, with the same one button. Paying over WhatsApp
- * (`payWa`, from src/web/pay.js payOverWa(): manual mode with the owner's payment details and OF_ASSISTANT_WA both set)
- * changes only this, and only while something is owed: the one blue button is "לתשלום בוואטסאפ", to our owner line
- * with the message written, and the line under the details says to send it as it is, in place of the receipt's line.
+ * (`payWa`, from src/web/pay.js payOverWa(): manual mode with the owner's payment details and OF_ASSISTANT_WA both set),
+ * while something is owed, is its own card (payWaCard()): the amount, one line and the one blue button.
  * Read-only (view-as) shows the card the customer sees, without its button.
  */
 function billingCard(b, { readOnly, first, products, access, prices, payHow = '', payWa = null }) {
@@ -543,11 +542,9 @@ function billingCard(b, { readOnly, first, products, access, prices, payHow = ''
   const wa = /^https:\/\/wa\.me\//.test(href || '');
   const overWa = Boolean(payWa && payHow && !checkout && open && due.items.length);
   const label = checkout ? SETUP.billingPay : wa ? (payHow ? SETUP.billingSendReceipt : SETUP.billingWrite) : SETUP.billingContact;
-  const btn = overWa
-    ? payWa.href && !readOnly
-      ? `<a class="button ${first() ? 'primary' : 'quiet'}" href="${esc(payWa.href)}">${esc(PAY.button)}</a>`
-      : ''
-    : open && href && !readOnly
+  if (overWa) return payWaCard({ done, due, readOnly, first, payWa });
+  const btn =
+    open && href && !readOnly
       ? `<a class="button ${checkout && first() ? 'primary' : 'quiet'}" href="${esc(href)}">${esc(label)}</a>`
       : '';
   const lines = due.lines
@@ -563,7 +560,7 @@ function billingCard(b, { readOnly, first, products, access, prices, payHow = ''
     .join('');
   const now = due.items.length ? due : null;
   const then = due.monthsAfter;
-  const after = `<p class="pay-receipt">${esc(overWa ? PAY.explain : SETUP.billingReceipt(wa))}</p>`;
+  const after = `<p class="pay-receipt">${esc(SETUP.billingReceipt(wa))}</p>`;
   return `<section class="card setup-p" id="setup-billing"><header><div><h2>${esc(SETUP.billingTitle)}</h2></div><span class="tag${done ? '' : ' off'}">${esc(done ? SETUP.ready : SETUP.notReady)}</span></header>
 <ol class="steps"><li class="step st-${done ? 'done' : 'todo'}"><span class="chip">${esc(SETUP.status[done ? 'done' : 'todo'])}</span><span class="what"><b>${esc(SETUP.billingStep)}</b><small>${esc(detail)}</small></span>${btn}</li></ol>
 ${lines ? `<ul class="prices">${lines}</ul>` : ''}
@@ -571,6 +568,36 @@ ${open && now ? `<p class="pay-total"><b>${esc(SETUP.billingNow(ils(now.total), 
 ${open && payHow ? `<p>${esc(SETUP.billingHow(payHow))}</p>` : ''}
 ${open && payHow && !checkout ? after : ''}
 ${open && !checkout ? `<p class="muted">${esc(SETUP.billingAsk(wa))}</p>` : ''}
+</section>`;
+}
+
+/**
+ * The payment card when paying over WhatsApp (the owner, 2026-11-05: "do a לתשלום אוטומטי בווצאפ button, the
+ * information should be there. No unnecessary info on the page"): the amount with VAT, large; one line, what each
+ * product's payment is for (its plan, and the month: the first with the setup fee, the new one, or the one that starts
+ * on a day) and then, in the 72 hours, the day it works until, or that it is stopped, or that it opens once paid; and
+ * "לתשלום אוטומטי בוואטסאפ". The transfer's details, the receipt (אסמכתא) and the breakdown of the VAT are Toran's
+ * answer there (GET /internal/pay). `due` is dueOf() with something owed; no button read-only, or without a code.
+ */
+function payWaCard({ done, due, readOnly, first, payWa }) {
+  const owed = due.lines.filter((l) => l.item);
+  const what = owed.map((l) =>
+    SETUP.payFor(productLabel(l.product, l.plan), { from: l.kind === 'ahead' && l.paidUntil ? dayHe(addDays(l.paidUntil, 1)) : '', first: l.kind === 'owed' && l.item.firstMonth, setup: l.item.setup > 0 })
+  );
+  const names = (ls) => ls.map((l) => PRODUCT_NAMES[l.product]).join(SETUP.and);
+  const grace = owed.filter((l) => l.kind === 'due' && l.graceUntil);
+  const stopped = owed.filter((l) => l.kind === 'owed' && !l.item.firstMonth);
+  const fresh = owed.filter((l) => l.kind === 'owed' && l.item.firstMonth);
+  const when = [
+    grace.length ? SETUP.payDue(names(grace), weekdayHe(grace.map((l) => l.graceUntil).sort()[0]), grace.length > 1) : '',
+    stopped.length ? SETUP.payStopped(names(stopped), stopped.length > 1) : '',
+    fresh.length ? opensAfter('manual', names(fresh), fresh.length > 1) : '',
+  ].filter(Boolean);
+  const btn = payWa.href && !readOnly ? `<p class="pay-go"><a class="button ${first() ? 'primary' : 'quiet'}" href="${esc(payWa.href)}">${esc(PAY.button)}</a></p>` : '';
+  return `<section class="card setup-p pay-wa" id="setup-billing"><header><div><h2>${esc(SETUP.billingTitle)}</h2></div><span class="tag${done ? '' : ' off'}">${esc(done ? SETUP.ready : SETUP.notReady)}</span></header>
+<p class="pay-amount"><b>${esc(ils(due.total))}</b> <span>${esc(T.vatIncluded)}</span></p>
+<p class="pay-for">${esc([...what, ...when].join(' '))}</p>
+${btn}
 </section>`;
 }
 

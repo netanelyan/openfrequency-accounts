@@ -12,9 +12,13 @@ import { payAnswer } from '../src/web/pay.js';
 import { RETENTION, runDaily } from '../src/web/daily.js';
 import { startProduct } from './setup-fake.js';
 
-// Paying over WhatsApp, as people see it: the customer's one button on /setup and in the welcome and billing emails
-// (only in manual mode with OF_PAYMENT_METHOD and OF_ASSISTANT_WA both set; otherwise everything says what it said
-// before), and the operator's side on /admin: the receipts waiting near the top, each one's page with its picture, and
+// Paying over WhatsApp, as people see it: the customer's one button, "לתשלום אוטומטי בוואטסאפ", on /setup and in the
+// welcome and billing emails (only in manual mode with OF_PAYMENT_METHOD and OF_ASSISTANT_WA both set; otherwise
+// everything says what it said before). The owner, 2026-11-05: "do a לתשלום אוטומטי בווצאפ button, the information
+// should be there. No unnecessary info on the page", and "No need to write OpenFrequency each time, in the payment
+// message": the card is the amount, one line and the button; the transfer's details and the receipt (אסמכתא) are in
+// Toran's answer; the message is the one docs/internal-pay.md gives, the business and the code, without "OpenFrequency".
+// Payment is a bank transfer, so nothing anywhere says to pay on WhatsApp. and the operator's side on /admin: the receipts waiting near the top, each one's page with its picture, and
 // the two buttons, "התשלום הגיע" (a month recorded, guarded like the console's button, the owners told) and "לא הגיע"
 // (nothing recorded). Then the days the privacy policy gives: the codes, and the pictures.
 
@@ -25,8 +29,16 @@ const T0 = '2026-10-22T10:00:00.000Z';
 const BASE = 'https://accounts.openfrequency.co.il';
 const PNG = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.from('the rest of a picture')]);
 const PDF = Buffer.from('%PDF-1.7\n% a transfer\n%%EOF\n');
+// The message the button writes, as docs/internal-pay.md has it: the business and the code, and no "OpenFrequency".
 const PAY_TEXT = (business, code) => `היי, אני רוצה לשלם על המנוי של ${business}. ${code}`;
-const EXPLAIN = 'לוחצים על הכפתור ושולחים את ההודעה כמו שהיא. תורן עונה בוואטסאפ עם הסכום ופרטי ההעברה.';
+// "שלמו בוואטסאפ", "לשלם בווצאפ", the old "לתשלום בוואטסאפ": never said to a customer.
+const PAY_ON_WA = /(שלמו|לשלם|משלמים|לתשלום)\s+(לנו\s+)?(ב|דרך\s+)?וו?[אצ]ט?ס?אפ/;
+/** What the card and the emails no longer say once WhatsApp gives it: the details, the receipt, the steps. */
+function assertNothingElse(where, what) {
+  assert.ok(!what.includes('12-345-678901'), `${where}: no transfer details`);
+  assert.doesNotMatch(what, /איך משלמים|אסמכתא|לוחצים על הכפתור|כמו שהיא/, where);
+  assert.doesNotMatch(what, PAY_ON_WA, `${where}: nothing says to pay on WhatsApp`);
+}
 
 async function site(env = WA) {
   const h = tempHome();
@@ -50,19 +62,26 @@ const waText = (href) => new URL(href.replace(/&amp;/g, '&')).searchParams.get('
 
 // ---- the customer
 
-test('/setup with both settings: one blue "לתשלום בוואטסאפ" to our owner line with the code in the message, the details kept, the line under them; the code stays the same', async () => {
+test('/setup with both settings: the amount with VAT, one line, and one blue "לתשלום אוטומטי בוואטסאפ" to our owner line with the business and the code in the message and no "OpenFrequency"; no details, no steps, no receipt line; the code stays the same', async () => {
   const t = await site();
   try {
     const b = signedIn(t, t.db, t.noa);
     const billing = billingOf((await b.get('/setup')).body);
-    const m = /<a class="button primary" href="(https:\/\/wa\.me\/972500000200\?text=[^"]+)">לתשלום בוואטסאפ<\/a>/.exec(billing);
+    const m = /<p class="pay-go"><a class="button primary" href="(https:\/\/wa\.me\/972500000200\?text=[^"]+)">לתשלום אוטומטי בוואטסאפ<\/a><\/p>/.exec(billing);
     assert.ok(m, billing);
     const { code } = t.db.get('SELECT code FROM pay_codes WHERE workspace_id = ?', t.ws.id);
     assert.match(code, PAY_CODE);
     assert.equal(waText(m[1]), PAY_TEXT('Noa Shop', code));
-    assert.match(billing, /<p class="pay-total"><b>סך הכול לתשלום עכשיו: 1,746\.40 ₪, כולל מע״מ \(1,480 ₪ ועוד 266\.40 ₪ מע״מ\)\.<\/b> אחר כך 578\.20 ₪ לחודש, כולל מע״מ\.<\/p>/);
-    assert.ok(billing.includes(`<p>איך משלמים: ${HOW}</p>\n<p class="pay-receipt">${EXPLAIN}</p>`), billing);
-    assert.doesNotMatch(billing.replace(m[1], ''), /אסמכתא|לשלוח אסמכתא בוואטסאפ|PAY-/, 'no receipt button or line, and the code only in the link');
+    assert.equal(waText(m[1]), `היי, אני רוצה לשלם על המנוי של Noa Shop. ${code}`);
+    assert.doesNotMatch(waText(m[1]), /OpenFrequency/i, 'the message does not name OpenFrequency');
+    // The amount with VAT, as payTotal() works it out (490 ₪ and the setup fee of 990 ₪, with 18% VAT), large; then
+    // what it is for, and when Teder opens.
+    assert.ok(billing.includes('<p class="pay-amount"><b>1,746.40 ₪</b> <span>כולל מע״מ</span></p>'), billing);
+    assert.ok(billing.includes('<p class="pay-for">תדר, החבילה הקטנה: החודש הראשון ודמי ההקמה. תדר נפתח אחרי שהתשלום מגיע אלינו.</p>'), billing);
+    assert.match(billing, /<span class="tag off">עוד לא מוכן<\/span>/);
+    assertNothingElse('/setup', billing);
+    assert.doesNotMatch(billing, /class="steps"|class="prices"|pay-total|יש שאלה על התשלום|OpenFrequency/, 'nothing else on the card');
+    assert.doesNotMatch(billing.replace(m[1], ''), /PAY-/, 'the code only in the link');
     assert.equal((billing.match(/class="button /g) || []).length, 1, 'one button');
     // Again: the same code, one row.
     assert.equal(waText(/href="(https:\/\/wa\.me\/[^"]+)"/.exec(billingOf((await b.get('/setup')).body))[1]), PAY_TEXT('Noa Shop', code));
@@ -72,7 +91,7 @@ test('/setup with both settings: one blue "לתשלום בוואטסאפ" to our
     payMonth(t.db, t.ws.id, 'teder', { by: null });
     const paid = billingOf((await b.get('/setup')).body);
     assert.match(paid, /המנוי שולם\./);
-    assert.doesNotMatch(paid, /לתשלום בוואטסאפ|wa\.me/);
+    assert.doesNotMatch(paid, /לתשלום אוטומטי|wa\.me|pay-wa/);
   } finally {
     await t.done();
   }
@@ -88,7 +107,8 @@ test('/setup without one of the two settings, or with a provider: what it said b
     try {
       const billing = billingOf((await signedIn(t, t.db, t.noa).get('/setup')).body);
       check(billing);
-      assert.doesNotMatch(billing, /לתשלום בוואטסאפ|972500000200|לוחצים על הכפתור/, JSON.stringify(env));
+      assert.doesNotMatch(billing, /לתשלום אוטומטי|972500000200|pay-wa/, JSON.stringify(env));
+      assert.doesNotMatch(billing, PAY_ON_WA, JSON.stringify(env));
       assert.equal(t.db.get('SELECT COUNT(*) AS n FROM pay_codes').n, 0);
     } finally {
       await t.done();
@@ -98,14 +118,14 @@ test('/setup without one of the two settings, or with a provider: what it said b
 
 // The week before the next month (Teder's banner, "אפשר כבר לשלם על החודש הבא", leads here): /setup offers it, as
 // Toran quotes it (dueForPay()) and as the billing emails a week and a day before ask for it, on the same days.
-test('/setup in the week before the next month: the month ahead, its total and the one button, from 7 days before it falls due to the last paid day', async () => {
+test('/setup in the week before the next month: the month ahead, its amount and the one button, from 7 days before it falls due to the last paid day; then the 72 hours with their last day, and stopped', async () => {
   const t = await site();
   try {
     payMonth(t.db, t.ws.id, 'teder', { by: null }); // paid until 21.11.2026, the small plan: 490 ₪ before VAT
     const mails = [];
     const daily = (at) => runDaily(t.db, { env: { PUBLIC_HOST: 'accounts.openfrequency.co.il', ...WA }, mailer: { send: (m) => mails.push(m) }, eraser: { erase: async () => ({ results: {}, ok: true, failed: [] }) }, log: () => {} });
-    const LINE = '<li>תדר, החבילה הקטנה: 490 ₪ לחודש, לא כולל מע״מ, על החודש שמתחיל ב-22.11.2026</li>';
-    const TOTAL = 'סך הכול לתשלום עכשיו: 578.20 ₪, כולל מע״מ (490 ₪ ועוד 88.20 ₪ מע״מ).';
+    const AMOUNT = '<p class="pay-amount"><b>578.20 ₪</b> <span>כולל מע״מ</span></p>';
+    const BUTTON_RE = /<p class="pay-go"><a class="button primary" href="(https:\/\/wa\.me\/972500000200\?text=[^"]+)">לתשלום אוטומטי בוואטסאפ<\/a><\/p>/;
     const day = async (at) => {
       setNow(at);
       return billingOf((await signedIn(t, t.db, t.noa).get('/setup')).body);
@@ -119,18 +139,19 @@ test('/setup in the week before the next month: the month ahead, its total and t
     assert.deepEqual(dueForPay(t.db, t.ws.id).items, []);
 
     // From the 15th (6 days before the last paid day, the day soon7 goes) to the 21st (the last paid day, soon1's): the
-    // step stays done, and the card offers the next month, what Toran would quote, with "לתשלום בוואטסאפ".
+    // step stays done (the tag says ready), and the card offers the next month, what Toran would quote, with the button.
     for (const at of ['2026-11-15T07:00:00.000Z', '2026-11-18T10:00:00.000Z', '2026-11-21T21:00:00.000Z']) {
       card = await day(at);
-      assert.match(card, /<li class="step st-done"><span class="chip">✓ בוצע<\/span><span class="what"><b>התשלום על המנוי<\/b><small>המנוי שולם\. אפשר כבר לשלם על החודש הבא\.<\/small><\/span><a class="button primary" href="https:\/\/wa\.me\/972500000200\?text=[^"]+">לתשלום בוואטסאפ<\/a><\/li>/, at);
-      assert.ok(card.includes(LINE), at);
-      assert.ok(card.includes(`<b>${TOTAL}</b>`), at);
-      assert.ok(card.includes(`איך משלמים: ${HOW}`) && card.includes(EXPLAIN), at);
+      assert.match(card, /<span class="tag">מוכן<\/span>/, at);
+      assert.ok(card.includes(AMOUNT), at);
+      assert.ok(card.includes('<p class="pay-for">תדר, החבילה הקטנה: החודש שמתחיל ב-22.11.2026.</p>'), at);
+      assert.match(card, BUTTON_RE, at);
+      assertNothingElse(at, card);
       assert.equal((card.match(/<a class="button/g) || []).length, 1, `${at}: one button`);
       const due = dueForPay(t.db, t.ws.id);
       assert.deepEqual([due.total, due.lines[0].kind, due.lines[0].paidUntil], [578.2, 'ahead', '2026-11-21'], at);
       const { code } = t.db.get('SELECT code FROM pay_codes WHERE workspace_id = ?', t.ws.id);
-      assert.equal(waText(/href="([^"]+)">לתשלום בוואטסאפ/.exec(card)[1]), PAY_TEXT('Noa Shop', code), at);
+      assert.equal(waText(BUTTON_RE.exec(card)[1]), PAY_TEXT('Noa Shop', code), at);
       // The billing email of that week, the same day: the same month, the same amount, the same button.
       if (at.startsWith('2026-11-15') || at.startsWith('2026-11-21')) {
         mails.length = 0;
@@ -138,16 +159,31 @@ test('/setup in the week before the next month: the month ahead, its total and t
         const m = mails.find((x) => x.to === 'noa@example.com');
         assert.equal(m.subject, 'התשלום הבא על תדר: 22.11.2026', at);
         assert.ok(m.text.includes('מתחיל ב-22.11.2026. הסכום: 490 ₪ ועוד מע״מ, 578.20 ₪ בסך הכול.'), at);
-        assert.equal(m.link, /href="([^"]+)">לתשלום בוואטסאפ/.exec(card)[1].replace(/&amp;/g, '&'), `${at}: the email's button is the card's`);
+        assert.equal(m.link, BUTTON_RE.exec(card)[1].replace(/&amp;/g, '&'), `${at}: the email's button is the card's`);
       }
     }
 
-    // The first day after it: the payment is owed now, and the card is the due one.
-    card = await day('2026-11-22T10:00:00.000Z');
-    assert.match(card, /<li class="step st-todo">/);
-    assert.match(card, /<li>תדר, החבילה הקטנה: התשלום על החודש החדש עוד לא הגיע\. המנוי עובד עד סוף יום שלישי, 24\.11\.2026, ואחרי זה נעצר עד שישולם\.<\/li>/);
-    assert.ok(card.includes(`<b>${TOTAL}</b>`));
-    assert.equal(dueForPay(t.db, t.ws.id).total, 578.2);
+    // The first day after it, to the last of the 72 hours: the payment is owed now, and the line says the last day,
+    // with its weekday, plainly: no warning box.
+    for (const at of ['2026-11-22T10:00:00.000Z', '2026-11-24T21:00:00.000Z']) {
+      card = await day(at);
+      assert.match(card, /<span class="tag off">עוד לא מוכן<\/span>/, at);
+      assert.ok(card.includes(AMOUNT), at);
+      assert.ok(card.includes('<p class="pay-for">תדר, החבילה הקטנה: החודש החדש. תדר עובד עד סוף יום שלישי, 24.11.2026, ואחרי זה נעצר עד שהתשלום מגיע אלינו.</p>'), at);
+      assert.match(card, BUTTON_RE, at);
+      assert.doesNotMatch(card, /class="(warn|error)"/, `${at}: no warning box`);
+      assertNothingElse(at, card);
+      assert.equal(dueForPay(t.db, t.ws.id).total, 578.2);
+    }
+    // The 72 hours over: stopped, the same amount, and what to do is the same one button.
+    card = await day('2026-11-25T10:00:00.000Z');
+    assert.ok(card.includes(AMOUNT));
+    assert.ok(card.includes('<p class="pay-for">תדר, החבילה הקטנה: החודש החדש. תדר עצור עד שהתשלום מגיע אלינו.</p>'), card);
+    assert.match(card, BUTTON_RE);
+    assert.doesNotMatch(card, /class="(warn|error)"/);
+    assertNothingElse('stopped', card);
+    const { code } = t.db.get('SELECT code FROM pay_codes WHERE workspace_id = ?', t.ws.id);
+    assert.equal(waText(BUTTON_RE.exec(card)[1]), PAY_TEXT('Noa Shop', code));
   } finally {
     await t.done();
   }
@@ -184,15 +220,16 @@ test('/setup in view-as: the customer\'s card without its button, and no code ma
     const b = signedIn(t, t.db, t.admin);
     startViewAs(t.db, t.db.get('SELECT * FROM sessions WHERE user_id = ?', t.admin.id), t.ws.id, { by: t.admin });
     const billing = billingOf((await b.get('/setup')).body);
-    assert.ok(billing.includes(`<p class="pay-receipt">${EXPLAIN}</p>`), billing);
-    assert.doesNotMatch(billing, /class="button|wa\.me/);
+    assert.ok(billing.includes('<p class="pay-amount"><b>1,746.40 ₪</b> <span>כולל מע״מ</span></p>'), billing);
+    assert.ok(billing.includes('<p class="pay-for">תדר, החבילה הקטנה: החודש הראשון ודמי ההקמה. תדר נפתח אחרי שהתשלום מגיע אלינו.</p>'), billing);
+    assert.doesNotMatch(billing, /class="button|wa\.me|pay-go/);
     assert.equal(t.db.get('SELECT COUNT(*) AS n FROM pay_codes').n, 0);
   } finally {
     await t.done();
   }
 });
 
-test('the welcome email with both settings: the details, the line, then "לתשלום בוואטסאפ" before the setup\'s button; the address under it only in the text part', async () => {
+test('the welcome email with both settings: the prices and the total, then "לתשלום אוטומטי בוואטסאפ" before the setup\'s button, and no details; the address under it only in the text part', async () => {
   const t = await site();
   try {
     const b = t.browser();
@@ -204,11 +241,14 @@ test('the welcome email with both settings: the details, the line, then "לתש�
     const ws = t.db.get("SELECT id FROM workspaces WHERE name = 'Gal Ceramics'");
     const { code } = t.db.get('SELECT code FROM pay_codes WHERE workspace_id = ?', ws.id);
     const href = `https://wa.me/${ASSISTANT}?text=${encodeURIComponent(PAY_TEXT('Gal Ceramics', code))}`;
-    assert.ok(welcome.text.includes(`איך משלמים: ${HOW}\n\n${EXPLAIN}\n\n${href}\n\nיש שאלה על התשלום?`), welcome.text);
+    assert.ok(welcome.text.includes('קודם התשלום על המנוי, בכפתור "לתשלום אוטומטי בוואטסאפ" שכאן למטה. תדר נפתח אחרי שהתשלום מגיע אלינו.'), welcome.text);
     assert.ok(welcome.text.includes('סך הכול לתשלום עכשיו: 1,746.40 ₪, כולל מע״מ'));
+    assert.ok(welcome.text.includes(`\n\n${href}\n\nיש שאלה על התשלום?`), welcome.text);
     assert.ok(welcome.text.includes(`${BASE}/setup`));
-    assert.doesNotMatch(welcome.text, /אסמכתא/);
-    const pay = welcome.html.indexOf('>לתשלום בוואטסאפ</a>');
+    assertNothingElse('the welcome email', welcome.text);
+    assertNothingElse('the welcome email', welcome.html);
+    assert.doesNotMatch(waText(href), /OpenFrequency/i);
+    const pay = welcome.html.indexOf('>לתשלום אוטומטי בוואטסאפ</a>');
     const setup = welcome.html.indexOf('>לדף ההגדרה</a>');
     assert.ok(pay > 0 && setup > pay, 'the payment first, then the setup');
     assert.ok(welcome.html.includes(`href="${href}"`));
@@ -219,7 +259,7 @@ test('the welcome email with both settings: the details, the line, then "לתש�
   }
 });
 
-test('the billing emails with both settings: soon, due and last lead to "לתשלום בוואטסאפ", whose code Toran answers with that month; stopped leads to the account', async () => {
+test('the billing emails with both settings: soon, due and last lead to "לתשלום אוטומטי בוואטסאפ" with the amount and whom to ask, not the details, and Toran answers its code with that month; stopped leads to the account', async () => {
   const h = tempHome();
   try {
     setNow('2026-10-22T07:00:00.000Z');
@@ -241,9 +281,11 @@ test('the billing emails with both settings: soon, due and last lead to "לתש�
     const soon1 = mails.filter((m) => m.subject === 'התשלום הבא על תדר: 22.11.2026')[1];
     for (const m of [soon7, soon1, to('התשלום על החודש החדש של תדר עוד לא הגיע'), to('תדר ייעצר מחר אם התשלום לא יגיע היום')]) {
       assert.equal(m.link, href, m.subject);
-      assert.match(m.html, />לתשלום בוואטסאפ<\/a>/);
-      assert.ok(m.text.includes(`איך משלמים: ${HOW}\n\n${EXPLAIN}\n\nיש שאלה על התשלום?`), m.text);
-      assert.doesNotMatch(m.text, /אסמכתא/);
+      assert.match(m.html, />לתשלום אוטומטי בוואטסאפ<\/a>/);
+      assert.ok(m.text.includes('932.20 ₪'), `${m.subject}: the amount`);
+      assert.ok(m.text.includes(`\n\nיש שאלה על התשלום? ענו למייל הזה, או כתבו לנו בוואטסאפ ל-050-000-0100.\n\n${href}\n\n`), m.text);
+      assertNothingElse(m.subject, m.text);
+      assertNothingElse(m.subject, m.html);
       assert.doesNotMatch(m.html, /word-break:break-all">https:\/\/wa\.me/);
     }
     const stopped = to('תדר נעצר עד שהתשלום יגיע');
@@ -259,14 +301,21 @@ test('a product cancelled and stopped is never asked for: /setup says it ended a
   try {
     setProduct(t.db, t.ws.id, 'toran', true, { by: null });
     ensureSubscription(t.db, t.ws.id, 'toran', '2026-10-22');
-    cancelSubscription(t.db, t.ws.id, 'teder', { by: null }); // nothing paid: it stops today
     const b = signedIn(t, t.db, t.noa);
+    // Both owed: one amount (490 + 990 + 590 + 990 = 3,060 ₪ and 18% VAT), each product's line, both open once paid.
+    const both = billingOf((await b.get('/setup')).body);
+    assert.ok(both.includes('<p class="pay-amount"><b>3,610.80 ₪</b> <span>כולל מע״מ</span></p>'), both);
+    assert.ok(both.includes('<p class="pay-for">תדר, החבילה הקטנה: החודש הראשון ודמי ההקמה. תורן: החודש הראשון ודמי ההקמה. תדר ותורן נפתחים אחרי שהתשלום מגיע אלינו.</p>'), both);
+    const { code: bothCode } = t.db.get('SELECT code FROM pay_codes WHERE workspace_id = ?', t.ws.id);
+    assert.equal(waText(/href="(https:\/\/wa\.me\/[^"]+)"/.exec(both)[1]), PAY_TEXT('Noa Shop', bothCode));
+    cancelSubscription(t.db, t.ws.id, 'teder', { by: null }); // nothing paid: it stops today
     const page = (await b.get('/setup')).body;
     const billing = billingOf(page);
-    assert.match(billing, /<li>תדר, החבילה הקטנה: המנוי הסתיים ב-22\.10\.2026, ואין עליו מה לשלם<\/li><li>תורן: 590 ₪ לחודש, לא כולל מע״מ, ודמי הקמה של 990 ₪ פעם אחת<\/li>/);
-    assert.match(billing, /סך הכול לתשלום עכשיו: 1,864\.40 ₪, כולל מע״מ \(1,580 ₪ ועוד 284\.40 ₪ מע״מ\)\./);
-    assert.match(billing, /<small>משלמים לפי פרטי התשלום שכאן למטה\. תורן נפתח אחרי שהתשלום מגיע אלינו\.<\/small>/);
+    assert.ok(billing.includes('<p class="pay-amount"><b>1,864.40 ₪</b> <span>כולל מע״מ</span></p>'), billing);
+    assert.ok(billing.includes('<p class="pay-for">תורן: החודש הראשון ודמי ההקמה. תורן נפתח אחרי שהתשלום מגיע אלינו.</p>'), billing);
+    assert.doesNotMatch(billing, /תדר/, 'nothing about the ended one');
     const { code } = t.db.get('SELECT code FROM pay_codes WHERE workspace_id = ?', t.ws.id);
+    assert.equal(waText(/href="(https:\/\/wa\.me\/[^"]+)"/.exec(billing)[1]), PAY_TEXT('Noa Shop', code));
     const answer = (await t.owners('GET', `/internal/pay?code=${code}`)).json;
     assert.deepEqual([answer.items.map((i) => i.product), answer.total], [['toran'], 1864.4]);
     // Its own section: ended, no steps, nothing about a payment.
@@ -280,7 +329,7 @@ test('a product cancelled and stopped is never asked for: /setup says it ended a
     ensureSubscription(t.db, only.id, 'teder', '2026-10-22', 'small');
     cancelSubscription(t.db, only.id, 'teder', { by: null });
     const gal = (await signedIn(t, t.db, t.db.get("SELECT * FROM users WHERE email = 'gal@example.com'")).get('/setup')).body;
-    assert.doesNotMatch(gal, /id="setup-billing"|לתשלום בוואטסאפ|התשלום על המנוי|לשלוח אסמכתא/);
+    assert.doesNotMatch(gal, /id="setup-billing"|לתשלום אוטומטי|התשלום על המנוי|לשלוח אסמכתא/);
     assert.equal(t.db.get('SELECT COUNT(*) AS n FROM pay_codes WHERE workspace_id = ?', only.id).n, 0);
   } finally {
     await t.done();

@@ -10,12 +10,13 @@ This file is accounts' half; the contract both sides are held to is
 
 ## The flow
 
-1. The customer presses "לתשלום בוואטסאפ" on `/setup`'s payment card, or in the welcome email or
-   a billing email (a week before, a day before, the first and the last of the 72 hours after the
-   paid month). It opens
+1. The customer presses "לתשלום אוטומטי בוואטסאפ" on `/setup`'s payment card, or in the welcome
+   email or a billing email (a week before, a day before, the first and the last of the 72 hours
+   after the paid month). It opens
    `https://wa.me/<OF_ASSISTANT_WA>?text=...` with this written:
-   `היי, אני רוצה לשלם על המנוי של <business>. PAY-XXXXXX`. The code rides at the end of the
-   message; nothing on the page or in the email explains it.
+   `היי, אני רוצה לשלם על המנוי של <business>. PAY-XXXXXX`, without "OpenFrequency" (the owner,
+   2026-11-05). The code rides at the end of the message; nothing on the page or in the email
+   explains it.
    Or, in a payment reminder on WhatsApp (the day before, the first and the last of the 72 hours;
    docs/setup.md, "The daily jobs"), the customer presses its one button, "לתשלום": a quick reply
    whose payload is the code, never shown, which reaches Toran as "לתשלום PAY-XXXXXX" in that same
@@ -43,9 +44,9 @@ button to `OF_SUPPORT_WA`, or the questions button), and no code is made. The se
 
 | Where | With both settings, while something is owed |
 |---|---|
-| `/setup`'s payment card | The one blue button is "לתשלום בוואטסאפ" (in place of "לשלוח אסמכתא בוואטסאפ"); "איך משלמים: <OF_PAYMENT_METHOD>" stays; under it, in place of the receipt's line, "לוחצים על הכפתור ושולחים את ההודעה כמו שהיא. תורן עונה בוואטסאפ עם הסכום ופרטי ההעברה." In view-as, the same card without its button, and no code is made. |
-| The welcome email | The details, that line, then the button "לתשלום בוואטסאפ", before the setup's button. |
-| The billing emails, soon7, soon1, due, last | The details, that line, and the email's button is "לתשלום בוואטסאפ". "stopped" still leads to the account. |
+| `/setup`'s payment card | Its own card (html.js `payWaCard`; the owner, 2026-11-05: "do a לתשלום אוטומטי בווצאפ button, the information should be there. No unnecessary info on the page"): the amount with VAT, large; one line, what each product's payment is for ("תדר, החבילה הקטנה: החודש הראשון ודמי ההקמה.", "...: החודש החדש.", "...: החודש שמתחיל ב-22.11.2026.") and then "תדר עובד עד סוף יום שלישי, 24.11.2026, ואחרי זה נעצר עד שהתשלום מגיע אלינו." in the 72 hours, "תדר עצור עד שהתשלום מגיע אלינו." after them, or "תדר נפתח אחרי שהתשלום מגיע אלינו." before the first payment; and the one blue button, "לתשלום אוטומטי בוואטסאפ". No details, no receipt line, no steps: Toran's answer gives them. In view-as, the same card without its button, and no code is made. |
+| The welcome email | The prices and the total, then the button "לתשלום אוטומטי בוואטסאפ" (the line above the prices says to pay with it), whom to ask, then the setup's button. No details. |
+| The billing emails, soon7, soon1, due, last | The amount and the dates, whom to ask, and the email's button is "לתשלום אוטומטי בוואטסאפ". No details. "stopped" still leads to the account. |
 | The payment reminders on WhatsApp, soon1, due, last | To an owner's linked number and to the number the workspace last paid from (its latest receipt marked "התשלום הגיע"), with the code as its button's payload. These need `OF_PAYMENT_METHOD` alone, since they come from our number already. |
 
 In the HTML part the WhatsApp address is not printed under its button (it would show the
@@ -304,8 +305,8 @@ Run by the daily jobs (`src/web/daily.js`, `RETENTION`):
 Not edited from here (`openfrequency-web` is its own repository). What this adds, for the
 "what we keep" part of `https://openfrequency.co.il/privacy`, in the site's words:
 
-> **צילום של העברה בנקאית.** כשמשלמים על המנוי בוואטסאפ, אפשר לשלוח לתורן צילום מסך או קובץ
-> PDF של ההעברה. אנחנו שומרים אותו כדי לבדוק מול הבנק שהכסף הגיע ולרשום את התשלום, ורק אנחנו
+> **צילום של העברה בנקאית.** אחרי ההעברה הבנקאית על המנוי, אפשר לשלוח לתורן בוואטסאפ צילום מסך
+> או קובץ PDF של האישור. אנחנו שומרים אותו כדי לבדוק מול הבנק שהכסף הגיע ולרשום את התשלום, ורק אנחנו
 > רואים אותו. את הקובץ עצמו אנחנו מוחקים 90 יום אחרי שהגיע. נשאר אצלנו רישום של התשלום: מאיזה
 > מספר וואטסאפ הוא נשלח, מתי, על איזה סכום, ואם התשלום הגיע. כשמוחקים את החשבון, נמחקים איתו
 > גם הקובץ וגם הרישום. ההודעה עוברת דרך וואטסאפ של Meta, כמו כל הודעה אחרת שנשלחת אלינו

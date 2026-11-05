@@ -453,15 +453,17 @@ export const MAIL = {
   // (opensAfter()), and `prices` the price lines, then (manual) how to pay and whom to ask.
   welcomeSubject: (business) => `החשבון של ${business} נפתח`,
   // `details`: the owner's payment details are in the email (OF_PAYMENT_METHOD), below the price, so it points to them
-  // instead of promising to send them.
+  // instead of promising to send them; 'wa', paying over WhatsApp, where its button below gives them.
   welcomeLines: (business, link, mode, opens, prices, details = false) => [
     'שלום,',
     `החשבון של ${business} ב-OpenFrequency פתוח. נשארו שני דברים.`,
     mode === 'provider'
       ? `קודם התשלום על המנוי. משלמים בכרטיס אשראי בדף ההגדרה, בכפתור "לתשלום". ${opens}`
-      : details
-        ? `קודם התשלום על המנוי, לפי פרטי התשלום שכאן למטה. ${opens}`
-        : `קודם התשלום על המנוי. את פרטי התשלום נשלח לכם במייל, לכתובת הזאת. ${opens}`,
+      : details === 'wa'
+        ? `קודם התשלום על המנוי, בכפתור "${PAY.button}" שכאן למטה. ${opens}`
+        : details
+          ? `קודם התשלום על המנוי, לפי פרטי התשלום שכאן למטה. ${opens}`
+          : `קודם התשלום על המנוי. את פרטי התשלום נשלח לכם במייל, לכתובת הזאת. ${opens}`,
     ...[].concat(prices),
     'אחר כך ההגדרה. בדף ההגדרה יש רשימה של מה שנשאר, וכל צעד מוביל למקום שבו עושים אותו.',
     { link },
@@ -750,6 +752,15 @@ export const SETUP = {
   // our WhatsApp with the words written.
   billingReceipt: (wa) => `אחרי ההעברה, שלחו לנו את האסמכתא ${wa ? 'בוואטסאפ' : 'בתשובה לאחד המיילים שקיבלתם מאיתנו'}. ככה נמצא את ההעברה ונרשום את התשלום.`,
   billingSendReceipt: 'לשלוח אסמכתא בוואטסאפ',
+  // Paying over WhatsApp (src/web/pay.js payOverWa()): the card is the amount, one line and PAY.button. The line is
+  // what each product's payment is for (payFor), then when it stops or opens (payDue, payStopped, opensAfter()).
+  // `from` is the day a month paid ahead starts; `first` a product never paid, `setup` with its setup fee.
+  payFor: (label, { from = '', first = false, setup = false } = {}) => `${label}: ${from ? `החודש שמתחיל ב-${from}` : first ? (setup ? 'החודש הראשון ודמי ההקמה' : 'החודש הראשון') : 'החודש החדש'}.`,
+  // In the 72 hours: `d` the last day, with its weekday (weekdayHe()).
+  payDue: (names, d, many) => `${names} ${many ? 'עובדים' : 'עובד'} עד סוף ${d}, ואחרי זה ${many ? 'נעצרים' : 'נעצר'} עד שהתשלום מגיע אלינו.`,
+  // The grace is over: stopped until it is paid.
+  payStopped: (names, many) => `${names} ${many ? 'עצורים' : 'עצור'} עד שהתשלום מגיע אלינו.`,
+  and: ' ו',
   billingReceiptText: (business) => `היי, כותבים מ״${business}״. העברנו את התשלום, והאסמכתא מצורפת.`,
   billingSupportText: (business) => `היי, כותבים מ״${business}״. יש לנו שאלה על התשלום.`,
   locked: 'נפתח אחרי התשלום',
@@ -768,15 +779,15 @@ export const SETUP = {
 
 // ---- paying over WhatsApp (src/accounts/pay.js, docs/internal-pay.md)
 //
-// The customer sees one button and one line under it; the code rides in the message the button writes, and nothing
-// on the page or in an email explains it. The operator's lines (the email, /admin and its receipt page) speak to the
-// operator as אתם, like the console.
+// The customer sees the amount, one line and one button (the owner, 2026-11-05: "do a לתשלום אוטומטי בווצאפ button,
+// the information should be there. No unnecessary info on the page"): the transfer's details and the receipt
+// (אסמכתא) are in Toran's answer on WhatsApp, and the code rides in the message the button writes, never explained.
+// The operator's lines (the email, /admin and its receipt page) speak to the operator as אתם, like the console.
 
 export const PAY = {
   // The customer: /setup's payment card, the welcome email and the billing emails.
-  button: 'לתשלום בוואטסאפ',
-  explain: 'לוחצים על הכפתור ושולחים את ההודעה כמו שהיא. תורן עונה בוואטסאפ עם הסכום ופרטי ההעברה.',
-  /** The message the button writes, with the workspace's code at its end. */
+  button: 'לתשלום אוטומטי בוואטסאפ',
+  /** The message the button writes, with the workspace's code at its end (docs/internal-pay.md); no "OpenFrequency". */
   waText: (business, code) => `היי, אני רוצה לשלם על המנוי של ${business}. ${code}`,
 
   // What GET /internal/pay says is paid for, for Toran to tell the customer: a line for each product, as /setup

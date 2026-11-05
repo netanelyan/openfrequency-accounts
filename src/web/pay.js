@@ -8,7 +8,7 @@ import { paySummary } from './html.js';
 // and the emails, and the answer Toran gets from GET /internal/pay.
 
 /**
- * Where "לתשלום בוואטסאפ" leads for a workspace: our owner line's WhatsApp (OF_ASSISTANT_WA) with PAY.waText() written,
+ * Where "לתשלום אוטומטי בוואטסאפ" leads for a workspace: our owner line's WhatsApp (OF_ASSISTANT_WA) with PAY.waText() written,
  * the workspace's code at its end. Only in manual mode with the owner's payment details (OF_PAYMENT_METHOD) and the
  * number both set, and only while something is owed (now, or a month ahead within the week: dueForPay()); else null,
  * and every page and email says what it said before. `mint` false (a read-only view) uses a live code and makes

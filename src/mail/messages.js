@@ -130,15 +130,16 @@ export const signupNoticeMail = (to, { name, email, business, products, prices =
  */
 // What the first payment comes to (`total`, its lines), in either mode; in manual mode then how to pay, the receipt
 // (אסמכתא) to us once the owner's payment details are in it, and whom to ask. With `payLink` (paying over WhatsApp,
-// src/web/pay.js), the receipt's line gives way to the line that says to send the message as it is, and the button
-// `payButton` to that link, before the setup's.
+// src/web/pay.js), the details and the receipt's line are not in it (Toran's answer on WhatsApp gives them): the
+// button `payButton` to that link, before the setup's, and whom to ask.
 export const welcomeMail = (to, { business, link, payment = 'manual', opens = '', prices = [], total = [], payHow = '', wa = null, payLink = null, payButton = PAY.button }) => {
   const b = plain(business, 80);
   const how = plain(payHow, 200);
-  const overWa = payment !== 'provider' && how && payLink;
-  const receipt = overWa ? [PAY.explain, { link: payLink, label: payButton }] : [MAIL.receipt(wa)];
-  const manual = [...[].concat(total), ...(payment !== 'provider' ? [...(how ? [MAIL.welcomePayHow(how), ...receipt] : []), MAIL.payAsk(wa)] : [])];
-  return { to, ...build(MAIL.welcomeSubject(b), MAIL.welcomeLines(b, link, payment, opens, [...[].concat(prices), ...manual], payment !== 'provider' && Boolean(how)), MAIL.welcomeButton) };
+  const overWa = Boolean(payment !== 'provider' && how && payLink);
+  const pay = overWa ? [{ link: payLink, label: payButton }] : how ? [MAIL.welcomePayHow(how), MAIL.receipt(wa)] : [];
+  const manual = [...[].concat(total), ...(payment !== 'provider' ? [...pay, MAIL.payAsk(wa)] : [])];
+  const details = payment === 'provider' ? false : overWa ? 'wa' : Boolean(how);
+  return { to, ...build(MAIL.welcomeSubject(b), MAIL.welcomeLines(b, link, payment, opens, [...[].concat(prices), ...manual], details), MAIL.welcomeButton) };
 };
 
 /**

@@ -156,6 +156,8 @@ async function signUp(t) {
   };
 }
 
+// "שלמו בוואטסאפ", "לשלם בווצאפ", "לתשלום בוואטסאפ": never said to a customer (the owner, 2026-11-05).
+const PAY_ON_WA = /(שלמו|לשלם|משלמים|לתשלום)\s+(לנו\s+)?(ב|דרך\s+)?וו?[אצ]ט?ס?אפ/;
 const billingOf = (page) => page.slice(page.indexOf('id="setup-billing"'), page.indexOf('id="setup-teder"'));
 
 test("manual with the owner's details (OF_PAYMENT_METHOD): the welcome email, /setup and the owner's notice give them or say they were given, Teder opens once the payment reaches us, and questions come to us", async () => {
@@ -198,6 +200,8 @@ test("manual with the owner's details (OF_PAYMENT_METHOD): the welcome email, /s
     assert.match(billing, /<p>איך משלמים: העברה בנקאית או ביט<\/p>\n<p class="pay-receipt">אחרי ההעברה, שלחו לנו את האסמכתא בוואטסאפ\. ככה נמצא את ההעברה ונרשום את התשלום\.<\/p>/);
     assert.match(billing, /<p class="muted">יש שאלה על התשלום\? כתבו לנו בוואטסאפ, או ענו לאחד המיילים שקיבלתם מאיתנו\.<\/p>/);
     assert.doesNotMatch(billing, /button primary|בקרוב|ונשלח לכם פרטים|כרטיס אשראי/);
+    // Payment is a bank transfer; WhatsApp is for the receipt and for questions, never "שלמו בוואטסאפ".
+    for (const [where, what] of [['the welcome email', welcome.text], ['/setup', billing]]) assert.doesNotMatch(what, PAY_ON_WA, where);
   } finally {
     await t.done();
   }
@@ -278,6 +282,7 @@ test("the billing emails: manual gives the owner's details (without them, points
           // The owner's details are in the email itself; nothing points to an earlier one.
           assert.match(m.text, /איך משלמים: העברה בנקאית או ביט\n\nאחרי ההעברה, שלחו לנו את האסמכתא בוואטסאפ ל-050-000-0100\. ככה נמצא את ההעברה ונרשום את התשלום\.\n\nיש שאלה על התשלום\? ענו למייל הזה, או כתבו לנו בוואטסאפ ל-050-000-0100\./);
           assert.doesNotMatch(m.text, /ששלחנו לכם במייל/);
+          assert.doesNotMatch(m.text, PAY_ON_WA, m.subject);
           assert.equal(m.link, `${BASE}/setup`);
           assert.match(m.html, />לחשבון<\/a>/);
           assert.doesNotMatch(m.text, /בקרוב|כרטיס אשראי/);

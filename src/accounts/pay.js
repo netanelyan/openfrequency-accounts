@@ -8,7 +8,7 @@ import { CODE_ALPHABET, validPhone } from './phones.js';
 import { addDays, addMonths, israelToday, payMonth, payTotal } from './subscriptions.js';
 
 // Paying over WhatsApp (docs/internal-pay.md). In manual mode, with the owner's payment details (OF_PAYMENT_METHOD)
-// and the owner line's number (OF_ASSISTANT_WA), "לתשלום בוואטסאפ" on /setup and in the billing and welcome emails
+// and the owner line's number (OF_ASSISTANT_WA), "לתשלום אוטומטי בוואטסאפ" on /setup and in the billing and welcome emails
 // opens WhatsApp to our number with a message already written, and in it the workspace's payment code, PAY-XXXXXX.
 // Toran reads the code and asks us what the workspace owes (GET /internal/pay), answers the customer with the amount
 // and the transfer details, and posts the picture of the transfer they send back (POST /internal/pay/receipt). We keep

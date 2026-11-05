@@ -66,7 +66,7 @@ export function supportWa(env = process.env) {
 
 /**
  * The owner line's WhatsApp number in international digits (OF_ASSISTANT_WA), or null while it is unset: the number
- * Toran answers on, where a link code is sent (docs/internal-owner-phone.md) and where "לתשלום בוואטסאפ" leads
+ * Toran answers on, where a link code is sent (docs/internal-owner-phone.md) and where "לתשלום אוטומטי בוואטסאפ" leads
  * (docs/internal-pay.md).
  */
 export function assistantWa(env = process.env) {

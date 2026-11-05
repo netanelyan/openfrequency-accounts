@@ -731,6 +731,16 @@ ul.prices { list-style: none; padding: 0; margin: 12px 0 0; display: grid; gap: 
 .setup-p p.pay-total { margin: 10px 0 0; }
 .setup-p p.pay-receipt { font-weight: 600; }
 .card.setup-p#setup-billing > .muted { margin: 10px 0 0; }
+/* Paying over WhatsApp (html.js payWaCard): the amount large, one line under it, and the one blue pill, as wide as
+   the phone and its own width on a desk. The details of the transfer are in WhatsApp, so nothing else is here. */
+.card.pay-wa > header { margin-bottom: 8px; }
+.card.pay-wa p.pay-amount { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; margin: 0 0 6px; }
+.card.pay-wa p.pay-amount b { font: 700 40px/1.1 var(--display); letter-spacing: -0.02em; color: var(--ink); white-space: nowrap; }
+.card.pay-wa p.pay-amount span { font-size: 15px; color: var(--ink-3); }
+.card.pay-wa p.pay-for { margin: 0; max-width: 62ch; color: var(--ink-2); overflow-wrap: anywhere; }
+.card.pay-wa p.pay-go { margin: 24px 0 0; }
+.card.pay-wa p.pay-go a.button { width: auto; min-width: 280px; min-height: 52px; margin: 0; padding: 0 28px; font-size: 17px; font-weight: 600; }
+@media (max-width: 560px) { .card.pay-wa p.pay-go a.button { width: 100%; min-width: 0; } }
 label.product-pick small.price { color: var(--ink-2); }
 /* A transfer's receipt from Toran (/admin/receipts/<id>): the picture at the width of the card, never past the screen's
    height, then its facts, what was owed and the two buttons (.row keeps them apart). */

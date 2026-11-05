@@ -21,7 +21,7 @@ deleted, and the settings that turn each part on.
 | `OF_TORAN_INTERNAL` | `http://127.0.0.1:4710` | Where `/setup` reaches Toran's (the same address `/admin` uses), and the same for deleting. |
 | `OF_INTERNAL_TOKEN` | unset | The bearer token for both directions. Unset or shorter than 32 characters, no product is asked (each says "לא הצלחנו לבדוק כרגע", and deleting a workspace stops), and our internal routes answer 503. |
 | `OF_SUPPORT_WA` | unset | Our WhatsApp, where the payment step's button leads in manual mode, for questions about paying; the welcome and billing emails give the number. Unset, the button leads to an email to `MAIL_REPLY_TO`, and without that to `https://openfrequency.co.il/join`. |
-| `OF_ASSISTANT_WA` | unset | The owner line's number (the home page's link codes, docs/internal-owner-phone.md). In manual mode with `OF_PAYMENT_METHOD` set too, the customer pays over WhatsApp: the payment step's button and the welcome and billing emails' become "לתשלום בוואטסאפ", to this number with the message and the workspace's payment code written (docs/internal-pay.md). |
+| `OF_ASSISTANT_WA` | unset | The owner line's number (the home page's link codes, docs/internal-owner-phone.md). In manual mode with `OF_PAYMENT_METHOD` set too, the payment step's button and the welcome and billing emails' become "לתשלום אוטומטי בוואטסאפ", to this number with the message and the workspace's payment code written, and Toran answers there with the amount, the transfer's details and where to send the receipt (docs/internal-pay.md). Payment is still a bank transfer. |
 
 | `OF_MORNING_CLIENT_ID`, `OF_MORNING_CLIENT_SECRET` | unset | The business's API keys in Morning (a plan that includes the API). Both set, "התשלום הגיע" on a transfer's receipt also issues its חשבונית מס/קבלה in Morning, and its PDF goes onto the customer's page (docs/internal-pay.md). Unset, the invoice is issued by hand, as before. |
 | `OF_MORNING_ENV` | `production` | `sandbox` sends it to Morning's sandbox. Any other value keeps Morning off, and the log says so. |
@@ -112,7 +112,7 @@ customer pays, and every place that describes paying follows it (`src/accounts/b
 | The welcome email | the same, with "איך משלמים: ..." (`OF_PAYMENT_METHOD`, when set) and questions to a reply or our WhatsApp's number | pay by card on the setup page, "לתשלום"; the products open once the payment is confirmed |
 | `/setup`'s payment step | the same; its button (quiet: nothing to start) asks us on WhatsApp, "יש לנו שאלה על התשלום" written | "לתשלום", the one blue button, opens `OF_PAYMENT_URL` |
 | The billing emails (soon, due, last) | pay by the details we emailed, how, and whom to ask; the button goes to the account | pay by card on the payment page; the button "לתשלום" goes to `OF_PAYMENT_URL` |
-| With `OF_PAYMENT_METHOD` and `OF_ASSISTANT_WA` both set | `/setup`'s button, the welcome email's and the billing emails' (soon, due, last) are "לתשלום בוואטסאפ", to the owner line with the message written; Toran answers with the amount (docs/internal-pay.md) | the same as above: the setting is manual mode's |
+| With `OF_PAYMENT_METHOD` and `OF_ASSISTANT_WA` both set | `/setup`'s payment card is the amount, one line and "לתשלום אוטומטי בוואטסאפ"; the welcome email's and the billing emails' (soon, due, last) button is the same, and they leave the details out; the owner line gets the message written, and Toran answers with the amount and the details (docs/internal-pay.md) | the same as above: the setting is manual mode's |
 | The home page | no next-payment line | "התשלום הבא: <amount>, ב-<date>" |
 | The owner's sign-up notice | email the payment details to the customer's address, then record the payment | record the payment once it has gone through |
 
@@ -411,7 +411,7 @@ run today's again) and keeps each run in `daily_runs`:
   on WhatsApp, and none does: ..."): the message's one button, "לתשלום", carries the workspace's
   payment code (`PAY-XXXXXX`, the live one, never shown), and pressing it asks Toran in that same
   chat, which answers with the amount and the transfer's details and then takes the transfer's
-  picture, as it does for "לתשלום בוואטסאפ" (docs/internal-pay.md).
+  picture, as it does for "לתשלום אוטומטי בוואטסאפ" (docs/internal-pay.md).
 
   Each is handed to Toran on this machine, which sends the approved template `payment_reminder`
   from our number (Toran's src/billing/remind.ts and docs/whatsapp-templates.md):

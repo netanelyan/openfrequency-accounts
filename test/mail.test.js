@@ -122,5 +122,9 @@ test('every Hebrew string keeps the voice rules', () => {
     assert.doesNotMatch(s, /[֐-׿]\/[֐-׿]/, `gendered slash in: ${s}`);
     assert.doesNotMatch(s, /הננו|בגין|על מנת|במידה ו|ניתן ל|יש לציין|לשירותכם|המערכת/, `bureaucratic in: ${s}`);
     assert.doesNotMatch(s, /(^|\s)(הקלד|לחץ|הזן|בחר|שלח|היכנס)(\s|$)/, `masculine singular in: ${s}`);
+    // Payment is a bank transfer (the owner, 2026-11-05: not "שלמו בווצאפ"): WhatsApp is where the details and the
+    // receipt go, and the one button that leads there is "לתשלום אוטומטי בוואטסאפ".
+    assert.doesNotMatch(s, /(שלמו|לשלם|משלמים|תשלמו|לתשלום)\s+(לנו\s+)?(ב|דרך\s+|ב-)?וו?[אצ]ט?ס?אפ/, `paying on WhatsApp in: ${s}`);
   }
+  assert.equal(PAY.button, 'לתשלום אוטומטי בוואטסאפ');
 });
