@@ -361,6 +361,7 @@ export const AUDIT_NAMES = {
   phone_opt_in: 'עדכונים בוואטסאפ הופעלו',
   phone_opt_out: 'עדכונים בוואטסאפ כובו',
   ops_action: 'פעולה מהלוח של היום',
+  waitlist_message: 'הודעה לרשימת ההמתנה של תורן',
   signup_requested: 'בקשה להרשמה מהאתר',
   signup_refused: 'הרשמה לכתובת שכבר יש לה חשבון',
   signed_up: 'נרשמו מהאתר',
@@ -1110,7 +1111,6 @@ export const OPS = {
   leadsLead: 'עד עכשיו הם הגיעו רק במייל. כאן 30 הימים האחרונים.',
   leadsDown: 'לא הצלחנו לקרוא עכשיו את הלידים מהאתר (GET /internal/leads). שאר הדף עובד בלעדיהם.',
   waitlistTitle: (n) => (n === 1 ? 'נרשם אחד לרשימת ההמתנה של תורן' : `${n} נרשמו לרשימת ההמתנה של תורן`),
-  waitlistHint: 'תורן עוד לא פתוח, אז אין מה לשלוח להם עכשיו.',
   waitlistAt: (ago) => `נרשמו ${ago}`,
   handoffTitle: 'לא הגיעו לתורן או לתדר',
   handoffHint: 'האתר ניסה להעביר אותם ולא הצליח. הם שמורים באתר (node server/lead.mjs list).',
@@ -1171,6 +1171,32 @@ export const OPS = {
 
 const SHORT = new Intl.DateTimeFormat('he-IL', { timeZone: 'Asia/Jerusalem', day: 'numeric', month: 'short' });
 /** A moment as "12 בנוב׳ ב-14:00", Israel time, for the next step. */
+// /admin/waitlist (src/web/waitlist.js): Toran's waitlist from the website, and a message to it
+export const WAIT = {
+  title: (n) => (n === 1 ? 'אחד ברשימת ההמתנה של תורן' : `${n} ברשימת ההמתנה של תורן`),
+  lead: 'כל מי שנרשם באתר לעדכון על תורן, מהחדש לישן. מי שמבקש להסיר את עצמו יורד מהרשימה לבד.',
+  none: 'עוד אף אחד לא נרשם.',
+  at: (ago) => `נרשמו ${ago}`,
+  down: 'לא הצלחנו לקרוא עכשיו את הרשימה מהאתר. נסו שוב בעוד רגע.',
+  composeTitle: 'לשלוח הודעה לרשימה',
+  composeLead: (emails, phones) => `המייל יוצא מהאתר ל-${emails} כתובות, ובכל אחד קישור להסרה. ל-${phones} הטלפונים נכין אחרי השליחה כפתור וואטסאפ לכל אחד, עם אותו הטקסט.`,
+  subject: 'נושא המייל',
+  subjectHint: 'אם זו פרסומת, החוק מחייב שהנושא יתחיל במילה "פרסומת".',
+  text: 'ההודעה',
+  textHint: 'טקסט פשוט. בסוף כל מייל נוסיף למה הם מקבלים אותו וקישור להסרה.',
+  send: 'לשלוח לכל הרשימה',
+  sent: (n) => (n ? `המייל יוצא עכשיו ל-${n} כתובות.` : 'אין כתובות מייל ברשימה.'),
+  again: 'ההודעה הזאת כבר נשלחה בעשר הדקות האחרונות, אז לא שלחנו שוב.',
+  empty: 'צריך נושא והודעה.',
+  noMail: 'שליחת מיילים מהאתר לא מוגדרת (RESEND_API_KEY ו-LEAD_EMAIL_FROM), אז לא נשלח כלום.',
+  failed: 'האתר לא ענה, אז לא נשלח כלום. נסו שוב בעוד רגע.',
+  phonesTitle: (n) => (n === 1 ? 'טלפון אחד לשלוח בוואטסאפ' : `${n} טלפונים לשלוח בוואטסאפ`),
+  phonesLead: 'כל כפתור פותח את הוואטסאפ שלכם עם ההודעה מוכנה. רק לוחצים שליחה.',
+  phoneSend: 'לפתוח בוואטסאפ',
+  dashLink: 'לכל הרשימה ולשליחת הודעה',
+  tool: 'רשימת ההמתנה',
+};
+
 export const stampHe = (iso) => (iso && !Number.isNaN(Date.parse(iso)) ? `${SHORT.format(new Date(iso))} ב-${HOUR_HE.format(new Date(iso))}` : '');
 
 /** "לפני 3 שעות", for the dashboard's lists (Toran's ago()). */

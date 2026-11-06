@@ -20,7 +20,7 @@ import { accessAll, accessFor, BillingError, cancelSubscription, resumeSubscript
 import { eraseWorkspace, productsEver, sameName } from '../accounts/erase.js';
 import { prefsOf, savePrefs } from '../accounts/notify.js';
 import { cancelMail, cancelNoticeMail, deleteNoticeMail, existingAccountMail, inviteMail, magicLinkMail, paidMail, paidOpening, signupMail, signupNoticeMail, welcomeMail } from '../mail/messages.js';
-import { CANCEL, ERASE, MAIL, MORNING, NOTIFY, OPS, PAY, PRODUCT_NAMES, SETUP, SIGNUP, T, dayHe, ils, opensAfter, phoneHe } from './copy.js';
+import { CANCEL, ERASE, MAIL, MORNING, NOTIFY, OPS, PAY, PRODUCT_NAMES, SETUP, SIGNUP, T, WAIT, dayHe, ils, opensAfter, phoneHe } from './copy.js';
 import { payOverWa } from './pay.js';
 import { setupClient, setupState } from './setup.js';
 import { eraseClient } from './erase.js';
@@ -35,6 +35,7 @@ import { opsCustomers } from '../accounts/ops.js';
 import { now } from '../core/clock.js';
 import { dashboardPage } from './dashboard.js';
 import { ACTIONS, ID, LOST_REASONS, toranClient } from './toran.js';
+import { siteClient, waitlistPage } from './waitlist.js';
 import { isAdminToran, operatorAssertion, proxyToToran, toranBase, touchesInternal } from './admin-toran.js';
 import { readiness } from './ready.js';
 import * as P from './html.js';
@@ -173,7 +174,7 @@ const OPS_ACTION = /^\/admin\/ops\/(toran|teder)\/([^/]{1,300})\/([a-z]{1,20})$/
 // Where each button comes back to on the dashboard, without script.
 const OPS_BACK = ['contact', 'talking'];
 
-export function publicHandler({ db, env = process.env, mailer, limiters: given = {}, failDelayMs = 400, log = console.error, toran = toranClient({ env, log }), toranProxyMs, google = googleConfig(env), googleFetch = globalThis.fetch, setupMs, setupFetch = globalThis.fetch, eraseFetch = setupFetch, eraseMs, changedFetch = setupFetch, changedMs, changed = null, morningFetch = globalThis.fetch, morningMs }) {
+export function publicHandler({ db, env = process.env, mailer, limiters: given = {}, failDelayMs = 400, log = console.error, toran = toranClient({ env, log }), site = siteClient({ env, log }), toranProxyMs, google = googleConfig(env), googleFetch = globalThis.fetch, setupMs, setupFetch = globalThis.fetch, eraseFetch = setupFetch, eraseMs, changedFetch = setupFetch, changedMs, changed = null, morningFetch = globalThis.fetch, morningMs }) {
   const secret = sessionSecret(env);
   const publicHost = String(env.PUBLIC_HOST || '').trim().toLowerCase() || null;
   const dev = !publicHost;
@@ -1067,6 +1068,24 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
           return send(200, layout({ title: OPS.title, body, wide: true, banner, script: true }), { 'content-security-policy': CSP_SCRIPT });
         }
         if (p === '/admin/accounts' && req.method === 'GET') return console_(200);
+        // Toran's waitlist, from the website, and a message to it (src/web/waitlist.js). After a message, the same page
+        // with a WhatsApp button for each phone on the list.
+        const waitlistView = async (status, extra = {}) =>
+          page(status, WAIT.tool, waitlistPage({ csrf, list: await site.waitlist(), at: now(), flash, flashBad, ...extra }), { wide: true, banner });
+        if (p === '/admin/waitlist' && req.method === 'GET') return waitlistView(200);
+        if (p === '/admin/waitlist/send' && req.method === 'POST') {
+          if (session.view_as_workspace_id) return redirect('/admin');
+          const form_ = { subject: f('subject').trim().slice(0, 150), text: f('text').trim().slice(0, 5000) };
+          const r = form_.subject && form_.text ? await site.send(form_.subject, form_.text) : { ok: false, error: 'empty' };
+          audit(db, { actor: me, action: 'waitlist_message', ip, detail: { ok: r.ok, emails: r.emails ?? 0, phones: r.phones?.length ?? 0, subject: form_.subject } });
+          if (!r.ok) {
+            flash = WAIT[{ again: 'again', empty: 'empty', no_mail: 'noMail' }[r.error] || 'failed'];
+            flashBad = true;
+            return waitlistView(r.error === 'again' ? 409 : 400, { form: form_ });
+          }
+          flash = WAIT.sent(r.emails);
+          return waitlistView(200, { sent: { text: form_.text, emails: r.emails, phones: r.phones } });
+        }
         let m = /^\/admin\/invoices\/(\d+)$/.exec(p);
         if (m && req.method === 'GET') {
           const inv = db.get('SELECT * FROM invoices WHERE id = ?', Number(m[1]));

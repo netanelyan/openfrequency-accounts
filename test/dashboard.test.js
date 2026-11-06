@@ -307,7 +307,7 @@ test('with OF_INTERNAL_TOKEN unset, /admin does not call Toran and says why', as
   }
 });
 
-test("the website's leads that reached only the email: those no product took, then Toran's waitlist as a list (nothing to send them); a line when they could not be read; nothing when there are none", async () => {
+test("the website's leads that reached only the email: those no product took, then Toran's waitlist as a list with the way to its page; a line when they could not be read; nothing when there are none", async () => {
   const t = await setup();
   try {
     const section = async (leads) => {
@@ -319,7 +319,7 @@ test("the website's leads that reached only the email: those no product took, th
     const s = await section(sampleOps(now()).leads);
     assert.match(s, /<h2>לידים מהאתר<\/h2><p class="muted">עד עכשיו הם הגיעו רק במייל\. כאן 30 הימים האחרונים\.<\/p>/);
     assert.match(s, /<h3>לא הגיעו לתורן או לתדר<\/h3><ul class="people"><li><span class="tag p-teder">תדר<\/span><bdi class="ltr who">lost-lead\.example<\/bdi><a href="https:\/\/wa\.me\/972500000210" target="_blank" rel="noopener"><bdi class="ltr">\+972500000210<\/bdi><\/a><span class="muted end">ביקשו לפני 4 שעות<\/span><\/li><\/ul><p class="muted">האתר ניסה להעביר אותם ולא הצליח\. הם שמורים באתר \(node server\/lead\.mjs list\)\.<\/p>/);
-    assert.match(s, /<details class="card site-leads"><summary>2 נרשמו לרשימת ההמתנה של תורן<\/summary><ul class="people"><li><a href="https:\/\/wa\.me\/972500000209"[^>]*><bdi class="ltr">\+972500000209<\/bdi><\/a><bdi class="ltr who">soon-shop\.example<\/bdi><span class="muted end">נרשמו אתמול<\/span><\/li><li><a href="mailto:soon@shop\.example"[^>]*><bdi class="ltr">soon@shop\.example<\/bdi><\/a><span class="muted end">נרשמו לפני 2 ימים<\/span><\/li><\/ul><p class="muted">תורן עוד לא פתוח, אז אין מה לשלוח להם עכשיו\.<\/p><\/details>/);
+    assert.match(s, /<details class="card site-leads"><summary>2 נרשמו לרשימת ההמתנה של תורן<\/summary><ul class="people"><li><a href="https:\/\/wa\.me\/972500000209"[^>]*><bdi class="ltr">\+972500000209<\/bdi><\/a><bdi class="ltr who">soon-shop\.example<\/bdi><span class="muted end">נרשמו אתמול<\/span><\/li><li><a href="mailto:soon@shop\.example"[^>]*><bdi class="ltr">soon@shop\.example<\/bdi><\/a><span class="muted end">נרשמו לפני 2 ימים<\/span><\/li><\/ul><p><a href="\/admin\/waitlist">לכל הרשימה ולשליחת הודעה<\/a><\/p><\/details>/);
     assert.doesNotMatch(s, /<textarea|data-copy|<form/, 'no message and no button: a list');
 
     // A demo with its code that Toran never took has no number; a contact that is neither a phone nor an email is left out.

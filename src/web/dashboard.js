@@ -1,5 +1,5 @@
 import { opsCustomersStage, opsMoney } from '../accounts/ops.js';
-import { OPS, PAY, PRODUCT_NAMES, agoHe, dayHe, ils, stampHe } from './copy.js';
+import { OPS, PAY, PRODUCT_NAMES, WAIT, agoHe, dayHe, ils, stampHe } from './copy.js';
 import { adminTop, csrfField, esc, productMark, tederBase } from './html.js';
 import { LOST_REASONS } from './toran.js';
 
@@ -180,7 +180,7 @@ function leadsSection(leads, at) {
   const waitlist = leads.waitlist.length
     ? `<details class="card site-leads"><summary>${esc(OPS.waitlistTitle(leads.waitlist.length))}</summary><ul class="people">${leads.waitlist
         .map((x) => `<li>${contactLink(x.contact)}${store(x)}${when(OPS.waitlistAt, x)}</li>`)
-        .join('')}</ul><p class="muted">${esc(OPS.waitlistHint)}</p></details>`
+        .join('')}</ul><p><a href="/admin/waitlist">${esc(WAIT.dashLink)}</a></p></details>`
     : '';
   const failed = leads.failed.length
     ? `<div class="card site-leads"><h3>${esc(OPS.handoffTitle)}</h3><ul class="people">${leads.failed
@@ -278,7 +278,7 @@ ${d.noContact.length ? `<details class="card no-contact"><summary>${esc(OPS.noCo
 ${d ? numberLine(d.demoLine) : ''}
 ${receiptsSection(receipts, at)}
 ${kpis}
-<nav class="row tools" aria-label="${esc(OPS.tools)}">${[['leads', OPS.toolTederLeads], ['demos', OPS.toolTederDemos], ['all', OPS.toolTederAll]].map(([path, label]) => `<a class="button" href="${esc(tederBase() + path)}">${esc(label)}</a>`).join('')}</nav>
+<nav class="row tools" aria-label="${esc(OPS.tools)}">${[['leads', OPS.toolTederLeads], ['demos', OPS.toolTederDemos], ['all', OPS.toolTederAll]].map(([path, label]) => `<a class="button" href="${esc(tederBase() + path)}">${esc(label)}</a>`).join('')}<a class="button" href="/admin/waitlist">${esc(WAIT.tool)}</a></nav>
 ${d && !d.teder.ok ? `<p class="muted note">${esc(OPS.tederStale)}</p>` : ''}
 <section id="contact"><div class="list-h"><h2>${esc(OPS.contactTitle)}</h2><p class="muted">${esc(OPS.contactOrder)}</p></div>
 ${contact}
