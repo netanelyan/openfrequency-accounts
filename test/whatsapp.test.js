@@ -42,7 +42,8 @@ test('a customer of Toran links their WhatsApp: no box about updates, the code w
     assert.match(home, /<p class="lead">כשהמספר שלכם מחובר, אפשר לכתוב לתורן בוואטסאפ ולשאול על החנות, בלי להיכנס לאתר\.<\/p>/);
     assert.doesNotMatch(home, /ולתדר|מתדר|עדכונים|name="updates"|wa-hint/, 'nothing about Teder on WhatsApp, and no box');
     assert.match(home, /עוד לא חיברתם מספר\./);
-    assert.match(home, /<form method="post" action="\/whatsapp\/link" class="wa-form"><input type="hidden" name="_csrf"[^>]*>\n<button class="primary">לחבר את הוואטסאפ<\/button>/);
+    // A grey pill: the product's button is the page's one blue (the owner, 2026-11-06).
+    assert.match(home, /<form method="post" action="\/whatsapp\/link" class="wa-form"><input type="hidden" name="_csrf"[^>]*>\n<button class="quiet">לחבר את הוואטסאפ<\/button>/);
 
     // A box ticked by hand (an old page, or a forged form) asks for nothing.
     const r = await b.post('/whatsapp/link', { updates: '1' });
@@ -67,7 +68,7 @@ test('a customer of Toran links their WhatsApp: no box about updates, the code w
     assert.doesNotMatch(card, /class="tag|עדכונים/, 'no "עם עדכונים" or "בלי עדכונים" beside a number');
     assert.doesNotMatch(home, /whatsapp\/updates/);
     assert.doesNotMatch(home, /class="code ltr"/, 'a used code is gone');
-    assert.match(home, /<button class="primary">לחבר את הוואטסאפ<\/button>/);
+    assert.match(home, /<button class="quiet">לחבר את הוואטסאפ<\/button>/);
   } finally {
     await t.done();
   }

@@ -494,7 +494,9 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
         const mine = memberships(db, found.user.id).filter((m) => !m.disabled_at);
         const change = graceChangeOf(db, wsId);
         const subscriptions = Object.fromEntries(Object.entries(subscriptionsOf(db, wsId)).map(([prod, row]) => [prod, describe(row, undefined, change)]));
-        const others = PRODUCTS.filter((prod) => !d.body.products.includes(prod));
+        // Only a product they can buy now (OF_SIGNUP_PRODUCTS): while Toran waits for Meta, a Teder workspace is not shown
+        // Toran (the owner, 2026-11-06: "if an option isnt relevant dont show it").
+        const others = PRODUCTS.filter((prod) => !d.body.products.includes(prod) && openProducts.includes(prod));
         const body = P.homePage({
           csrf,
           user: found.user,

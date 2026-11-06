@@ -12,6 +12,12 @@ import { enabledProducts } from '../auth/sessions.js';
 // NOTIFY_PER_DAY emails of one kind, for one product, to one workspace in 24 hours.
 
 export const KINDS = ['posts_waiting', 'weekly', 'monthly', 'connect_needed', 'publish_failed'];
+// The products that send these emails: Teder alone (openfrequency-teder src/notify/email.js; nothing in
+// openfrequency-toran calls POST /internal/notify, checked 2026-11-06). /notifications offers only their boxes and saves
+// only theirs (the owner, 2026-11-06: "if an option isnt relevant dont show it"): Toran's five were Teder's kinds, posts
+// waiting and publishing among them, which Toran never sends. A product that starts sending is added here.
+export const MAIL_PRODUCTS = ['teder'];
+const mailing = (db, workspaceId) => enabledProducts(db, workspaceId).filter((p) => MAIL_PRODUCTS.includes(p));
 export const NOTIFY_PER_DAY = 3;
 export const LIMITS = { subject: 200, text: 5000, html: 50_000, link: 2000 };
 export const SUBJECT_MAX = 150;
@@ -94,12 +100,12 @@ export function prefsOf(db, { userId, workspaceId, role }) {
     const r = saved.find((x) => x.product === p && x.kind === k);
     return r ? Boolean(r.enabled) : byDefault(role);
   };
-  return Object.fromEntries(enabledProducts(db, workspaceId).map((p) => [p, Object.fromEntries(KINDS.map((k) => [k, get(p, k)]))]));
+  return Object.fromEntries(mailing(db, workspaceId).map((p) => [p, Object.fromEntries(KINDS.map((k) => [k, get(p, k)]))]));
 }
 
 /** Save the page: `on` is the set of "product:kind" that are ticked; every other kind of those products is off. */
 export function savePrefs(db, { userId, workspaceId, on }, { by, ip = null } = {}) {
-  const products = enabledProducts(db, workspaceId);
+  const products = mailing(db, workspaceId);
   const t = nowIso();
   db.tx(() => {
     for (const p of products)

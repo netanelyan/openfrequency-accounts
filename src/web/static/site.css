@@ -424,6 +424,14 @@ form.team-add input { flex: 1 1 200px; min-width: 0; }
 form.team-add select { flex: 0 0 auto; width: auto; }
 form.team-add button { flex: 0 0 auto; min-height: 50px; }
 @media (max-width: 560px) { form.team-add select, form.team-add button { flex: 1 1 auto; } }
+/* The invite form waits behind its summary (html.js teamCard), a link-like row as tall as a tap. */
+details.team-more { margin-top: 14px; }
+details.team-more summary { display: inline-flex; align-items: center; min-height: 44px; cursor: pointer; list-style: none; color: var(--accent); font-weight: 600; }
+details.team-more summary::-webkit-details-marker { display: none; }
+details.team-more summary::after { content: '+'; margin-inline-start: 8px; font-weight: 400; font-size: 20px; line-height: 1; }
+details.team-more[open] summary::after { content: '−'; }
+/* Cancelling, under the product's card: a quiet link, not a second button (html.js subCard). */
+.card.sub .sub-cancel { margin-top: 6px; }
 .team-full { margin-top: 16px; padding: 12px 14px; border-radius: var(--r-m); background: var(--warn-bg); color: var(--warn); }
 .team-full p { margin: 0; }
 .team-full p + p { margin-top: 12px; }

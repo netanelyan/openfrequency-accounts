@@ -267,7 +267,10 @@ test('the paywall on the pages: payment first and required, the steps locked, th
     let home = (await b.get('/')).body;
     assert.match(home, /<section class="card setup-card">/);
     assert.match(home, /<span class="tag">עוד לא שולם<\/span>/);
-    assert.match(home, /<a class="button primary" href="\/setup#setup-billing">להסדיר תשלום<\/a>/);
+    // One blue on the page (the owner, 2026-11-06): the setup card's, which leads to the same payment.
+    assert.match(home, /<a class="button primary" href="\/setup">להמשך ההגדרה<\/a>/);
+    assert.match(home, /<a class="button quiet" href="\/setup#setup-billing">להסדיר תשלום<\/a>/);
+    assert.equal(home.match(/class="button primary"/g).length, 1);
     assert.doesNotMatch(home, /כניסה לתדר/);
 
     // The payment is recorded on /admin: open.
@@ -337,7 +340,8 @@ test('cancelling online: owners only, a confirmation page, it works until the la
     payMonth(t.db, t.ws.id, 'teder', { by: null });
     let b = signedIn(t, t.db, t.noa);
     let home = (await b.get('/')).body;
-    assert.match(home, /<a class="button quiet" href="\/subscription\/teder\/cancel" aria-label="לבטל את המנוי לתדר">לבטל את המנוי<\/a>/);
+    // A quiet link under the card, not a second button beside the main one (the owner, 2026-11-06).
+    assert.match(home, /<p class="links sub-cancel"><a href="\/subscription\/teder\/cancel" aria-label="לבטל את המנוי לתדר">לבטל את המנוי<\/a><\/p>/);
     // A member sees no button, and is refused.
     const ron = signedIn(t, t.db, t.db.get("SELECT * FROM users WHERE email = 'ron@example.com'"));
     assert.doesNotMatch((await ron.get('/')).body, /subscription\/teder\/cancel/);

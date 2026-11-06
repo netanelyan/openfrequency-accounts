@@ -6,7 +6,7 @@ import { dueOf, PAY_AHEAD_DAYS } from '../accounts/billing.js';
 import { ISSUING_STALE_MS } from '../accounts/morning.js';
 import { now as clockNow } from '../core/clock.js';
 import { total } from '../accounts/invoices.js';
-import { KINDS } from '../accounts/notify.js';
+import { KINDS, MAIL_PRODUCTS } from '../accounts/notify.js';
 import { AUDIT_NAMES, CANCEL, ERASE, MORNING, NOTIFY, OPS, PAY, PLAN_NAMES, PRODUCT_NAMES, ROLE_NAMES, SETUP, SIGNUP, T, dayHe, hourHe, ils, opensAfter, phoneHe, planGives, weekdayHe, when } from './copy.js';
 import { CONTRACT_URLS, PRIVACY_URL, TERMS_URL } from '../accounts/signup.js';
 
@@ -219,9 +219,10 @@ function paidBar(s, { saysLeft = true } = {}) {
  * are arranged with us, by email), and
  * the status in plain words (src/accounts/subscriptions.js describe(), and the paywall's access, entitlement.js).
  * While the paywall keeps it closed, its button leads to the payment instead of into the product. Its owner cancels
- * it here (a confirmation page first) and takes a cancellation back before its last day.
+ * it here (a confirmation page first), from a quiet link under the card, and takes a cancellation back before its last
+ * day. `first()` says whether its main button is the page's one blue (homePage): the first that asks for it is.
  */
-function subCard(p, s, href, { access = null, csrf = '', owner = false, providerReady = false } = {}) {
+function subCard(p, s, href, { access = null, csrf = '', owner = false, providerReady = false, first = () => true } = {}) {
   const name = PRODUCT_NAMES[p];
   const comp = access?.access === 'comp';
   const cancelled = !comp && access?.cancelled && s?.status !== 'ended';
@@ -255,19 +256,24 @@ function subCard(p, s, href, { access = null, csrf = '', owner = false, provider
     status === 'ended' || (status === 'cancelled' && locked)
       ? ''
       : locked
-        ? `<a class="button primary" href="/setup#setup-billing">${esc(T.subPay)}</a>`
-        : `<a class="button primary" href="${esc(href)}">${esc(T.homeOpen(name))}</a>${status === 'due' ? `<a class="button quiet" href="/setup#setup-billing">${esc(T.subPay)}</a>` : ''}`;
+        ? `<a class="button ${first() ? 'primary' : 'quiet'}" href="/setup#setup-billing">${esc(T.subPay)}</a>`
+        : `<a class="button ${first() ? 'primary' : 'quiet'}" href="${esc(href)}">${esc(T.homeOpen(name))}</a>${status === 'due' ? `<a class="button quiet" href="/setup#setup-billing">${esc(T.subPay)}</a>` : ''}`;
+  // Cancelling is always there for its owner, as a link under the card rather than a second button beside the main one
+  // (the owner, 2026-11-06: "main button should look the most important"); taking a cancellation back is the card's
+  // own button while it can be taken back.
   let change = '';
+  let cancel = '';
   if (owner && status === 'cancelled' && s?.ends_on && s.ends_on >= israelToday())
     change = button(`/subscription/${p}/resume`, T.subResume, csrf, { kind: 'quiet', label: T.subResumeLabel(name) });
   else if (owner && ['active', 'open', 'due'].includes(status))
-    change = `<a class="button quiet" href="/subscription/${esc(p)}/cancel" aria-label="${esc(T.subCancelLabel(name))}">${esc(T.subCancel)}</a>`;
+    cancel = `<p class="links sub-cancel"><a href="/subscription/${esc(p)}/cancel" aria-label="${esc(T.subCancelLabel(name))}">${esc(T.subCancel)}</a></p>`;
   return `<article class="card sub s-${status}">
 <header>${productMark(p)}<h3>${esc(name)}</h3><span class="tag">${esc(T.subStatus[status])}</span></header>
 ${s?.monthly != null && !comp ? `<p class="price">${esc(T.subPrice(ils(s.monthly), vat))}</p>` : ''}
 ${s?.plan ? `<p class="muted">${esc(planLine(p, s.plan))}</p>` : ''}
 ${lines.join('\n')}
 ${go || change ? `<p class="go">${go}${change}</p>` : ''}
+${cancel}
 </article>`;
 }
 
@@ -292,7 +298,9 @@ function invoicesCard(invoices) {
  * the form gives way to a line about talking to us. A member sees the same list and nothing to press; so does a
  * read-only view.
  */
-function teamCard({ csrf, user, team, role, readOnly = false, support = null, error = '', form = {} }) {
+// The invite form waits behind "להזמין מישהו לחשבון" (the owner, 2026-11-06: "advanced options hidden until someone needs
+// them"), and opens by itself when it comes back with an error or a typed address.
+function teamCard({ csrf, user, team, role, readOnly = false, support = null, error = '', form = {}, first = () => true }) {
   const owner = role === 'client_owner' && !readOnly;
   const people = team.members.map((m) => {
     const who = m.name || m.email;
@@ -310,16 +318,16 @@ function teamCard({ csrf, user, team, role, readOnly = false, support = null, er
   if (!owner) add = `<p class="muted">${esc(T.teamOwnersOnly)}</p>`;
   else if (team.full)
     add = support
-      ? `<div class="team-full" role="note"><p>${esc(T.teamFull(team.limit))}</p><p><a class="button primary" href="${esc(support)}">${esc(T.supportWrite)}</a></p></div>`
+      ? `<div class="team-full" role="note"><p>${esc(T.teamFull(team.limit))}</p><p><a class="button ${first() ? 'primary' : 'quiet'}" href="${esc(support)}">${esc(T.supportWrite)}</a></p></div>`
       : `<div class="team-full" role="note"><p>${esc(T.teamFullReply(team.limit))}</p></div>`;
   else
-    add = `<form method="post" action="/team/invite" class="team-add">${csrfField(csrf)}
+    add = `<details class="team-more"${error || form.email ? ' open' : ''}><summary>${esc(T.teamAddOpen)}</summary><form method="post" action="/team/invite" class="team-add">${csrfField(csrf)}
 <label for="team-email">${esc(T.teamEmail)}</label>
 <div class="fields"><input id="team-email" name="email" type="email" inputmode="email" autocomplete="off" dir="ltr" required maxlength="254" placeholder="name@example.com" value="${esc(form.email || '')}" aria-describedby="team-room${error ? ' team-err' : ''}"${error ? ' aria-invalid="true"' : ''}>
 <select name="role" aria-label="${esc(T.teamRole)}"><option value="client_member"${sel('client_member')}>${esc(ROLE_NAMES.client_member)}</option><option value="client_owner"${sel('client_owner')}>${esc(ROLE_NAMES.client_owner)}</option></select>
 <button class="primary">${esc(T.teamInvite)}</button></div>
 <small id="team-room">${esc(T.teamRoom(team.limit - team.taken, team.limit))}</small>
-</form>`;
+</form></details>`;
   return `<section class="card team" id="team"><div class="card-h"><h2>${esc(T.dashTeam)}</h2><span class="muted">${esc(T.teamCount(team.taken, team.limit))}</span></div>
 <ul class="people">${[...people, ...waiting].join('')}</ul>
 ${error ? `<p class="error" id="team-err" role="alert">${esc(error)}</p>` : ''}
@@ -337,7 +345,7 @@ ${add}
  * updates the old checkbox asked about were Teder's messages, which are not sent any more. A workspace without Toran
  * sees the card only while a number of its is still linked, to remove it, with no code and no form.
  */
-function whatsappCard({ csrf, phones = [], code = null, waNumber = null, readOnly = false, toran = false }) {
+function whatsappCard({ csrf, phones = [], code = null, waNumber = null, readOnly = false, toran = false, first = () => true }) {
   if (!toran && !phones.length) return '';
   const items = phones
     .map((n) => {
@@ -357,7 +365,7 @@ ${waNumber ? `<p><a class="button primary" href="${esc(`https://wa.me/${waNumber
   const form = readOnly || !toran
     ? ''
     : `<form method="post" action="/whatsapp/link" class="wa-form">${csrfField(csrf)}
-<button class="${code ? 'quiet' : 'primary'}">${esc(code ? T.waAgain : T.waConnect)}</button>
+<button class="${!code && first() ? 'primary' : 'quiet'}">${esc(code ? T.waAgain : T.waConnect)}</button>
 </form>`;
   return `<section class="card wa" id="whatsapp">
 <h2>${esc(T.waTitle)}</h2>
@@ -374,11 +382,20 @@ ${form}
  * `setup` (null once setup is finished): a card that leads to /setup while a product says a step is left, and a
  * "הגדרה" link in the header instead while a product has not answered.
  */
+// One blue button on the page (the owner, 2026-11-06: "every screen should have one action. main button should look the
+// most important"): the first that asks for it, in the order the page reads, the setup card's, then the first product's,
+// then WhatsApp's; every other one is a grey pill. The account's own settings, signing out on every device (on /logout,
+// where the header's "יציאה" leads) and deleting it are quiet, and the product emails show only for a product that sends
+// them (MAIL_PRODUCTS).
 export function homePage({ csrf, user, workspace, products, productUrls, canSwitch, subscriptions = {}, access = {}, providerReady = false, others = [], invoices = null, team, role, readOnly = false, support = null, supportTeam = null, flash = '', teamError = '', teamForm = {}, whatsapp = {}, setup = null }) {
   const owner = role === 'client_owner' && !readOnly;
+  let used = false;
+  const first = () => (used ? false : (used = true));
+  const setupCard = setup?.incomplete ? `<section class="card setup-card"><div><h2>${esc(SETUP.cardTitle)}</h2><p class="muted">${esc(SETUP.cardLead(setup.done, setup.total))}</p></div><a class="button ${first() ? 'primary' : 'quiet'}" href="/setup">${esc(SETUP.cardButton)}</a></section>` : '';
   const subs = products.length
-    ? `<div class="subs">${products.map((p) => subCard(p, subscriptions[p], productUrls[p], { access: access[p], csrf, owner, providerReady })).join('')}</div>`
+    ? `<div class="subs">${products.map((p) => subCard(p, subscriptions[p], productUrls[p], { access: access[p], csrf, owner, providerReady, first })).join('')}</div>`
     : `<section class="card"><p class="muted">${esc(T.homeNoProducts)}</p></section>`;
+  const mails = products.some((p) => MAIL_PRODUCTS.includes(p));
   const more = others.length
     ? `<div class="list-h"><h2>${esc(T.dashMore)}</h2></div>
 <ul class="more">${others
@@ -389,17 +406,17 @@ export function homePage({ csrf, user, workspace, products, productUrls, canSwit
 <header class="top"><div class="brand">${ofMark()}<h1>${esc(T.homeHello(user.name || user.email))}</h1></div><nav class="top-links" aria-label="${esc(SETUP.navLabel)}">${setup && !setup.incomplete ? `<a class="button quiet" href="/setup">${esc(SETUP.nav)}</a>` : ''}<a class="button quiet" href="/logout">${esc(T.homeSignOut)}</a></nav></header>
 ${flash ? `<p class="flash" role="status">${esc(flash)}</p>` : ''}
 <p class="lead dash-who">${esc(T.homeWho(user.email, workspace.name))}</p>
-${setup?.incomplete ? `<section class="card setup-card"><div><h2>${esc(SETUP.cardTitle)}</h2><p class="muted">${esc(SETUP.cardLead(setup.done, setup.total))}</p></div><a class="button primary" href="/setup">${esc(SETUP.cardButton)}</a></section>` : ''}
+${setupCard}
 <div class="list-h"><h2>${esc(T.dashProducts)}</h2></div>
 ${subs}
 ${more}
 ${invoices ? invoicesCard(invoices) : ''}
-${whatsappCard({ csrf, readOnly, ...whatsapp })}
+${whatsappCard({ csrf, readOnly, first, ...whatsapp })}
 <div class="pair">
-${teamCard({ csrf, user, team: team || { members: [], invites: [], taken: 0, limit: 0, full: true }, role, readOnly, support: supportTeam || support, error: teamError, form: teamForm })}
+${teamCard({ csrf, user, team: team || { members: [], invites: [], taken: 0, limit: 0, full: true }, role, readOnly, support: supportTeam || support, error: teamError, form: teamForm, first })}
 <section class="card"><h2>${esc(T.dashAccount)}</h2>
 <dl class="facts"><div><dt>${esc(T.dashEmail)}</dt><dd class="ltr">${esc(user.email)}</dd></div><div><dt>${esc(T.dashBusiness)}</dt><dd>${esc(workspace.name)}</dd></div></dl>
-<p class="row">${canSwitch ? `<a class="button" href="/workspace">${esc(T.homeSwitch)}</a>` : ''}<a class="button" href="/notifications">${esc(T.dashNotifications)}</a><a class="button" href="/logout">${esc(T.dashSignOutAll)}</a></p>
+${canSwitch || mails ? `<p class="row">${canSwitch ? `<a class="button" href="/workspace">${esc(T.homeSwitch)}</a>` : ''}${mails ? `<a class="button" href="/notifications">${esc(T.dashNotifications)}</a>` : ''}</p>` : ''}
 ${owner ? `<p class="links"><a href="/account/delete">${esc(T.dashDelete)}</a></p>` : ''}
 </section>
 </div>

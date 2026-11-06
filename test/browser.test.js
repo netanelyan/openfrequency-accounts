@@ -137,6 +137,9 @@ run('the home page on a phone, in dark mode: the bar fills from the right, the i
     const doc = await page.request.get(`${t.base}${await row.locator('a').getAttribute('href')}`);
     assert.equal(doc.headers()['content-type'], 'application/pdf');
 
+    // The invite form waits behind its summary (the owner, 2026-11-06: "advanced options hidden until someone needs them").
+    assert.equal(await page.locator('#team-email').isVisible(), false, 'the invite form starts folded');
+    await page.click('details.team-more summary');
     await page.fill('#team-email', 'noa@example.com');
     await page.click('form.team-add button');
     await page.waitForURL(`${t.base}/#team`);

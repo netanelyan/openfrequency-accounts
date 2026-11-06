@@ -118,7 +118,7 @@ test('three people at most, the owner and the invites still waiting included; th
     const card = teamCard((await dana.get('/')).body);
     assert.match(card, /3 מתוך 3/);
     assert.doesNotMatch(card, /action="\/team\/invite"/, 'the form is gone');
-    assert.match(card, /<div class="team-full" role="note"><p>בחשבון יש כבר 3 אנשים, כולל הזמנות שעוד לא התקבלו\. כדי להוסיף עוד, דברו איתנו\.<\/p><p><a class="button primary" href="https:\/\/wa\.me\/972500000000\?text=([^"]+)">כתבו לנו בוואטסאפ<\/a><\/p><\/div>/);
+    assert.match(card, /<div class="team-full" role="note"><p>בחשבון יש כבר 3 אנשים, כולל הזמנות שעוד לא התקבלו\. כדי להוסיף עוד, דברו איתנו\.<\/p><p><a class="button quiet" href="https:\/\/wa\.me\/972500000000\?text=([^"]+)">כתבו לנו בוואטסאפ<\/a><\/p><\/div>/);
     assert.equal(decodeURIComponent(/wa\.me\/972500000000\?text=([^"]+)/.exec(card)[1]), 'היי, כותבים מ״החנות של דנה״. רוצים להוסיף לחשבון יותר מ-3 אנשים.', 'the message to us is already written');
 
     // The form skipped: refused, nothing sent, nothing stored.

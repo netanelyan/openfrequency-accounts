@@ -175,7 +175,9 @@ test('the grace on the pages: due, it still opens and asks to pay, with the day 
     b = signedIn(t, t.db, t.noa);
     let home = (await b.get('/')).body;
     assert.match(home, /התשלום לחודש שהתחיל ב-22\.11\.2026 עוד לא הגיע אלינו\. המנוי ממשיך לעבוד עד סוף יום שלישי, 24\.11\.2026, ואם התשלום לא יגיע עד אז הוא ייעצר עד שישולם\./);
-    assert.match(home, /<a class="button primary" href="https:\/\/teder\.openfrequency\.co\.il\/">כניסה לתדר<\/a><a class="button quiet" href="\/setup#setup-billing">להסדיר תשלום<\/a>/);
+    // It still opens, and the payment is the page's one blue, the setup card's (the owner, 2026-11-06).
+    assert.match(home, /<a class="button quiet" href="https:\/\/teder\.openfrequency\.co\.il\/">כניסה לתדר<\/a><a class="button quiet" href="\/setup#setup-billing">להסדיר תשלום<\/a>/);
+    assert.match(home, /<a class="button primary" href="\/setup">להמשך ההגדרה<\/a>/);
     // The payment step is not done while it is owed, and says until when it works.
     const setup_ = (await b.get('/setup')).body;
     assert.match(setup_, /<li>תדר, החבילה המלאה: התשלום על החודש החדש עוד לא הגיע\. המנוי עובד עד סוף יום שלישי, 24\.11\.2026, ואחרי זה נעצר עד שישולם\.<\/li>/);

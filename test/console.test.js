@@ -162,7 +162,7 @@ test('turning a product on or off is seen by the next request from that product'
     assert.match((await t.admin.get('/admin/accounts')).body, /תדר כבוי עכשיו ב-חנות של דנה/);
     // Turned on, nothing paid yet: its card leads to the payment. Marked complimentary, into the product.
     let home = await b.get('/');
-    assert.match(home.body, /<a class="button primary" href="\/setup#setup-billing">להסדיר תשלום<\/a>/);
+    assert.match(home.body, /<a class="button quiet" href="\/setup#setup-billing">להסדיר תשלום<\/a>/, "quiet: the setup card's button is the page's one blue");
     assert.doesNotMatch(home.body, /כניסה לתורן|כניסה לתדר/);
     await t.admin.post(`/admin/workspaces/${id}/comp`, { product: 'toran', comp: '1' });
     home = await b.get('/');
