@@ -19,6 +19,14 @@ import { CONTRACT_URLS, PRIVACY_URL, TERMS_URL } from '../accounts/signup.js';
 export const esc = (s) =>
   String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 
+// What a link to these pages shows when it is sent on WhatsApp or Facebook (they are not indexed: robots noindex): the
+// same picture and line as the website's home page, openfrequency-web's og/openfrequency.png.
+const SHARE_META = `<meta name="description" content="נכנסים לחשבון ב-OpenFrequency, נרשמים ומנהלים את החבילה.">
+<meta property="og:type" content="website"><meta property="og:site_name" content="OpenFrequency"><meta property="og:locale" content="he_IL">
+<meta property="og:title" content="החשבון שלכם ב-OpenFrequency">
+<meta property="og:description" content="נכנסים, נרשמים ומנהלים את החבילה.">
+<meta property="og:image" content="https://openfrequency.co.il/og/openfrequency.png"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630">`;
+
 export const csrfField = (csrf) => `<input type="hidden" name="_csrf" value="${esc(csrf)}">`;
 
 /** A one-button form. */
@@ -100,6 +108,7 @@ export function layout({ title, body, banner = '', flash = '', wide = false, v =
 <meta name="color-scheme" content="${t}">
 <meta name="theme-color" content="${THEME_COLOR[t]}">
 <title>${esc(title)} · ${esc(T.brand)}</title>
+${SHARE_META}
 <script src="/static/a11y.js?v=${esc(v)}"></script>
 <link rel="stylesheet" href="/static/site.css?v=${esc(v)}">
 <link rel="icon" href="/static/icon.svg?v=${esc(v)}" type="image/svg+xml">
