@@ -37,9 +37,16 @@ test('the operator sees the whole waitlist, sends it a message, and gets a Whats
     assert.doesNotMatch(r.body, /<script>/);
     assert.match(r.body, /action="\/admin\/waitlist\/send"/);
     assert.equal(fake.calls[0].auth, 'Bearer internal-token-for-tests-only-0123456789');
+    // The form opens with Toran's launch message, the list price in it and the subject an ad must start with.
+    assert.match(r.body, /value="פרסומת - תורן פתוח להצטרפות"/);
+    assert.match(r.body, /<textarea[^>]*>היי, נרשמתם אצלנו באתר כדי לשמוע כשתורן נפתח\./);
+    assert.ok(r.body.includes('המחיר 590 ₪ לחודש ודמי הקמה של 990 ₪, לפני מע״מ.'));
+    assert.ok(r.body.includes('https://accounts.openfrequency.co.il/signup?p=toran'));
 
     const sent = await op.post('/admin/waitlist/send', { subject: 'תורן נפתח', text: 'שלום לכולם' });
     assert.equal(sent.status, 200);
+    // After a send the form is empty, so the draft is never sent twice by a second press.
+    assert.doesNotMatch(sent.body, /value="פרסומת - תורן פתוח להצטרפות"/);
     assert.deepEqual(fake.calls.find((c) => c.method === 'POST').body, { subject: 'תורן נפתח', text: 'שלום לכולם' });
     assert.match(sent.body, /המייל יוצא עכשיו ל-1 כתובות/);
     assert.ok(sent.body.includes(`https://wa.me/972501234567?text=${encodeURIComponent('שלום לכולם')}`));

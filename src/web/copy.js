@@ -1196,6 +1196,20 @@ export const WAIT = {
   phoneSend: 'לפתוח בוואטסאפ',
   dashLink: 'לכל הרשימה ולשליחת הודעה',
   tool: 'רשימת ההמתנה',
+  // The message the form opens with: Toran's launch, for the operator to read, change if they like and send (the owner,
+  // 2026-11-08: "could we promote toran too?"). An ad, so its subject opens with "פרסומת" (section 30A), though everyone
+  // on the list asked to hear. The price is accounts' list price; what each plan holds is on the website.
+  draftSubject: 'פרסומת - תורן פתוח להצטרפות',
+  draftText: (monthly, setup) => `היי, נרשמתם אצלנו באתר כדי לשמוע כשתורן נפתח. הוא נפתח היום, ואפשר להצטרף.
+
+תורן עונה ללקוחות של החנות שלכם בוואטסאפ ובמייל, מתוך מה שכתוב באתר שלכם: מחירים, מלאי, משלוחים והחזרות. שאלה שאין עליה תשובה באתר הוא מעביר אליכם, ואת התשובה שלכם הוא זוכר לפעם הבאה. מספר הוואטסאפ של החנות נשאר שלכם, וממשיך לעבוד גם באפליקציה בטלפון.
+
+אפשר לנסות אותו קודם על החנות שלכם: https://openfrequency.co.il/toran#demo
+ולהצטרף: https://accounts.openfrequency.co.il/signup?p=toran
+
+המחיר ${monthly} ₪ לחודש ודמי הקמה של ${setup} ₪, לפני מע״מ. מה כל חבילה כוללת כתוב בעמוד של תורן: https://openfrequency.co.il/toran#price
+
+OpenFrequency`,
 };
 
 export const stampHe = (iso) => (iso && !Number.isNaN(Date.parse(iso)) ? `${SHORT.format(new Date(iso))} ב-${HOUR_HE.format(new Date(iso))}` : '');
