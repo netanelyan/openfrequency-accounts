@@ -97,18 +97,21 @@ test("a product that can't be bought now isn't offered, and the second way to si
   }
 });
 
-test('the product emails offer only what a product sends: Teder\'s boxes, none for Toran, and no button without them', async () => {
+test('the product emails offer only what each product sends: Teder\'s five boxes, Toran\'s two, and a kind a product does not send is never saved', async () => {
   const t = await setup();
   try {
     const b = t.as('dana@example.com');
     const page = (await b.get('/notifications')).body;
     assert.match(page, /name="on" value="teder:weekly"/);
-    assert.doesNotMatch(page, /value="toran:/, "Toran sends none of these (Teder's kinds)");
-    await b.post('/notifications', { workspace: String(t.both.id), on: ['teder:weekly', 'toran:weekly'] });
-    assert.deepEqual(t.db.all('SELECT DISTINCT product FROM notify_prefs').map((r) => r.product), ['teder'], 'nothing saved for Toran');
-    // A Toran-only account has nothing to choose: no button on its home page.
-    assert.doesNotMatch((await t.as('yael@example.com').get('/')).body, /href="\/notifications"/);
-    assert.match((await t.as('yael@example.com').get('/notifications')).body, /כרגע אף מוצר בחשבון לא שולח מיילים, אז אין מה לבחור\./);
+    // Toran's own two (since 2026-11-08): a customer waiting, and its monthly report in its own words.
+    assert.match(page, /value="toran:conversation_waiting"[^>]*> לקוחות שמחכים לתשובה שלכם/);
+    assert.match(page, /value="toran:monthly"[^>]*> דוח חודשי על השיחות/);
+    assert.doesNotMatch(page, /value="toran:(weekly|posts_waiting|connect_needed|publish_failed)"/, "Teder's kinds are not Toran's");
+    await b.post('/notifications', { workspace: String(t.both.id), on: ['teder:weekly', 'toran:weekly', 'toran:monthly'] });
+    assert.deepEqual(t.db.all("SELECT kind, enabled FROM notify_prefs WHERE product = 'toran' ORDER BY kind").map((r) => [r.kind, r.enabled]), [['conversation_waiting', 0], ['monthly', 1]], "only Toran's own kinds are saved");
+    // A Toran-only account has Toran's two to choose.
+    assert.match((await t.as('yael@example.com').get('/')).body, /href="\/notifications"/);
+    assert.match((await t.as('yael@example.com').get('/notifications')).body, /value="toran:conversation_waiting"/);
   } finally {
     await t.done();
   }

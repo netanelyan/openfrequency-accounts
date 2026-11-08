@@ -6,7 +6,7 @@ import { dueOf, PAY_AHEAD_DAYS } from '../accounts/billing.js';
 import { ISSUING_STALE_MS } from '../accounts/morning.js';
 import { now as clockNow } from '../core/clock.js';
 import { total } from '../accounts/invoices.js';
-import { KINDS, MAIL_PRODUCTS } from '../accounts/notify.js';
+import { MAIL_PRODUCTS, kindsOf } from '../accounts/notify.js';
 import { AUDIT_NAMES, CANCEL, ERASE, MORNING, NOTIFY, OPS, PAY, PLAN_NAMES, PRODUCT_NAMES, ROLE_NAMES, SETUP, SIGNUP, T, dayHe, hourHe, ils, opensAfter, phoneHe, planWhat, weekdayHe, when } from './copy.js';
 import { CONTRACT_URLS, PRIVACY_URL, TERMS_URL } from '../accounts/signup.js';
 
@@ -722,7 +722,7 @@ export const notificationsPage = ({ csrf, workspace, prefs, readOnly = false, fl
   const groups = products
     .map(
       (p) => `<fieldset class="notify"><legend>${productMark(p)}<b>${esc(PRODUCT_NAMES[p])}</b></legend>
-${KINDS.map((k) => `<label class="check"><input type="checkbox" name="on" value="${p}:${k}"${prefs[p][k] ? ' checked' : ''}${readOnly ? ' disabled' : ''}> ${esc(NOTIFY.kinds[k])}</label>`).join('\n')}
+${kindsOf(p).map((k) => `<label class="check"><input type="checkbox" name="on" value="${p}:${k}"${prefs[p][k] ? ' checked' : ''}${readOnly ? ' disabled' : ''}> ${esc(NOTIFY.kindLabel(p, k))}</label>`).join('\n')}
 </fieldset>`
     )
     .join('\n');

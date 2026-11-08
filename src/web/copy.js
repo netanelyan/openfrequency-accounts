@@ -1000,7 +1000,11 @@ export const NOTIFY = {
     monthly: 'סיכום חודשי',
     connect_needed: 'חשבון שצריך לחבר מחדש',
     publish_failed: 'פרסום שלא הצליח',
+    conversation_waiting: 'לקוחות שמחכים לתשובה שלכם',
   },
+  // A kind whose words differ by product: Toran's month is its conversations, not posts.
+  productKinds: { toran: { monthly: 'דוח חודשי על השיחות' } },
+  kindLabel: (product, kind) => NOTIFY.productKinds[product]?.[kind] ?? NOTIFY.kinds[kind] ?? kind,
   save: 'שמירה',
   flashSaved: 'שמרנו. מעכשיו נשלח לכם רק את מה שסימנתם.',
   noProducts: 'כרגע אף מוצר בחשבון לא שולח מיילים, אז אין מה לבחור.',

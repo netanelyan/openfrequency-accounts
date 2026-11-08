@@ -14,14 +14,12 @@ import { enabledProducts } from '../auth/sessions.js';
 export const KINDS = ['posts_waiting', 'weekly', 'monthly', 'connect_needed', 'publish_failed'];
 // The kinds each product sends (the owner, 2026-11-08, TORAN-READINESS.md P1-9): Teder's five; Toran's two, a customer
 // waiting for the store's owner (openfrequency-toran src/owners/waiting.ts) and the month's results
-// (src/owners/reports.ts). A product sends only its own kinds. KINDS above stays Teder's list for the /notifications
-// page until it draws each product's own (kindsOf), with Toran's labels.
+// (src/owners/reports.ts). A product sends only its own kinds, and /notifications draws each product's own (kindsOf).
 export const KINDS_OF = { teder: KINDS, toran: ['conversation_waiting', 'monthly'] };
 export const kindsOf = (product) => KINDS_OF[product] || [];
 // The products whose boxes /notifications shows (the owner, 2026-11-06: "if an option isnt relevant dont show it"):
-// Teder's. Toran sends its own two kinds since 2026-11-08 (KINDS_OF; owners get them by default, byDefault below), and
-// is added here once the page draws each product's own kinds (html.js, kindsOf) with labels for Toran's.
-export const MAIL_PRODUCTS = ['teder'];
+// Teder's, and Toran's since 2026-11-08 (its two kinds, KINDS_OF; owners get them by default, byDefault below).
+export const MAIL_PRODUCTS = ['teder', 'toran'];
 const mailing = (db, workspaceId) => enabledProducts(db, workspaceId).filter((p) => MAIL_PRODUCTS.includes(p));
 export const NOTIFY_PER_DAY = 3;
 export const LIMITS = { subject: 200, text: 5000, html: 50_000, link: 2000 };
@@ -105,7 +103,7 @@ export function prefsOf(db, { userId, workspaceId, role }) {
     const r = saved.find((x) => x.product === p && x.kind === k);
     return r ? Boolean(r.enabled) : byDefault(role);
   };
-  return Object.fromEntries(mailing(db, workspaceId).map((p) => [p, Object.fromEntries(KINDS.map((k) => [k, get(p, k)]))]));
+  return Object.fromEntries(mailing(db, workspaceId).map((p) => [p, Object.fromEntries(kindsOf(p).map((k) => [k, get(p, k)]))]));
 }
 
 /** Save the page: `on` is the set of "product:kind" that are ticked; every other kind of those products is off. */
@@ -114,7 +112,7 @@ export function savePrefs(db, { userId, workspaceId, on }, { by, ip = null } = {
   const t = nowIso();
   db.tx(() => {
     for (const p of products)
-      for (const k of KINDS)
+      for (const k of kindsOf(p))
         db.run(
           'INSERT INTO notify_prefs (user_id, workspace_id, product, kind, enabled, updated_at) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(user_id, workspace_id, product, kind) DO UPDATE SET enabled = excluded.enabled, updated_at = excluded.updated_at',
           userId,

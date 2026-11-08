@@ -80,6 +80,8 @@ export function sampleOps(at = Date.now()) {
     },
     ourNumber: { number: '972500000999', status: 'active', roles: [{ key: 'demo', he: 'הדמו: מי ששלח קוד מעמוד של חנות, או שהדמו שלו עוד פתוח' }], leadUrl: lead(1) },
     demoLine: { live: true, via: 'meta', number: '972500000999' },
+    // One customer's store, as Toran's src/ops/health.ts gives it (since 2026-11-08).
+    customers: [{ storeId: 12, name: 'כלי חרס של נורית', workspace: 7, paid: true, live: 'live', channels: [{ channel: 'whatsapp', kind: 'kapso', status: 'active' }], plan: 'store', conversations: 120, cap: 300, waitingOverDay: 0, spendUsd: 1.2, capUsd: 15, lastAlert: null }],
   };
 }
 

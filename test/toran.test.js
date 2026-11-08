@@ -24,4 +24,10 @@ test("Toran's client: the token and the address, a link that is not a web or mai
   assert.equal(toranClient({ env: {} }).base, 'http://127.0.0.1:4710');
   assert.deepEqual(await toranClient({ env: { OF_INTERNAL_TOKEN: 'short' }, fetchImpl: () => assert.fail('no call') }).ops(), { ok: false, why: 'not_configured' });
   assert.deepEqual(readOps({}).funnels, { toran: [], teder: [] });
+  // The customers' health rows (Toran's src/ops/health.ts): none from a Toran that does not give them; a row read as the
+  // contract has it, an unknown live state left out, a row without a store id dropped.
+  assert.deepEqual(readOps({}).customers, []);
+  const [row, ...rest] = readOps({ customers: [{ storeId: 12, name: 'Noa', workspace: 7, paid: true, live: 'later', channels: [{ channel: 'whatsapp', kind: 'kapso', status: 'active' }], plan: 'big', conversations: 900, cap: 1500, waitingOverDay: 2, spendUsd: 3.5, capUsd: 15, lastAlert: null }, { name: 'no id' }] }).customers;
+  assert.deepEqual(row, { storeId: '12', name: 'Noa', workspace: 7, paid: true, live: null, channels: [{ channel: 'whatsapp', kind: 'kapso', status: 'active' }], plan: 'big', conversations: 900, cap: 1500, waitingOverDay: 2, spendUsd: 3.5, capUsd: 15, lastAlert: null });
+  assert.equal(rest.length, 0);
 });

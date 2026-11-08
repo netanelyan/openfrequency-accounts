@@ -256,5 +256,5 @@ export const deleteNoticeMail = (to, { business, who, at, byAdmin = false, resul
 export const productNoticeMail = (to, { product, kind, subject, text, link, manage }) => {
   const name = PRODUCT_NAMES[product];
   const lines = [...text.split(/\n{2,}/), { link }];
-  return { to, ...build(subject, lines, NOTIFY.mailButton(name), { text: NOTIFY.mailFooter(NOTIFY.kinds[kind], name), href: manage, label: NOTIFY.mailFooterLink }, product) };
+  return { to, ...build(subject, lines, NOTIFY.mailButton(name), { text: NOTIFY.mailFooter(NOTIFY.kindLabel(product, kind), name), href: manage, label: NOTIFY.mailFooterLink }, product) };
 };

@@ -102,6 +102,28 @@ export function readOps(b) {
     // through Meta, Twilio or the simulator, and whether that reaches anyone. null from a Toran that does not say.
     ourNumber: one ? { number: digits(one.number), status: str(one.status, 40) || '', roles: list(one.roles).map((r) => ({ key: str(r.key, 40) || '', he: str(r.he, 300) || '' })), leadUrl: safeHref(one.leadUrl) } : null,
     demoLine: line ? { live: line.live === true, via: ['meta', 'twilio', 'sim'].includes(line.via) ? line.via : null, number: digits(line.number) } : null,
+    // One health row a customer's store (Toran's src/ops/health.ts, since 2026-11-08): [] from a Toran that does not
+    // give them. A value this reader does not know is left out, never trusted.
+    customers: list(b.customers)
+      .map((x) => {
+        const alert = obj(x.lastAlert);
+        return {
+          storeId: idOf(x.storeId),
+          name: str(x.name, 200) || '',
+          workspace: num(x.workspace),
+          paid: x.paid === true,
+          live: ['never', 'live', 'paused'].includes(x.live) ? x.live : null,
+          channels: list(x.channels).map((c) => ({ channel: str(c.channel, 20) || '', kind: str(c.kind, 20) || '', status: str(c.status, 20) || '' })),
+          plan: str(x.plan, 20) || '',
+          conversations: num(x.conversations),
+          cap: num(x.cap),
+          waitingOverDay: num(x.waitingOverDay),
+          spendUsd: num(x.spendUsd),
+          capUsd: num(x.capUsd),
+          lastAlert: alert ? { at: str(alert.at, 40), title: str(alert.title, 300) || '' } : null,
+        };
+      })
+      .filter((x) => x.storeId),
   };
 }
 
