@@ -219,14 +219,16 @@ run('sign-up with both products open: ?p=teder starts Teder ticked, its plans op
     const teder = page.locator('input[name="products"][value="teder"]');
     assert.equal(await teder.isChecked(), true);
     assert.equal(await page.isChecked('input[name="products"][value="toran"]'), false);
-    assert.equal(await page.locator('fieldset.plans-pick').isVisible(), true);
+    assert.equal(await page.getByRole('group', { name: 'איזו חבילה של תדר' }).isVisible(), true);
     assert.equal(await page.isChecked('input[name="plan"][value="small"]'), true);
     await page.click('label.product-pick:has(input[value="teder"]) b');
     assert.equal(await teder.isChecked(), false);
-    assert.equal(await page.locator('fieldset.plans-pick').isVisible(), false);
+    assert.equal(await page.getByRole('group', { name: 'איזו חבילה של תדר' }).isVisible(), false);
     await page.goto(`${t.base}/signup`);
     assert.equal(await page.locator('input[name="products"]:checked').count(), 0);
-    assert.equal(await page.locator('fieldset.plans-pick').isVisible(), false);
+    // Toran's own plans close with it, unticked.
+    assert.equal(await page.getByRole('group', { name: 'איזו חבילה של תורן' }).isVisible(), false);
+    assert.equal(await page.getByRole('group', { name: 'איזו חבילה של תדר' }).isVisible(), false);
   } finally {
     await t.done();
   }
