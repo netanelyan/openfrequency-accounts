@@ -40,7 +40,8 @@ test('the operator sees the whole waitlist, sends it a message, and gets a Whats
     // The form opens with Toran's launch message, the list price in it and the subject an ad must start with.
     assert.match(r.body, /value="פרסומת - תורן פתוח להצטרפות"/);
     assert.match(r.body, /<textarea[^>]*>היי, נרשמתם אצלנו באתר כדי לשמוע כשתורן נפתח\./);
-    assert.ok(r.body.includes('המחיר 590 ₪ לחודש ודמי הקמה של 990 ₪, לפני מע״מ.'));
+    // Both of Toran's plans, as accounts and the website sell them (TORAN-READINESS.md P1-16).
+    assert.ok(r.body.includes('יש שתי חבילות, לפני מע״מ: חנות, 590 ₪ לחודש לעד 300 שיחות, וחנות גדולה, 1,190 ₪ לחודש לעד 1,500 שיחות. בשתיהן דמי הקמה של 990 ₪, פעם אחת.'));
     assert.ok(r.body.includes('https://accounts.openfrequency.co.il/signup?p=toran'));
 
     const sent = await op.post('/admin/waitlist/send', { subject: 'תורן נפתח', text: 'שלום לכולם' });

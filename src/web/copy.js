@@ -13,6 +13,8 @@ export const ROLE_NAMES = { client_owner: 'בעלים', client_member: 'צוות
 export const PLAN_NAMES = { full: 'החבילה המלאה', small: 'החבילה הקטנה', store: 'חנות', big: 'חנות גדולה' };
 /** What a plan gives in a month, after its name: Teder's slideshows and redos. */
 export const planGives = (slideshows, redos) => `${slideshows} מצגות בחודש, ו-${redos} החלפות למצגות שדחיתם`;
+/** A whole number as the site writes it: 1,190. */
+const num = (n) => Number(n).toLocaleString('en-US');
 /** What a Toran plan gives in a month: its conversations (the website's "עד 300 שיחות בחודש"). */
 export const planConversations = (n) => `עד ${Number(n).toLocaleString('en-US')} שיחות בחודש`;
 /** What a plan gives, whichever product it is (a row of PLANS). */
@@ -1207,16 +1209,16 @@ export const WAIT = {
   tool: 'רשימת ההמתנה',
   // The message the form opens with: Toran's launch, for the operator to read, change if they like and send (the owner,
   // 2026-11-08: "could we promote toran too?"). An ad, so its subject opens with "פרסומת" (section 30A), though everyone
-  // on the list asked to hear. The price is accounts' list price; what each plan holds is on the website.
+  // on the list asked to hear. The prices and conversations are accounts' Toran plans (PLANS.toran), the same the website sells.
   draftSubject: 'פרסומת - תורן פתוח להצטרפות',
-  draftText: (monthly, setup) => `היי, נרשמתם אצלנו באתר כדי לשמוע כשתורן נפתח. הוא נפתח היום, ואפשר להצטרף.
+  draftText: (store, big) => `היי, נרשמתם אצלנו באתר כדי לשמוע כשתורן נפתח. הוא נפתח היום, ואפשר להצטרף.
 
 תורן עונה ללקוחות של החנות שלכם בוואטסאפ ובמייל, מתוך מה שכתוב באתר שלכם: מחירים, מלאי, משלוחים והחזרות. שאלה שאין עליה תשובה באתר הוא מעביר אליכם, ואת התשובה שלכם הוא זוכר לפעם הבאה. מספר הוואטסאפ של החנות נשאר שלכם, וממשיך לעבוד גם באפליקציה בטלפון.
 
 אפשר לנסות אותו קודם על החנות שלכם: https://openfrequency.co.il/toran#demo
 ולהצטרף: https://accounts.openfrequency.co.il/signup?p=toran
 
-המחיר ${monthly} ₪ לחודש ודמי הקמה של ${setup} ₪, לפני מע״מ. מה כל חבילה כוללת כתוב בעמוד של תורן: https://openfrequency.co.il/toran#price
+יש שתי חבילות, לפני מע״מ: חנות, ${num(store.monthly)} ₪ לחודש לעד ${num(store.conversations)} שיחות, וחנות גדולה, ${num(big.monthly)} ₪ לחודש לעד ${num(big.conversations)} שיחות. בשתיהן דמי הקמה של ${num(store.setup)} ₪, פעם אחת. הפרטים בעמוד של תורן: https://openfrequency.co.il/toran#price
 
 OpenFrequency`,
 };

@@ -9,7 +9,7 @@
 // The website's lead service is on this machine, at OF_SITE_INTERNAL (default http://127.0.0.1:4720), under the same
 // OF_INTERNAL_TOKEN. It fails soft, as toran.js does.
 import { WAIT, agoHe } from './copy.js';
-import { LIST_PRICES } from '../accounts/subscriptions.js';
+import { PLANS } from '../accounts/subscriptions.js';
 import { adminTop, csrfField, esc } from './html.js';
 
 export const SITE_INTERNAL = 'http://127.0.0.1:4720';
@@ -85,7 +85,7 @@ ${flash ? `<p class="flash${flashBad ? ' bad' : ''}" role="${flashBad ? 'alert' 
 <input id="w-subject" name="subject" required maxlength="150" value="${esc('subject' in form ? form.subject : sent ? '' : WAIT.draftSubject)}" aria-describedby="w-subject-hint">
 <small id="w-subject-hint">${esc(WAIT.subjectHint)}</small>
 <label for="w-text">${esc(WAIT.text)}</label>
-<textarea id="w-text" name="text" required maxlength="5000" rows="7" aria-describedby="w-text-hint">${esc('text' in form ? form.text : sent ? '' : WAIT.draftText(LIST_PRICES.toran.monthly, LIST_PRICES.toran.setup))}</textarea>
+<textarea id="w-text" name="text" required maxlength="5000" rows="7" aria-describedby="w-text-hint">${esc('text' in form ? form.text : sent ? '' : WAIT.draftText(PLANS.toran.store, PLANS.toran.big))}</textarea>
 <small id="w-text-hint">${esc(WAIT.textHint)}</small>
 <button class="primary">${esc(WAIT.send)}</button>
 </form>`
