@@ -322,8 +322,8 @@ test('the admin pages have a third tab, תורן, to /admin/toran/, and a fourth
   const t = await setup();
   try {
     for (const [p, re] of [
-      ['/admin', /<a href="\/admin" aria-current="page">היום<\/a><a href="\/admin\/accounts">חשבונות<\/a><a href="\/admin\/toran\/">תורן<\/a><a href="[^"]*\/leads">תדר<\/a><\/nav>/],
-      ['/admin/accounts', /<a href="\/admin">היום<\/a><a href="\/admin\/accounts" aria-current="page">חשבונות<\/a><a href="\/admin\/toran\/">תורן<\/a><a href="[^"]*\/leads">תדר<\/a><\/nav>/],
+      ['/admin', /<a href="\/admin" aria-current="page">היום<\/a><a href="\/admin\/leads">לידים<\/a><a href="\/admin\/accounts">חשבונות<\/a><a href="\/admin\/toran\/">תורן<\/a><a href="[^"]*\/leads">תדר<\/a><\/nav>/],
+      ['/admin/accounts', /<a href="\/admin">היום<\/a><a href="\/admin\/leads">לידים<\/a><a href="\/admin\/accounts" aria-current="page">חשבונות<\/a><a href="\/admin\/toran\/">תורן<\/a><a href="[^"]*\/leads">תדר<\/a><\/nav>/],
     ]) {
       assert.match((await t.op.get(p)).body, re, p);
     }

@@ -20,7 +20,7 @@ import { accessAll, accessFor, BillingError, cancelSubscription, resumeSubscript
 import { eraseWorkspace, productsEver, sameName } from '../accounts/erase.js';
 import { prefsOf, savePrefs } from '../accounts/notify.js';
 import { cancelMail, cancelNoticeMail, deleteNoticeMail, existingAccountMail, inviteMail, magicLinkMail, paidMail, paidOpening, signupMail, signupNoticeMail, welcomeMail } from '../mail/messages.js';
-import { CANCEL, ERASE, MAIL, MORNING, NOTIFY, OPS, PAY, PRODUCT_NAMES, SETUP, SIGNUP, T, WAIT, dayHe, ils, opensAfter, phoneHe } from './copy.js';
+import { CANCEL, ERASE, LEADS, MAIL, MORNING, NOTIFY, OPS, PAY, PRODUCT_NAMES, SETUP, SIGNUP, T, WAIT, dayHe, ils, opensAfter, phoneHe } from './copy.js';
 import { payOverWa } from './pay.js';
 import { setupClient, setupState } from './setup.js';
 import { eraseClient } from './erase.js';
@@ -34,7 +34,8 @@ import { cancelTeamInvite, inviteToTeam, removeMember, TEAM_LIMIT, TeamError, te
 import { opsCustomers } from '../accounts/ops.js';
 import { now } from '../core/clock.js';
 import { dashboardPage } from './dashboard.js';
-import { ACTIONS, ID, LOST_REASONS, toranClient } from './toran.js';
+import { leadPage, leadsPage } from './leads.js';
+import { ACTIONS, ID, LEAD_ACTIONS, LOST_REASONS, WHERE, toranClient } from './toran.js';
 import { siteClient, waitlistPage } from './waitlist.js';
 import { isAdminToran, operatorAssertion, proxyToToran, toranBase, touchesInternal } from './admin-toran.js';
 import { readiness } from './ready.js';
@@ -1102,7 +1103,53 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
           if (r && m[2] && r.file) return receiptFile(r);
           if (r && !m[2]) return receiptView(r);
         }
+        // The shared lead dashboard (src/web/leads.js): the list, and one lead's page; Toran gives both (GET /internal/leads).
+        if (p === '/admin/leads' && req.method === 'GET') {
+          if (session.view_as_workspace_id) return redirect('/admin');
+          const where = WHERE.includes(url.searchParams.get('where')) ? url.searchParams.get('where') : '';
+          const q = String(url.searchParams.get('q') || '').trim().slice(0, 100);
+          const body = leadsPage({ csrf, flash, flashBad, result: await toran.leads({ where, q }), where, q, at: now() });
+          return send(200, layout({ title: LEADS.title, body, wide: true, banner, script: true }), { 'content-security-policy': CSP_SCRIPT });
+        }
+        m = /^\/admin\/leads\/(\d{1,9})$/.exec(p);
+        if (m && req.method === 'GET') {
+          if (session.view_as_workspace_id) return redirect('/admin');
+          const result = await toran.lead(m[1]);
+          const body = leadPage({ csrf, flash, flashBad, result, at: now() });
+          return send(result.ok || result.why !== 'none' ? 200 : 404, layout({ title: result.ok ? result.lead.name : LEADS.title, body, wide: true, banner, script: true }), { 'content-security-policy': CSP_SCRIPT });
+        }
         if (req.method !== 'POST') return page(404, T.notFound, P.messagePage({ title: T.notFound, lead: '', links: [['/admin', T.adminTitle]] }), { banner });
+
+        // A lead's button (src/web/leads.js): its own (build, send, mark, notes, skip) to Toran's /internal/leads, the
+        // dashboard's status buttons to /internal/ops for Toran's lead. Back to the lead's page with Toran's line.
+        m = /^\/admin\/leads\/(\d{1,9})\/([a-z-]{1,20})$/.exec(p);
+        if (m) {
+          const [, id, action] = m;
+          const back = (msg, bad) => {
+            setFlash(msg, bad);
+            return redirect(`/admin/leads/${id}`);
+          };
+          if (session.view_as_workspace_id) return back(OPS.viewAsClosed, true);
+          const by = me.name || me.email;
+          let r;
+          if (LEAD_ACTIONS.includes(action)) {
+            const body = { by };
+            if (action === 'notes') body.notes = f('notes').slice(0, 4000);
+            if (action === 'skip') body.reason = f('reason').trim().slice(0, 300);
+            r = await toran.leadAct(id, action, body);
+          } else if (['replied', 'later', 'lost', 'reopen'].includes(action)) {
+            const body = { by };
+            if (action === 'later') body.days = f('days') === '7' ? 7 : 1;
+            if (action === 'lost') {
+              if (!LOST_REASONS.includes(f('reason'))) return back(OPS.badReason, true);
+              body.reason = f('reason');
+            }
+            r = await toran.act('toran', id, action, body);
+          } else return back(LEADS.badAction, true);
+          audit(db, { actor: me, action: 'lead_action', ip, detail: { id, action, ok: r.ok } });
+          if (r.ok) return back(r.message, false);
+          return back(r.error || (r.status ? OPS.toranFailed(r.status) : OPS.toranNoAnswer), true);
+        }
 
         // A button on the dashboard: checked here, then handed to Toran, which keeps the outreach and its rules. It
         // answers JSON to the page's script (X-OF-Ajax), and otherwise comes back to the dashboard with Toran's line.

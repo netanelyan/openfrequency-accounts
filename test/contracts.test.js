@@ -18,7 +18,7 @@ import { operatorAssertion } from '../src/web/admin-toran.js';
 import { readSetup } from '../src/web/setup.js';
 import { eraseClient } from '../src/web/erase.js';
 import { changedClient, CHANGED_PATH, REASONS } from '../src/web/changed.js';
-import { toranClient } from '../src/web/toran.js';
+import { readLead, readLeads, toranClient } from '../src/web/toran.js';
 import { remindClient, REMIND_KINDS, REMIND_PATH } from '../src/web/remind.js';
 import { PAY_CODE } from '../src/accounts/pay.js';
 import { sampleSetup } from './setup-fake.js';
@@ -57,7 +57,7 @@ export function shapeProblems(actual, example, nullable = [], at = '$') {
 }
 
 test('every contract file is complete: who serves it, who calls it, and every answer with a status and an example', () => {
-  assert.deepEqual(Object.keys(contracts).sort(), ['admin-toran-operator', 'entitlement', 'entitlement-changed', 'notify', 'ops-customers', 'owner-phone', 'pay', 'pay-remind', 'session', 'setup', 'signup', 'toran-ops', 'workspaces-delete']);
+  assert.deepEqual(Object.keys(contracts).sort(), ['admin-leads', 'admin-toran-operator', 'entitlement', 'entitlement-changed', 'notify', 'ops-customers', 'owner-phone', 'pay', 'pay-remind', 'session', 'setup', 'signup', 'toran-ops', 'workspaces-delete']);
   for (const [name, c] of Object.entries(contracts)) {
     assert.equal(c.name, name);
     assert.ok(c.doc && c.servedBy.length && c.calledBy.length, name);
@@ -410,6 +410,33 @@ test('toran-ops: the dashboard\'s answer is read, an action\'s line comes back, 
         const out = await client.act('toran', '12', 'sent', { by: 'Admin' });
         if (a.status === 200) assert.deepEqual(out, { ok: true, message: a.body.message });
         else if (a.status === 400) assert.deepEqual([out.ok, out.error], [false, a.body.error]);
+        else assert.equal(out.ok, false, a.case);
+      }
+    } finally {
+      await p.close();
+    }
+  }
+});
+
+test("admin-leads: the list and one lead are read in the contract's shape, a button's line comes back, a refusal keeps Toran's words", async () => {
+  const [list, one, act] = contracts['admin-leads'].routes;
+  const l = list.answers[0];
+  assert.deepEqual(shapeProblems(readLeads(l.body), { teder: l.body.teder, counts: l.body.counts, leads: l.body.leads, tederOnly: l.body.tederOnly }, l.nullable), []);
+  const o = one.answers[0];
+  assert.deepEqual(shapeProblems(readLead(o.body), o.body.lead, o.nullable), []);
+  for (const [route, a] of [...list.answers.map((a) => [list, a]), ...one.answers.map((a) => [one, a]), ...act.answers.map((a) => [act, a])]) {
+    const p = await answering(() => ({ status: a.status, body: a.body }));
+    try {
+      const client = toranClient({ env: { OF_INTERNAL_TOKEN: TOKEN, OF_TORAN_INTERNAL: p.url }, log: () => {} });
+      if (route === list) assert.equal((await client.leads()).ok, a.status === 200, a.case);
+      else if (route === one) {
+        const out = await client.lead('12');
+        assert.equal(out.ok, a.status === 200, a.case);
+        if (a.status === 404) assert.equal(out.why, 'none', a.case);
+      } else {
+        const out = await client.leadAct('12', 'notes', { by: 'Admin', notes: 'x' });
+        if (a.status === 200) assert.deepEqual(out, { ok: true, message: a.body.message });
+        else if (a.status === 400 || a.status === 404) assert.deepEqual([out.ok, out.error], [false, a.body.error], a.case);
         else assert.equal(out.ok, false, a.case);
       }
     } finally {

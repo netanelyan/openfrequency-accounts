@@ -1,5 +1,11 @@
 import { createServer } from 'node:http';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 import { TOKEN } from './site.js';
+
+/** The shared lead dashboard's contract (docs/contracts/admin-leads.json): its examples are what this fake answers. */
+export const LEADS_CONTRACT = JSON.parse(readFileSync(path.join(import.meta.dirname, '..', 'docs', 'contracts', 'admin-leads.json'), 'utf8'));
+const leadsExample = (route) => LEADS_CONTRACT.routes.find((r) => r.path === route).answers[0].body;
 
 // A pretend Toran on 127.0.0.1, with the two internal routes /admin uses (Toran's docs/operator.md, section 4):
 // GET /internal/ops answers `data` (sampleOps() unless set), and POST /internal/ops/<kind>/<id>/<action> answers
@@ -105,6 +111,17 @@ export async function startToran({ token = TOKEN, data = sampleOps(), answers = 
       const a = state.answers[m[3]];
       if (a) return send(a.status, a.body);
       return send(200, { ok: true, message: SAID[m[3]] || 'סומן.' });
+    }
+    // The shared lead dashboard (/admin/leads): the contract's list and lead; no lead 999; a button's line, or an answer set
+    // in state.answers under 'lead:<action>'.
+    if (req.method === 'GET' && /^\/internal\/leads(\?.*)?$/.test(req.url)) return send(200, state.leads || leadsExample('/internal/leads'));
+    const one = /^\/internal\/leads\/(\d+)$/.exec(req.url);
+    if (req.method === 'GET' && one) return one[1] === '999' ? send(404, { ok: false, error: 'אין ליד כזה' }) : send(200, state.lead || leadsExample('/internal/leads/<id>'));
+    const act = /^\/internal\/leads\/(\d+)\/([a-z-]+)$/.exec(req.url);
+    if (req.method === 'POST' && act) {
+      const a = state.answers[`lead:${act[2]}`];
+      if (a) return send(a.status, a.body);
+      return send(200, { ok: true, message: `בוצע: ${act[2]}` });
     }
     return send(404, { error: 'not_found' });
   });

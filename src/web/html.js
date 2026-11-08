@@ -7,7 +7,7 @@ import { ISSUING_STALE_MS } from '../accounts/morning.js';
 import { now as clockNow } from '../core/clock.js';
 import { total } from '../accounts/invoices.js';
 import { MAIL_PRODUCTS, kindsOf } from '../accounts/notify.js';
-import { AUDIT_NAMES, CANCEL, ERASE, MORNING, NOTIFY, OPS, PAY, PLAN_NAMES, PRODUCT_NAMES, ROLE_NAMES, SETUP, SIGNUP, T, dayHe, hourHe, ils, opensAfter, phoneHe, planWhat, weekdayHe, when } from './copy.js';
+import { AUDIT_NAMES, CANCEL, ERASE, LEADS, MORNING, NOTIFY, OPS, PAY, PLAN_NAMES, PRODUCT_NAMES, ROLE_NAMES, SETUP, SIGNUP, T, dayHe, hourHe, ils, opensAfter, phoneHe, planWhat, weekdayHe, when } from './copy.js';
 import { CONTRACT_URLS, PRIVACY_URL, TERMS_URL } from '../accounts/signup.js';
 
 // Server-rendered pages: Hebrew, right to left, one stylesheet. Our own script files only: static/a11y.js (the
@@ -795,7 +795,7 @@ ${error ? `<p class="error" role="alert">${esc(error)}</p>` : ''}
  */
 export const adminTop = ({ csrf, tab }) => {
   const a = (href, label, on) => `<a href="${href}"${on ? ' aria-current="page"' : ''}>${esc(label)}</a>`;
-  return `<header class="top admin-top"><div class="brand">${ofMark()}<h1>${esc(tab === 'today' ? OPS.pageTitle : T.adminTitle)}</h1></div><nav class="tabs" aria-label="${esc(OPS.tabs)}">${a('/admin', OPS.tabToday, tab === 'today')}${a('/admin/accounts', OPS.tabAccounts, tab === 'accounts')}${a('/admin/toran/', OPS.tabToran, false)}${a(esc(`${tederBase()}leads`), OPS.tabTeder, false)}</nav>${button('/logout', T.adminSignOut, csrf, { kind: 'quiet' })}</header>`;
+  return `<header class="top admin-top"><div class="brand">${ofMark()}<h1>${esc(tab === 'today' ? OPS.pageTitle : tab === 'leads' ? LEADS.title : T.adminTitle)}</h1></div><nav class="tabs" aria-label="${esc(OPS.tabs)}">${a('/admin', OPS.tabToday, tab === 'today')}${a('/admin/leads', LEADS.tab, tab === 'leads')}${a('/admin/accounts', OPS.tabAccounts, tab === 'accounts')}${a('/admin/toran/', OPS.tabToran, false)}${a(esc(`${tederBase()}leads`), OPS.tabTeder, false)}</nav>${button('/logout', T.adminSignOut, csrf, { kind: 'quiet' })}</header>`;
 };
 
 /**

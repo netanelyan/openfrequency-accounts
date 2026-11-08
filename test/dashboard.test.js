@@ -61,7 +61,7 @@ test('the superadmin gets the whole dashboard: who to write to with the message,
     assert.equal(t.fake.calls[0].path, '/internal/ops');
 
     // The tabs, our number, and the numbers at the top.
-    assert.match(b, /<a href="\/admin" aria-current="page">היום<\/a><a href="\/admin\/accounts">חשבונות<\/a>/);
+    assert.match(b, /<a href="\/admin" aria-current="page">היום<\/a><a href="\/admin\/leads">לידים<\/a><a href="\/admin\/accounts">חשבונות<\/a>/);
     assert.match(b, /<p class="number-line ok" role="note">המספר שלנו מחובר דרך Meta\. <bdi class="ltr">\+972500000999<\/bdi><\/p>\s*<div class="kpis top-kpis">/);
     assert.match(b, /<a class="kpi lead" href="#contact"><span class="l">לפנות היום<\/span><span class="v">4<\/span><span class="s">ההודעה מוכנה בכל כרטיס/);
     assert.match(b, /בשיחה<\/span><span class="cnt sig">2<\/span>/);
@@ -285,7 +285,7 @@ test('Toran not answering leaves its sections saying so; the money and the conso
     // The console, on its tab.
     const c = await t.op.get('/admin/accounts');
     assert.equal(c.status, 200);
-    assert.match(c.body, /<a href="\/admin">היום<\/a><a href="\/admin\/accounts" aria-current="page">חשבונות<\/a>/);
+    assert.match(c.body, /<a href="\/admin">היום<\/a><a href="\/admin\/leads">לידים<\/a><a href="\/admin\/accounts" aria-current="page">חשבונות<\/a>/);
     assert.match(c.body, /החנות של דנה/);
     const made = await t.op.post('/admin/workspaces', { name: 'סטודיו חדש', slug: 'new-studio', owner: 'new@example.com', products: ['teder'] });
     assert.equal(made.headers.location, '/admin/accounts');

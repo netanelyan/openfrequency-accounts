@@ -127,6 +127,85 @@ export function readOps(b) {
   };
 }
 
+// ---- the shared lead dashboard, /admin/leads (docs/contracts/admin-leads.json; Toran's src/ops/leadsAdmin.ts)
+
+export const WHERE = ['new', 'ready', 'sent', 'talking', 'closed'];
+const DEMO_STATES = ['none', 'building', 'review', 'ready', 'failed', 'removed'];
+/** The lead's buttons Toran's /internal/leads takes; the rest (they answered, later, not interested...) are ACTIONS. */
+export const LEAD_ACTIONS = ['build-toran', 'build-teder', 'build-both', 'send-both', 'send-toran', 'send-teder', 'mark-sent', 'mark-reminded', 'notes', 'skip'];
+const SENDS = ['both', 'toran', 'teder'];
+
+const demoOf = (d) => {
+  const o = d && typeof d === 'object' ? d : {};
+  return {
+    state: DEMO_STATES.includes(o.state) ? o.state : 'none',
+    pageUrl: safeHref(o.pageUrl),
+    sentAt: str(o.sentAt, 40),
+    reminderSentAt: str(o.reminderSentAt, 40),
+    reminderDue: o.reminderDue === true,
+    url: safeHref(o.url),
+    error: str(o.error, 300),
+  };
+};
+const whereOf = (v) => (WHERE.includes(v) ? v : 'new');
+const rowOf = (x) => ({
+  id: num(x.id),
+  name: str(x.name, 200) || str(x.domain, 200) || '',
+  domain: str(x.domain, 200) || '',
+  url: safeHref(x.url),
+  platform: str(x.platform, 40),
+  score: num(x.score) ?? 0,
+  qualified: x.qualified === true,
+  where: whereOf(x.where),
+  contact: { whatsapp: String(x.contact?.whatsapp ?? '').replace(/\D/g, '').slice(0, 15) || null, email: str(x.contact?.email, 254), phone: String(x.contact?.phone ?? '').replace(/\D/g, '').slice(0, 15) || null },
+  toran: demoOf(x.toran),
+  teder: demoOf(x.teder),
+  updatedAt: str(x.updatedAt, 40),
+});
+
+/** Toran's list, kept to the documented fields; a row with no id is left out. */
+export function readLeads(b) {
+  const list = (v) => (Array.isArray(v) ? v.filter((x) => x && typeof x === 'object') : []);
+  const counts = Object.fromEntries(['all', ...WHERE].map((k) => [k, num(b.counts?.[k]) ?? 0]));
+  return {
+    teder: { ok: b.teder?.ok !== false },
+    counts,
+    leads: list(b.leads).map(rowOf).filter((x) => x.id != null),
+    tederOnly: list(b.tederOnly)
+      .map((x) => ({ tederId: num(x.tederId), name: str(x.name, 200) || str(x.domain, 200) || '', domain: str(x.domain, 200) || '', where: whereOf(x.where), teder: demoOf(x.teder), leadUrl: safeHref(x.leadUrl) }))
+      .filter((x) => x.tederId != null),
+  };
+}
+
+/** One lead's page from Toran, kept to the documented fields. */
+export function readLead(b) {
+  const x = b.lead && typeof b.lead === 'object' ? b.lead : {};
+  const send = x.send && typeof x.send === 'object' ? x.send : {};
+  const options = (Array.isArray(send.options) ? send.options : []).filter((o) => SENDS.includes(o));
+  const copy = send.copy && typeof send.copy === 'object' ? { href: safeHref(send.copy.href), label: str(send.copy.label, 80) || '' } : null;
+  return {
+    ...rowOf(x),
+    status: str(x.status, 40) || '',
+    notes: str(x.notes, 4000) || '',
+    demoCode: str(x.demoCode, 40),
+    opens: num(x.opens) ?? 0,
+    demoStartedAt: str(x.demoStartedAt, 40),
+    tederOk: x.tederOk !== false,
+    build: { toran: x.build?.toran === true, teder: x.build?.teder === true, both: x.build?.both === true, toranWhyNot: str(x.build?.toranWhyNot, 300) },
+    send: {
+      stage: ['first', 'reminder'].includes(send.stage) ? send.stage : null,
+      pitchable: send.pitchable === true,
+      options,
+      main: SENDS.includes(send.main) && options.includes(send.main) ? send.main : options[0] || null,
+      waitingUntil: str(send.waitingUntil, 40),
+      bothText: str(send.bothText, 2000),
+      toranText: str(send.toranText, 2000),
+      copy: copy?.href ? copy : null,
+    },
+    links: { toranPage: safeHref(x.links?.toranPage), toranReview: safeHref(x.links?.toranReview), tederLead: safeHref(x.links?.tederLead) },
+  };
+}
+
 export function toranClient({ env = process.env, fetchImpl = globalThis.fetch, log = console.error } = {}) {
   const base = (String(env.OF_TORAN_INTERNAL || '').trim() || TORAN_INTERNAL).replace(/\/+$/, '');
   const token = String(env.OF_INTERNAL_TOKEN || '').trim();
@@ -160,6 +239,55 @@ export function toranClient({ env = process.env, fetchImpl = globalThis.fetch, l
       } catch (e) {
         log(`[accounts] toran GET /internal/ops: ${why(e)}`);
         return { ok: false, why: 'down' };
+      }
+    },
+    /** The shared lead list: { ok: true, data } or { ok: false, why: 'not_configured' | 'down' }. */
+    async leads({ where = '', q = '' } = {}) {
+      if (!configured) return { ok: false, why: 'not_configured' };
+      const qs = new URLSearchParams(Object.entries({ where: WHERE.includes(where) ? where : '', q: String(q || '').slice(0, 100) }).filter(([, v]) => v)).toString();
+      try {
+        const r = await call('GET', `/internal/leads${qs ? `?${qs}` : ''}`, null, POST_MS);
+        if (r.status !== 200 || !r.json || typeof r.json !== 'object') {
+          log(`[accounts] toran GET /internal/leads: ${r.status}`);
+          return { ok: false, why: 'down' };
+        }
+        return { ok: true, data: readLeads(r.json) };
+      } catch (e) {
+        log(`[accounts] toran GET /internal/leads: ${why(e)}`);
+        return { ok: false, why: 'down' };
+      }
+    },
+    /** One lead: { ok: true, lead }, { ok: false, why: 'none' } when Toran has no such lead, or 'not_configured' | 'down'. */
+    async lead(id) {
+      if (!configured) return { ok: false, why: 'not_configured' };
+      if (!/^\d{1,9}$/.test(String(id))) return { ok: false, why: 'none' };
+      try {
+        const r = await call('GET', `/internal/leads/${id}`, null, POST_MS);
+        if (r.status === 404) return { ok: false, why: 'none' };
+        if (r.status !== 200 || !r.json?.lead) {
+          log(`[accounts] toran GET /internal/leads/${id}: ${r.status}`);
+          return { ok: false, why: 'down' };
+        }
+        return { ok: true, lead: readLead(r.json) };
+      } catch (e) {
+        log(`[accounts] toran GET /internal/leads/${id}: ${why(e)}`);
+        return { ok: false, why: 'down' };
+      }
+    },
+    /** One of a lead's buttons, as act() answers: { ok, message } / { ok: false, error } / { ok: false, status }. */
+    async leadAct(id, action, body) {
+      if (!configured) return { ok: false, status: 0 };
+      if (!/^\d{1,9}$/.test(String(id)) || !LEAD_ACTIONS.includes(action)) return { ok: false, status: 404 };
+      const path = `/internal/leads/${id}/${action}`;
+      try {
+        const r = await call('POST', path, body, POST_MS * 2);
+        if (r.status === 200 && r.json?.ok) return { ok: true, message: str(r.json.message, 400) || '' };
+        if ((r.status === 400 || r.status === 404) && r.json?.ok === false && typeof r.json.error === 'string') return { ok: false, error: r.json.error.slice(0, 400), status: r.status };
+        log(`[accounts] toran POST ${path}: ${r.status}`);
+        return { ok: false, status: r.status };
+      } catch (e) {
+        log(`[accounts] toran POST ${path}: ${why(e)}`);
+        return { ok: false, status: 0 };
       }
     },
     /**
