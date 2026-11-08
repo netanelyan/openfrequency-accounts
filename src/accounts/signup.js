@@ -5,12 +5,13 @@ import { PRODUCTS } from '../db/schema.js';
 import { hashToken, looksLikeToken, newToken } from '../auth/tokens.js';
 import { MAGIC_TTL, normEmail, validEmail } from './links.js';
 import { openWorkspace } from './workspaces.js';
-import { DEFAULT_PLAN, PLANS } from './subscriptions.js';
+import { PLANS, defaultPlan } from './subscriptions.js';
 
 // Public sign-up: a business opens its own account, without the superadmin. Open only while OF_SIGNUP=1.
 //
 //   1. The form (/signup): their full name, the business's name, the products they want (Toran, Teder or both), Teder's
-//      plan (full or small, PLANS), the terms and privacy policy accepted, and their email. Its answers wait in
+//      plan (full or small) and Toran's (store or big, PLANS), the terms and privacy policy accepted, and their email.
+//      Its answers wait in
 //      `signups` (migrations 6 and 8).
 //   2. The address is confirmed, one of two ways:
 //        email   a link in an email, like a magic link: one use, 15 minutes, a button before it is used (mail scanners
@@ -87,12 +88,12 @@ export function startProducts(want, open = PRODUCTS) {
 }
 
 /**
- * The form, checked. Returns { name, business, email, products, plan } or throws SignupError: bad_name, bad_business,
- * no_products, product_closed (one chosen that is not in `open`), bad_plan (a Teder plan that does not exist),
- * no_terms, bad_email (only when `needEmail`: Google brings its own). `plan` is Teder's, the full one when none is
- * given, and null without Teder.
+ * The form, checked. Returns { name, business, email, products, plan, plan_toran } or throws SignupError: bad_name,
+ * bad_business, no_products, product_closed (one chosen that is not in `open`), bad_plan (a Teder or Toran plan that
+ * does not exist), no_terms, bad_email (only when `needEmail`: Google brings its own). `plan` is Teder's, the full one
+ * when none is given, and null without Teder; `plan_toran` is Toran's, store when none is given, null without Toran.
  */
-export function checkSignup({ name, business, email, products = [], terms, plan = '' }, { needEmail = true, open = PRODUCTS } = {}) {
+export function checkSignup({ name, business, email, products = [], terms, plan = '', plan_toran = '' }, { needEmail = true, open = PRODUCTS } = {}) {
   const n = clean(name);
   const b = clean(business);
   if (n.length < NAME_LIMITS.min || n.length > NAME_LIMITS.max) throw new SignupError('bad_name');
@@ -101,10 +102,11 @@ export function checkSignup({ name, business, email, products = [], terms, plan 
   if (!chosen.length) throw new SignupError('no_products');
   if (chosen.some((p) => !open.includes(p))) throw new SignupError('product_closed');
   if (plan && !Object.hasOwn(PLANS.teder, plan)) throw new SignupError('bad_plan');
+  if (plan_toran && !Object.hasOwn(PLANS.toran, plan_toran)) throw new SignupError('bad_plan');
   if (!terms) throw new SignupError('no_terms');
   const e = normEmail(email);
   if (needEmail && !validEmail(e)) throw new SignupError('bad_email');
-  return { name: n, business: b, email: needEmail ? e : null, products: chosen, plan: chosen.includes('teder') ? plan || DEFAULT_PLAN : null };
+  return { name: n, business: b, email: needEmail ? e : null, products: chosen, plan: chosen.includes('teder') ? plan || defaultPlan('teder') : null, plan_toran: chosen.includes('toran') ? plan_toran || defaultPlan('toran') : null };
 }
 
 /**
@@ -129,13 +131,14 @@ export function requestSignup(db, form, { kind = 'email', ip = null } = {}) {
     business: form.business,
     products_json: form.products,
     plan: form.plan ?? null,
+    plan_toran: form.plan_toran ?? null,
     terms_version: TERMS_VERSION,
     terms_accepted_at: at,
     created_at: at,
     expires_at: isoIn(SIGNUP_TTL),
     ip,
   });
-  audit(db, { actor: null, action: 'signup_requested', ip, detail: { ...(form.email ? { email: form.email } : {}), kind, products: form.products, ...(form.plan ? { plan: form.plan } : {}) } });
+  audit(db, { actor: null, action: 'signup_requested', ip, detail: { ...(form.email ? { email: form.email } : {}), kind, products: form.products, ...(form.plan ? { plan: form.plan } : {}), ...(form.plan_toran ? { plan_toran: form.plan_toran } : {}) } });
   return { token, row: rowOut(db.get('SELECT * FROM signups WHERE id = ?', id)) };
 }
 
@@ -198,12 +201,12 @@ export function completeSignup(db, token, { kind = 'email', email = null, ip = n
     const user = db.get('SELECT * FROM users WHERE id = ?', userId);
     const workspace = openWorkspace(
       db,
-      { name: row.business, slug: slugFor(db, row.business), products: row.products, plans: { teder: row.plan }, terms: { version: row.terms_version, at: row.terms_accepted_at } },
+      { name: row.business, slug: slugFor(db, row.business), products: row.products, plans: { teder: row.plan, toran: row.plan_toran }, terms: { version: row.terms_version, at: row.terms_accepted_at } },
       { by: user, ip, source: 'signup' }
     );
     db.insert('memberships', { user_id: user.id, workspace_id: workspace.id, role: 'client_owner', created_at: t });
     db.update('signups', row.id, { user_id: user.id, workspace_id: workspace.id, email: address });
-    audit(db, { actor: user, action: 'signed_up', workspaceId: workspace.id, ip, detail: { method: kind, products: row.products, ...(row.plan ? { plan: row.plan } : {}), terms: row.terms_version } });
+    audit(db, { actor: user, action: 'signed_up', workspaceId: workspace.id, ip, detail: { method: kind, products: row.products, ...(row.plan ? { plan: row.plan } : {}), ...(row.plan_toran ? { plan_toran: row.plan_toran } : {}), terms: row.terms_version } });
     return { user, workspace };
   });
 }

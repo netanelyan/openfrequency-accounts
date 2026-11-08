@@ -163,8 +163,8 @@ test('GET /internal/entitlement: the documented shape, each state as the console
     assert.equal(r.status, 200);
     assert.equal(r.headers['cache-control'], 'no-store');
     assert.deepEqual(r.json, { workspace: t.ws.id, product: 'teder', enabled: true, access: 'unpaid', allowed: false, paidThrough: null, cancelAt: null, graceUntil: null, plan: { name: 'full', slideshows: 40, redos: 10 } });
-    // Toran has no plans: no plan in its answer.
-    assert.deepEqual((await t.ent('toran')).json, { workspace: t.ws.id, product: 'toran', enabled: false, access: 'off', allowed: false, paidThrough: null, cancelAt: null, graceUntil: null });
+    // Toran's answer carries its plan too (since 2026-11-08): store, the one a new subscription starts on.
+    assert.deepEqual((await t.ent('toran')).json, { workspace: t.ws.id, product: 'toran', enabled: false, access: 'off', allowed: false, paidThrough: null, cancelAt: null, graceUntil: null, plan: { name: 'store', conversations: 300 } });
 
     // The console: each product's access, and a month's payment recorded.
     let page = (await t.admin.get('/admin/accounts')).body;
@@ -325,7 +325,9 @@ test('/signup shows each product with its price, VAT excluded, and its setup fee
     assert.match(page, /<input type="radio" name="plan" value="small"><span><b>החבילה הקטנה<\/b><small>15 מצגות בחודש, ו-4 החלפות למצגות שדחיתם<\/small><small class="price">490 ₪ לחודש ועוד מע״מ, ודמי הקמה של 990 ₪ פעם אחת<\/small>/);
     // ?plan=small, from the website's button under that plan, starts it chosen.
     assert.match((await t.browser().get('/signup?p=teder&plan=small')).body, /value="small" checked/);
-    assert.match(page, /<b>תורן<\/b><small>[^<]+<\/small><small class="price">590 ₪ לחודש ועוד מע״מ, ודמי הקמה של 990 ₪ פעם אחת<\/small>/);
+    // Toran: its two plans, each with its conversations and price; store chosen to start with.
+    assert.match(page, /<input type="radio" name="plan_toran" value="store" checked><span><b>חנות<\/b><small>עד 300 שיחות בחודש<\/small><small class="price">590 ₪ לחודש ועוד מע״מ, ודמי הקמה של 990 ₪ פעם אחת<\/small>/);
+    assert.match(page, /<input type="radio" name="plan_toran" value="big"><span><b>חנות גדולה<\/b><small>עד 1,500 שיחות בחודש<\/small><small class="price">1,190 ₪ לחודש ועוד מע״מ, ודמי הקמה של 990 ₪ פעם אחת<\/small>/);
     // How paying works (manual: OF_PAYMENT unset), and under the plans Teder's setup fee: one time, not refunded.
     assert.match(page, /<small>אחרי שהחשבון נפתח, נשלח לכם במייל את פרטי התשלום, והמוצרים נפתחים אחרי שהתשלום מגיע אלינו\. אפשר לבטל את המנוי מהדף הראשי, והוא עובד עד סוף התקופה ששולמה\.<\/small>/);
     assert.match(page, /<small>אפשר לעבור חבילה אחר כך, בכתיבה אלינו\. דמי ההקמה לא מוחזרים, ומשלמים אותם פעם אחת, עם החודש הראשון\.<\/small><\/fieldset>/);
@@ -460,7 +462,7 @@ test('the welcome email, right after a sign-up is confirmed: pay, then set up, w
     assert.doesNotMatch(w.text, /בקרוב|ונשלח לכם פרטים/);
     // Teder's setup fee is not refunded, as its terms say; Toran's terms say it otherwise, so its line does not.
     assert.match(w.text, /תדר, החבילה המלאה: 790 ₪ לחודש ועוד מע״מ, ודמי הקמה של 1,490 ₪ פעם אחת\. דמי ההקמה לא מוחזרים\./);
-    assert.match(w.text, /תורן: 590 ₪ לחודש ועוד מע״מ, ודמי הקמה של 990 ₪ פעם אחת\.\n/);
+    assert.match(w.text, /תורן, חנות: 590 ₪ לחודש ועוד מע״מ, ודמי הקמה של 990 ₪ פעם אחת\.\n/);
     // No OF_SUPPORT_WA here: questions are a reply.
     assert.match(w.text, /יש שאלה על התשלום\? ענו למייל הזה\./);
     assert.match(w.text, /אחר כך ההגדרה\./);

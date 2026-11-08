@@ -213,7 +213,9 @@ migration 8 is `full`. The entitlement tells Teder the plan's numbers, and Teder
 for the whole workspace. The home page and `/setup` name the plan ("תדר, החבילה הקטנה"), and so
 do the welcome email and the confirmation page. On `/admin/accounts` the superadmin changes the
 plan in the subscription's form: a price still at the old plan's list price moves to the new
-one's, a price agreed by hand stays. Toran has no plans here.
+one's, a price agreed by hand stays. Toran has two plans too (since 2026-11-08, migration 13): `store`
+(300 conversations a month, 590 ₪) and `big` (1,500, 1,190 ₪), each with 990 ₪ setup; the sign-up form
+asks for it (`plan_toran`, chosen from the website's `?plan=store|big`), and its line reads "תורן, חנות גדולה".
 
 ## The paywall
 
@@ -268,7 +270,7 @@ The same, field by field, with an example for every status, is `docs/contracts/e
 | `paidThrough` | The end of the last day paid for, Israel time, as an ISO instant in UTC (the last millisecond of that day), or `null` when nothing was ever paid. It is given whatever the access, so it can be in the past. |
 | `cancelAt` | Set only while `access` is `cancelled`: the end of the last day it works, the same way. Otherwise `null`. |
 | `graceUntil` | Set only while `access` is `due`: the end of the grace's last day, the same way, 72 hours after `paidThrough` (paid until 21.11.2026: `2026-11-24T21:59:59.999Z`), or more in the week of a clock change, never less (paid until 24.3.2027: `2027-03-28T20:59:59.999Z`, 95 hours); for a workspace still on the terms from before 2026-11-03, the end of the 15th day after it (paid until 21.11.2026: `2026-12-06T21:59:59.999Z`). Otherwise `null`. |
-| `plan` | Teder only: its plan, `{ name: "full" \| "small", slideshows, redos }` (40 and 10, or 15 and 4), the month Teder counts for the whole workspace. The full plan when none is recorded. Toran's answer has no `plan`. |
+| `plan` | Its plan, the month the product counts for the whole workspace. Teder: `{ name: "full" \| "small", slideshows, redos }` (40 and 10, or 15 and 4), full when none is recorded. Toran (since 2026-11-08): `{ name: "store" \| "big", conversations }` (300 or 1,500), store when none is recorded. |
 
 `400 {"error":"bad_workspace"}` for a workspace that is not a positive integer, `400
 {"error":"bad_product"}` for a missing or unknown product, `404 {"error":"no_workspace"}` for an

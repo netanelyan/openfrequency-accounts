@@ -9,10 +9,14 @@ import { TEAM_LIMIT } from '../accounts/team.js';
 
 export const PRODUCT_NAMES = { teder: 'תדר', toran: 'תורן' };
 export const ROLE_NAMES = { client_owner: 'בעלים', client_member: 'צוות', superadmin: 'מנהל' };
-/** Teder's plans (src/accounts/subscriptions.js PLANS), as the site and the emails name them. */
-export const PLAN_NAMES = { full: 'החבילה המלאה', small: 'החבילה הקטנה' };
-/** What a plan gives in a month, after its name. */
+/** Teder's and Toran's plans (src/accounts/subscriptions.js PLANS), as the site and the emails name them. */
+export const PLAN_NAMES = { full: 'החבילה המלאה', small: 'החבילה הקטנה', store: 'חנות', big: 'חנות גדולה' };
+/** What a plan gives in a month, after its name: Teder's slideshows and redos. */
 export const planGives = (slideshows, redos) => `${slideshows} מצגות בחודש, ו-${redos} החלפות למצגות שדחיתם`;
+/** What a Toran plan gives in a month: its conversations (the website's "עד 300 שיחות בחודש"). */
+export const planConversations = (n) => `עד ${Number(n).toLocaleString('en-US')} שיחות בחודש`;
+/** What a plan gives, whichever product it is (a row of PLANS). */
+export const planWhat = (plan) => (plan?.conversations != null ? planConversations(plan.conversations) : planGives(plan.slideshows, plan.redos));
 /**
  * When a product opens, by the payment mode (OF_PAYMENT, src/accounts/billing.js): manual, once the payment reaches us;
  * provider, once it is confirmed (the operator still records it on /admin, so never "at once"). `names` are the
@@ -635,10 +639,15 @@ export const SIGNUP = {
   productSoon: 'ההרשמה אליו תיפתח בקרוב.',
   price: (monthly, setup) => `${monthly} לחודש ועוד מע״מ, ודמי הקמה של ${setup} פעם אחת`,
   planLegend: 'איזו חבילה של תדר',
+  planLegendToran: 'איזו חבילה של תורן',
   // Teder's setup fee is not refunded (its terms: "דמי ההקמה לא מוחזרים"). Toran's terms say it otherwise, and this note
   // is Teder's only. The plans show only once Teder is ticked (site.css), or with Teder the only product open, so the
   // note need not say it applies to Teder.
   planHint: 'אפשר לעבור חבילה אחר כך, בכתיבה אלינו. דמי ההקמה לא מוחזרים, ומשלמים אותם פעם אחת, עם החודש הראשון.',
+  // Toran's contract (openfrequency-web legal.mjs, c-setup): the fee pays for connecting Toran to the store and its
+  // channels, and is not refunded once that work has started. A month above the plan's conversations costs nothing
+  // more; two in a row move the store to the big plan, told a week ahead (src/plans.ts in openfrequency-toran).
+  planHintToran: 'דמי ההקמה משולמים פעם אחת, עם החודש הראשון, ומכסים את החיבור של תורן לחנות ולערוצים שלכם. אחרי שהתחלנו לחבר, הם לא מוחזרים. חודש מעל מספר השיחות לא עולה לכם יותר.',
   /** How paying works, by the payment mode (OF_PAYMENT), and cancelling. `product`: the only one open, by its name. */
   pricesNote: (mode, product = '') =>
     `${mode === 'provider' ? 'אחרי שהחשבון נפתח, משלמים בו בכרטיס אשראי' : 'אחרי שהחשבון נפתח, נשלח לכם במייל את פרטי התשלום'}, ו${opensAfter(mode, product || 'המוצרים', !product)} אפשר לבטל את המנוי מהדף הראשי, והוא עובד עד סוף התקופה ששולמה.`,

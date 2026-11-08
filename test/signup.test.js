@@ -149,7 +149,7 @@ test("the form's checks: each mistake is said, the answers are kept (escaped), a
 test('checkSignup trims, keeps only known products, and refuses control characters as spaces', () => {
   const ok = checkSignup({ name: '  Noa‮ Levi ', business: 'Noa\u0000Shop', email: ' NOA@Example.com ', products: ['teder', 'x', 'toran'], terms: true });
   // Teder's plan: the full one unless another is chosen; none without Teder; one that does not exist refused.
-  assert.deepEqual(ok, { name: 'Noa Levi', business: 'Noa Shop', email: 'noa@example.com', products: ['teder', 'toran'], plan: 'full' });
+  assert.deepEqual(ok, { name: 'Noa Levi', business: 'Noa Shop', email: 'noa@example.com', products: ['teder', 'toran'], plan: 'full', plan_toran: 'store' });
   assert.equal(checkSignup({ ...ok, plan: 'small', terms: true }).plan, 'small');
   assert.equal(checkSignup({ ...ok, products: ['toran'], plan: 'small', terms: true }).plan, null);
   assert.throws(() => checkSignup({ ...ok, plan: 'huge', terms: true }), (e) => e instanceof SignupError && e.code === 'bad_plan');
@@ -514,7 +514,7 @@ test('a sign-up confirmed by Google sends the notice too, once', async () => {
     assert.equal(sent.length, 1);
     assert.ok(sent[0].text.includes('מייל: noa@gmail.com'));
     assert.ok(sent[0].text.includes('מוצרים: תדר, תורן'));
-    assert.ok(sent[0].text.includes('תורן: 590 ₪ לחודש + 990 ₪ דמי הקמה, לא כולל מע״מ'));
+    assert.ok(sent[0].text.includes('תורן, חנות: 590 ₪ לחודש + 990 ₪ דמי הקמה, לא כולל מע״מ'));
     assert.ok(sent[0].text.includes('צריך לשלוח ל-noa@gmail.com במייל את פרטי התשלום.'));
     assert.ok(sent[0].text.includes('ורק אז תדר ותורן נפתחים ללקוח.'));
     assert.ok(sent[0].text.includes('אישור: Google'));
@@ -622,7 +622,9 @@ test('with OF_SIGNUP_PRODUCTS=toran, the same: Toran ticked and not asked, its p
     assert.ok(page.includes('<input type="hidden" name="products" value="toran">'));
     assert.doesNotMatch(page, /type="checkbox" name="products"|product-pick|name="plan"|teder|תדר/);
     assert.match(page, /<h1>פותחים חשבון בתורן<\/h1>/);
-    assert.match(page, /<fieldset class="products-pick"><small class="price">590 ₪ לחודש ועוד מע״מ, ודמי הקמה של 990 ₪ פעם אחת<\/small>\n<small>[^<]*ותורן נפתח אחרי שהתשלום מגיע אלינו\./);
+    // Toran's two plans in the question's place, store chosen, then how paying works.
+    assert.match(page, /<fieldset class="products-pick"><legend>איזו חבילה של תורן<\/legend><label class="plan-pick"><input type="radio" name="plan_toran" value="store" checked>/);
+    assert.match(page, /<small>[^<]*ותורן נפתח אחרי שהתשלום מגיע אלינו\./);
     assert.match(page, /קראתי והסכמתי ל<a href="https:\/\/openfrequency\.co\.il\/toran\/contract" target="_blank" rel="noopener">הסכם של תורן<\/a>, ל<a href="https:\/\/openfrequency\.co\.il\/terms"/);
     const b = t.browser();
     await b.get('/signup');

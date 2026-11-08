@@ -13,28 +13,43 @@ import { WorkspaceError, getWorkspace } from './workspaces.js';
 export const LIST_PRICES = { toran: { monthly: 590, setup: 990, vat: 'excluded' }, teder: { monthly: 790, setup: 1490, vat: 'excluded' } };
 
 /**
- * Teder's plans: what a month gives (slideshows suggested, and rejected ones written again) and what it costs before
- * VAT. Teder reads the plan from GET /internal/entitlement (docs/setup.md) and counts the month by it, for the whole
- * workspace. Toran has no plans here: it has its own price, and no plan column (NULL).
+ * Each product's plans: what a month gives and what it costs before VAT. Teder's give slideshows suggested and rejected
+ * ones written again; Toran's give conversations (openfrequency.co.il sells store at 300 a month and big at 1,500, the
+ * owner, 2026-11-08: "make sure toran is ready for customers like teder"). Each product reads its plan from
+ * GET /internal/entitlement (docs/setup.md, docs/contracts/entitlement.json) and counts the month by it, for the whole
+ * workspace.
  */
 export const PLANS = {
   teder: {
     full: { monthly: 790, setup: 1490, slideshows: 40, redos: 10 },
     small: { monthly: 490, setup: 990, slideshows: 15, redos: 4 },
   },
+  toran: {
+    store: { monthly: 590, setup: 990, conversations: 300 },
+    big: { monthly: 1190, setup: 990, conversations: 1500 },
+  },
 };
-export const DEFAULT_PLAN = 'full';
+/** The plan a product's new subscription takes when none is chosen. */
+export const DEFAULT_PLANS = { teder: 'full', toran: 'store' };
+/** Teder's default, as before there were two products with plans. */
+export const DEFAULT_PLAN = DEFAULT_PLANS.teder;
+export const defaultPlan = (product) => DEFAULT_PLANS[product] ?? null;
 
 /** A product's plan names, the default first: [] for a product without plans. */
-export const plansOf = (product) => Object.keys(PLANS[product] || {}).sort((a, b) => Number(b === DEFAULT_PLAN) - Number(a === DEFAULT_PLAN));
+export const plansOf = (product) => Object.keys(PLANS[product] || {}).sort((a, b) => Number(b === defaultPlan(product)) - Number(a === defaultPlan(product)));
 
 /** The plan a name stands for, for a product: that one when the product has it, else its default; null without plans. */
-export const planFor = (product, name) => (PLANS[product] ? (Object.hasOwn(PLANS[product], name ?? '') ? name : DEFAULT_PLAN) : null);
+export const planFor = (product, name) => (PLANS[product] ? (Object.hasOwn(PLANS[product], name ?? '') ? name : defaultPlan(product)) : null);
 
-/** What a plan gives, as Teder reads it: { name, slideshows, redos }, or null for a product without plans. */
+/**
+ * What a plan gives, as the product reads it: Teder { name, slideshows, redos }, Toran { name, conversations }; null
+ * for a product without plans.
+ */
 export function planOut(product, name) {
   const p = planFor(product, name);
-  return p ? { name: p, slideshows: PLANS[product][p].slideshows, redos: PLANS[product][p].redos } : null;
+  if (!p) return null;
+  const plan = PLANS[product][p];
+  return plan.conversations != null ? { name: p, conversations: plan.conversations } : { name: p, slideshows: plan.slideshows, redos: plan.redos };
 }
 
 /** The list price a new subscription starts from, before VAT: { monthly, setup, vat }, by its plan when it has one. */

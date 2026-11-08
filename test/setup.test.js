@@ -212,7 +212,7 @@ test('payment with OF_PAYMENT=provider: a step to do until the payment is in, th
     assert.equal((await signIn(t)).to, '/');
     page = await b.get('/setup');
     assert.match(page.body, /<li class="step st-done"><span class="chip">✓ בוצע<\/span><span class="what"><b>התשלום על המנוי<\/b><small>המנוי שולם\.<\/small>/);
-    assert.match(page.body, /תורן: שולם עד 21\.11\.2026/);
+    assert.match(page.body, /תורן, חנות: שולם עד 21\.11\.2026/);
     assert.match(page.body, /<section class="card setup-p" id="setup-toran">/);
   } finally {
     await t.done();

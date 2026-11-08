@@ -7,7 +7,7 @@ import { ISSUING_STALE_MS } from '../accounts/morning.js';
 import { now as clockNow } from '../core/clock.js';
 import { total } from '../accounts/invoices.js';
 import { KINDS, MAIL_PRODUCTS } from '../accounts/notify.js';
-import { AUDIT_NAMES, CANCEL, ERASE, MORNING, NOTIFY, OPS, PAY, PLAN_NAMES, PRODUCT_NAMES, ROLE_NAMES, SETUP, SIGNUP, T, dayHe, hourHe, ils, opensAfter, phoneHe, planGives, weekdayHe, when } from './copy.js';
+import { AUDIT_NAMES, CANCEL, ERASE, MORNING, NOTIFY, OPS, PAY, PLAN_NAMES, PRODUCT_NAMES, ROLE_NAMES, SETUP, SIGNUP, T, dayHe, hourHe, ils, opensAfter, phoneHe, planWhat, weekdayHe, when } from './copy.js';
 import { CONTRACT_URLS, PRIVACY_URL, TERMS_URL } from '../accounts/signup.js';
 
 // Server-rendered pages: Hebrew, right to left, one stylesheet. Our own script files only: static/a11y.js (the
@@ -93,7 +93,7 @@ export function paySummary(due) {
 }
 
 /** A plan in one line: its name and what a month gives. */
-const planLine = (p, plan) => (plan && PLANS[p]?.[plan] ? T.subPlan(PLAN_NAMES[plan], planGives(PLANS[p][plan].slideshows, PLANS[p][plan].redos)) : '');
+const planLine = (p, plan) => (plan && PLANS[p]?.[plan] ? T.subPlan(PLAN_NAMES[plan], planWhat(PLANS[p][plan])) : '');
 
 /** Every page here: `theme` is themeOf() the request's cookies, light unless they say dark. */
 export function layout({ title, body, banner = '', flash = '', wide = false, v = '', script = false, theme = 'light' }) {
@@ -441,16 +441,20 @@ export function signupPage({ csrf, form = {}, error = '', google = false, open =
   // the form's data, with a "בקרוב" tag and one line on why.
   // A product with plans (Teder) shows each plan, with what a month gives and its price, to choose under its box, once
   // the box is ticked (site.css), or from the start when it is the only product.
-  // ?plan=full or ?plan=small (the website's buttons) starts that one chosen; anything else, or none, the full one.
-  const picked = Object.hasOwn(PLANS.teder, form.plan ?? '') ? form.plan : plansOf('teder')[0];
+  // Each product's plans have their own field: Teder's `plan` (full, small), Toran's `plan_toran` (store, big). ?plan=
+  // (the website's buttons, mapped in app.js) starts that one chosen; anything else, or none, the product's default.
+  const field = { teder: 'plan', toran: 'plan_toran' };
+  const picked = (p) => (Object.hasOwn(PLANS[p], form[field[p]] ?? '') ? form[field[p]] : plansOf(p)[0]);
   const planRows = (p) =>
     plansOf(p)
       .map(
         (k) =>
-          `<label class="plan-pick"><input type="radio" name="plan" value="${k}"${k === picked ? ' checked' : ''}><span><b>${esc(PLAN_NAMES[k])}</b><small>${esc(planGives(PLANS[p][k].slideshows, PLANS[p][k].redos))}</small><small class="price">${esc(SIGNUP.price(ils(PLANS[p][k].monthly), ils(PLANS[p][k].setup)))}</small></span></label>`
+          `<label class="plan-pick"><input type="radio" name="${field[p]}" value="${k}"${k === picked(p) ? ' checked' : ''}><span><b>${esc(PLAN_NAMES[k])}</b><small>${esc(planWhat(PLANS[p][k]))}</small><small class="price">${esc(SIGNUP.price(ils(PLANS[p][k].monthly), ils(PLANS[p][k].setup)))}</small></span></label>`
       )
       .join('');
-  const plans = (p) => (PLANS[p] ? `<fieldset class="plans-pick"><legend>${esc(SIGNUP.planLegend)}</legend>${planRows(p)}<small>${esc(SIGNUP.planHint)}</small></fieldset>` : '');
+  const legend = (p) => (p === 'toran' ? SIGNUP.planLegendToran : SIGNUP.planLegend);
+  const hint = (p) => (p === 'toran' ? SIGNUP.planHintToran : SIGNUP.planHint);
+  const plans = (p) => (PLANS[p] ? `<fieldset class="plans-pick"><legend>${esc(legend(p))}</legend>${planRows(p)}<small>${esc(hint(p))}</small></fieldset>` : '');
   const listPrice = (p) => `<small class="price">${esc(SIGNUP.price(ils(LIST_PRICES[p].monthly), ils(LIST_PRICES[p].setup)))}</small>`;
   const product = (p) =>
     open.includes(p)
@@ -460,7 +464,7 @@ export function signupPage({ csrf, form = {}, error = '', google = false, open =
   // The question, or with one product its plans in the question's place and look (fieldset.products-pick).
   const pick = only
     ? `<input type="hidden" name="products" value="${only}">
-<fieldset class="products-pick">${PLANS[only] ? `<legend>${esc(SIGNUP.planLegend)}</legend>${planRows(only)}<small>${esc(SIGNUP.planHint)}</small>` : listPrice(only)}
+<fieldset class="products-pick">${PLANS[only] ? `<legend>${esc(legend(only))}</legend>${planRows(only)}<small>${esc(hint(only))}</small>` : listPrice(only)}
 <small>${esc(SIGNUP.pricesNote(payment, PRODUCT_NAMES[only]))}</small>
 </fieldset>`
     : `<fieldset class="products-pick"><legend>${esc(SIGNUP.productsLegend)}</legend>
@@ -858,7 +862,7 @@ function workspaceTile(w, csrf) {
       const sel = (v) => (s.vat === v ? ' selected' : '');
       return `<li><form method="post" action="${base}/subscription" class="sub-form">${csrfField(csrf)}<input type="hidden" name="product" value="${p}">
 <span class="sub-name">${productMark(p)}<b>${esc(PRODUCT_NAMES[p])}</b>${d ? `<span class="muted">${esc(T.subStatus[d.status])}${d.status === 'active' ? `, ${esc(T.subLeft(d.bar.days - d.bar.day + 1))}` : ''}</span>` : `<span class="muted">${esc(T.subNone)}</span>`}</span>
-${PLANS[p] ? `<label>${esc(T.subPlanLabel)}<select name="plan">${plansOf(p).map((k) => `<option value="${k}"${(s.plan || plansOf(p)[0]) === k ? ' selected' : ''}>${esc(`${PLAN_NAMES[k]} (${PLANS[p][k].slideshows})`)}</option>`).join('')}</select></label>` : ''}
+${PLANS[p] ? `<label>${esc(T.subPlanLabel)}<select name="plan">${plansOf(p).map((k) => `<option value="${k}"${(s.plan || plansOf(p)[0]) === k ? ' selected' : ''}>${esc(`${PLAN_NAMES[k]} (${PLANS[p][k].slideshows ?? PLANS[p][k].conversations})`)}</option>`).join('')}</select></label>` : ''}
 <label>${esc(T.subMonthly)}<input name="monthly" inputmode="decimal" dir="ltr" value="${esc(s.monthly ?? '')}"></label>
 <label>${esc(T.subSetupLabel)}<input name="setup" inputmode="decimal" dir="ltr" value="${esc(s.setup ?? '')}"></label>
 <label>${esc(T.subVat)}<select name="vat"><option value=""></option><option value="excluded"${sel('excluded')}>${esc(T.vatExcluded)}</option><option value="included"${sel('included')}>${esc(T.vatIncluded)}</option></select></label>

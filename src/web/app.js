@@ -26,7 +26,7 @@ import { setupClient, setupState } from './setup.js';
 import { eraseClient } from './erase.js';
 import { changedClient } from './changed.js';
 import { createLinkCode, openLinkCode, phoneIn, phonesFor, removePhone } from '../accounts/phones.js';
-import { describe, graceChangeOf, listPrice, payMonth, payTotal, setSubscription, subscriptionsOf } from '../accounts/subscriptions.js';
+import { PLANS, describe, graceChangeOf, listPrice, payMonth, payTotal, setSubscription, subscriptionsOf } from '../accounts/subscriptions.js';
 import { addInvoice, invoiceIn, invoicesOf, PDF_MAX, removeInvoice } from '../accounts/invoices.js';
 import { decideReceipt, PayError, RECEIPT_TYPES, receiptById, receiptProducts, receiptsWaiting } from '../accounts/pay.js';
 import { invoiceReceipt, morningClient, morningConfig } from '../accounts/morning.js';
@@ -699,13 +699,15 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
         // asking (startProducts; the owner, 2026-11-02, in place of 2026-10-31's "nothing starts ticked"). The POST
         // below checks what comes back against the open ones as before.
         if (req.method !== 'POST') {
-          // ?plan= (the website's button under each of Teder's plans) starts that plan chosen, for when Teder is ticked.
-          const start = { products: startProducts(url.searchParams.get('p'), openProducts), plan: url.searchParams.get('plan') || '' };
+          // ?plan= (the website's button under each plan card) starts that plan chosen, for when its product is ticked:
+          // a Teder name (full, small) is Teder's, a Toran name (store, big) Toran's.
+          const asked = url.searchParams.get('plan') || '';
+          const start = { products: startProducts(url.searchParams.get('p'), openProducts), plan: Object.hasOwn(PLANS.teder, asked) ? asked : '', plan_toran: Object.hasOwn(PLANS.toran, asked) ? asked : '' };
           return page(200, SIGNUP.title, P.signupPage({ csrf, google: Boolean(google), open: openProducts, payment, form: start }));
         }
 
         const via = f('via') === 'google' && google ? 'google' : 'email';
-        const raw = { name: f('name').slice(0, 200), business: f('business').slice(0, 200), email: f('email').slice(0, 254), products: form.getAll('products'), plan: f('plan').slice(0, 20), terms: f('terms') === '1' };
+        const raw = { name: f('name').slice(0, 200), business: f('business').slice(0, 200), email: f('email').slice(0, 254), products: form.getAll('products'), plan: f('plan').slice(0, 20), plan_toran: f('plan_toran').slice(0, 20), terms: f('terms') === '1' };
         const again = (status, error, extra) => send(status, layout({ title: SIGNUP.title, body: P.signupPage({ csrf, form: raw, error, google: Boolean(google), open: openProducts, payment }) }), extra);
         const sent = (email) => page(200, SIGNUP.sentTitle, P.signupSentPage({ email }));
         // The honeypot: a field people never see. Filled, it was not a person: the same page as a real sign-up, and

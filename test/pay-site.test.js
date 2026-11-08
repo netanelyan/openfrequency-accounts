@@ -305,14 +305,14 @@ test('a product cancelled and stopped is never asked for: /setup says it ended a
     // Both owed: one amount (490 + 990 + 590 + 990 = 3,060 ₪ and 18% VAT), each product's line, both open once paid.
     const both = billingOf((await b.get('/setup')).body);
     assert.ok(both.includes('<p class="pay-amount"><b>3,610.80 ₪</b> <span>כולל מע״מ</span></p>'), both);
-    assert.ok(both.includes('<p class="pay-for">תדר, החבילה הקטנה: החודש הראשון ודמי ההקמה. תורן: החודש הראשון ודמי ההקמה. תדר ותורן נפתחים אחרי שהתשלום מגיע אלינו.</p>'), both);
+    assert.ok(both.includes('<p class="pay-for">תדר, החבילה הקטנה: החודש הראשון ודמי ההקמה. תורן, חנות: החודש הראשון ודמי ההקמה. תדר ותורן נפתחים אחרי שהתשלום מגיע אלינו.</p>'), both);
     const { code: bothCode } = t.db.get('SELECT code FROM pay_codes WHERE workspace_id = ?', t.ws.id);
     assert.equal(waText(/href="(https:\/\/wa\.me\/[^"]+)"/.exec(both)[1]), PAY_TEXT('Noa Shop', bothCode));
     cancelSubscription(t.db, t.ws.id, 'teder', { by: null }); // nothing paid: it stops today
     const page = (await b.get('/setup')).body;
     const billing = billingOf(page);
     assert.ok(billing.includes('<p class="pay-amount"><b>1,864.40 ₪</b> <span>כולל מע״מ</span></p>'), billing);
-    assert.ok(billing.includes('<p class="pay-for">תורן: החודש הראשון ודמי ההקמה. תורן נפתח אחרי שהתשלום מגיע אלינו.</p>'), billing);
+    assert.ok(billing.includes('<p class="pay-for">תורן, חנות: החודש הראשון ודמי ההקמה. תורן נפתח אחרי שהתשלום מגיע אלינו.</p>'), billing);
     assert.doesNotMatch(billing, /תדר/, 'nothing about the ended one');
     const { code } = t.db.get('SELECT code FROM pay_codes WHERE workspace_id = ?', t.ws.id);
     assert.equal(waText(/href="(https:\/\/wa\.me\/[^"]+)"/.exec(billing)[1]), PAY_TEXT('Noa Shop', code));

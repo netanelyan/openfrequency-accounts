@@ -158,7 +158,13 @@ const RUN = {
     setComp(w.db, ws.id, 'teder', true, { by: w.admin });
     return ent(w, ws.id);
   },
-  'entitlement /internal/entitlement :: off (Toran: no plan)': (w) => ent(w, fresh(w, 'teder-shop').id, 'toran'),
+  'entitlement /internal/entitlement :: paid (Toran, the big plan)': (w) => {
+    const ws = fresh(w, 'toran-big', ['toran']);
+    setSubscription(w.db, ws.id, 'toran', { plan: 'big', monthly: '1190', setup: '990', vat: 'excluded', started_on: '2026-10-22' }, { by: w.admin });
+    payMonth(w.db, ws.id, 'toran', { by: w.admin });
+    return ent(w, ws.id, 'toran');
+  },
+  'entitlement /internal/entitlement :: off (Toran, its plan as a new subscription would start)': (w) => ent(w, fresh(w, 'teder-shop').id, 'toran'),
   'entitlement /internal/entitlement :: the workspace is not a positive integer': (w) => w.call('GET', '/internal/entitlement?workspace=x&product=teder'),
   'entitlement /internal/entitlement :: a missing or unknown product': (w) => w.call('GET', `/internal/entitlement?workspace=${w.dana.id}&product=nope`),
   'entitlement /internal/entitlement :: an id we never had (a deleted one is 200, off)': (w) => ent(w, 999),

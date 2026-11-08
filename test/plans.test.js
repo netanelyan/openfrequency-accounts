@@ -37,14 +37,18 @@ async function setup({ env = {}, ws = true } = {}) {
 
 const sub = (db, id) => db.get("SELECT * FROM subscriptions WHERE workspace_id = ? AND product = 'teder'", id);
 
-test('the plans: what each gives and costs, the full one by default, and a product without plans has none', () => {
+test('the plans: what each gives and costs, the default when none is named (Teder full, Toran store)', () => {
   assert.deepEqual(PLANS.teder, { full: { monthly: 790, setup: 1490, slideshows: 40, redos: 10 }, small: { monthly: 490, setup: 990, slideshows: 15, redos: 4 } });
   assert.deepEqual(plansOf('teder'), ['full', 'small']);
-  assert.deepEqual(plansOf('toran'), []);
+  assert.deepEqual(PLANS.toran, { store: { monthly: 590, setup: 990, conversations: 300 }, big: { monthly: 1190, setup: 990, conversations: 1500 } });
+  assert.deepEqual(plansOf('toran'), ['store', 'big']);
   assert.equal(planFor('teder', 'small'), 'small');
   assert.equal(planFor('teder', 'huge'), 'full');
   assert.equal(planFor('teder', null), 'full');
-  assert.equal(planFor('toran', 'small'), null);
+  assert.equal(planFor('toran', 'small'), 'store', 'a Teder name is not a Toran plan');
+  assert.equal(planFor('toran', 'big'), 'big');
+  assert.deepEqual(planOut('toran', 'big'), { name: 'big', conversations: 1500 });
+  assert.deepEqual(listPrice('toran', 'big'), { monthly: 1190, setup: 990, vat: 'excluded' });
   assert.deepEqual(planOut('teder', 'small'), { name: 'small', slideshows: 15, redos: 4 });
   assert.deepEqual(listPrice('teder', 'small'), { monthly: 490, setup: 990, vat: 'excluded' });
   assert.deepEqual(listPrice('toran'), { monthly: 590, setup: 990, vat: 'excluded' });
@@ -89,6 +93,36 @@ test('a sign-up for the small plan: its price and setup fee, 15 slideshows and 4
     assert.match(bad.body, /צריך לבחור אחת מהחבילות של תדר\./);
   } finally {
     await t.done();
+  }
+});
+
+test("a sign-up for Toran's big plan: the website's button chooses it, 1,190 ₪ and 1,500 conversations to Toran, and the plan in the email and on the invoice line", async () => {
+  const toran = await startProduct('toran');
+  const t = await setup({ ws: false, env: { OF_SIGNUP_PRODUCTS: 'teder,toran', OF_TORAN_INTERNAL: toran.url, TORAN_URL: 'https://toran.openfrequency.co.il/' } });
+  try {
+    const b = t.browser();
+    // The website's card under the big plan: signup?p=toran&plan=big starts Toran ticked with the big plan chosen.
+    const form = (await b.get('/signup?p=toran&plan=big')).body;
+    assert.match(form, /<input type="radio" name="plan_toran" value="big" checked>/);
+    assert.match(form, /עד 1,500 שיחות בחודש/);
+    assert.match(form, /איזו חבילה של תורן/);
+    const r = await b.post('/signup', { name: 'Noa Levi', business: 'Noa Ceramics', email: 'noa@example.com', products: ['toran'], plan_toran: 'big', terms: '1', website: '', via: 'email' });
+    assert.equal(r.status, 200);
+    await b.post('/signup/confirm', { t: tokenOf(t.mails[0].link) });
+    const ws = t.db.get('SELECT * FROM workspaces');
+    const s = t.db.get("SELECT * FROM subscriptions WHERE workspace_id = ? AND product = 'toran'", ws.id);
+    assert.deepEqual([s.plan, s.monthly, s.setup, s.vat], ['big', 1190, 990, 'excluded']);
+    assert.deepEqual(entitlement(t.db, ws.id, 'toran').plan, { name: 'big', conversations: 1500 });
+    const welcome = t.mails.find((m) => m.subject === 'החשבון של Noa Ceramics נפתח');
+    assert.match(welcome.text, /תורן, חנות גדולה: 1,190 ₪ לחודש ועוד מע״מ, ודמי הקמה של 990 ₪ פעם אחת\./);
+    // A Toran plan that does not exist is refused.
+    const c = t.browser({ ip: '203.0.113.98' });
+    await c.get('/signup');
+    const bad = await c.post('/signup', { name: 'Dan Cohen', business: 'Dan Shop', email: 'dan2@example.com', products: ['toran'], plan_toran: 'small', terms: '1', website: '', via: 'email' });
+    assert.equal(bad.status, 400);
+  } finally {
+    await t.done();
+    await toran.close();
   }
 });
 

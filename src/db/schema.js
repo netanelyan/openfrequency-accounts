@@ -395,4 +395,31 @@ export const MIGRATIONS = [
     told_json       TEXT NOT NULL
   );
   `,
+  `
+  -- Toran's two plans (src/accounts/subscriptions.js PLANS.toran): store (300 conversations a month) and big (1,500),
+  -- each at its own price, as the website sells them (the owner, 2026-11-08: "make sure toran is ready for customers
+  -- like teder"). SQLite cannot change a column's CHECK, so subscriptions is rebuilt with the same columns and the two
+  -- names allowed; nothing references it. A Toran subscription until now becomes store, or big where it was already
+  -- priced at the big plan's 1,190 by hand. A sign-up keeps Toran's plan beside Teder's (signups.plan stays Teder's).
+  CREATE TABLE subscriptions_v2 (
+    workspace_id    INTEGER NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+    product         TEXT NOT NULL CHECK (product IN ('teder', 'toran')),
+    monthly         REAL,
+    vat             TEXT CHECK (vat IS NULL OR vat IN ('included', 'excluded')),
+    setup           REAL,
+    started_on      TEXT,
+    paid_until      TEXT,
+    ends_on         TEXT,
+    updated_at      TEXT NOT NULL,
+    cancelled_at    TEXT,
+    plan            TEXT CHECK (plan IS NULL OR plan IN ('full', 'small', 'store', 'big')),
+    PRIMARY KEY (workspace_id, product)
+  );
+  INSERT INTO subscriptions_v2 (workspace_id, product, monthly, vat, setup, started_on, paid_until, ends_on, updated_at, cancelled_at, plan)
+    SELECT workspace_id, product, monthly, vat, setup, started_on, paid_until, ends_on, updated_at, cancelled_at, plan FROM subscriptions;
+  DROP TABLE subscriptions;
+  ALTER TABLE subscriptions_v2 RENAME TO subscriptions;
+  UPDATE subscriptions SET plan = CASE WHEN monthly >= 1190 THEN 'big' ELSE 'store' END WHERE product = 'toran' AND plan IS NULL;
+  ALTER TABLE signups ADD COLUMN plan_toran TEXT CHECK (plan_toran IS NULL OR plan_toran IN ('store', 'big'));
+  `,
 ];
