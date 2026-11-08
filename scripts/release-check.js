@@ -6,7 +6,10 @@
 // check. CI runs this on every push (.github/workflows/test.yml); run it by hand before a deploy when CI has not.
 
 import { spawnSync } from 'node:child_process';
+import { existsSync, readFileSync } from 'node:fs';
+import path from 'node:path';
 import { ROOT } from '../src/core/paths.js';
+import { siteAgreement } from '../src/accounts/siteAgree.js';
 
 const env = { ...process.env, OF_REQUIRE_BROWSER: '1' };
 const run = (args) => spawnSync(process.execPath, args, { cwd: ROOT, env, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
@@ -25,6 +28,14 @@ const pub = run(['scripts/check-public.js']);
 process.stdout.write(pub.stdout);
 process.stderr.write(pub.stderr);
 if (pub.status !== 0) problems.push('check:public');
+// The website beside this checkout: the same terms day and the same plans (src/accounts/siteAgree.js). A machine without
+// it says so and goes on; the deploy machine has both.
+const site = path.join(ROOT, '..', 'openfrequency-web', 'site.config.json');
+if (existsSync(site)) {
+  for (const p of siteAgreement(JSON.parse(readFileSync(site, 'utf8')))) problems.push(`website: ${p}`);
+} else {
+  console.log(`release-check: no website checkout at ${site}, so the terms day and the plans were not compared with it`);
+}
 if (problems.length) {
   console.error(`release-check: not ready: ${problems.join(', ')}`);
   process.exit(1);
