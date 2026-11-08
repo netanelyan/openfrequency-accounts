@@ -12,10 +12,15 @@ import { enabledProducts } from '../auth/sessions.js';
 // NOTIFY_PER_DAY emails of one kind, for one product, to one workspace in 24 hours.
 
 export const KINDS = ['posts_waiting', 'weekly', 'monthly', 'connect_needed', 'publish_failed'];
-// The products that send these emails: Teder alone (openfrequency-teder src/notify/email.js; nothing in
-// openfrequency-toran calls POST /internal/notify, checked 2026-11-06). /notifications offers only their boxes and saves
-// only theirs (the owner, 2026-11-06: "if an option isnt relevant dont show it"): Toran's five were Teder's kinds, posts
-// waiting and publishing among them, which Toran never sends. A product that starts sending is added here.
+// The kinds each product sends (the owner, 2026-11-08, TORAN-READINESS.md P1-9): Teder's five; Toran's two, a customer
+// waiting for the store's owner (openfrequency-toran src/owners/waiting.ts) and the month's results
+// (src/owners/reports.ts). A product sends only its own kinds. KINDS above stays Teder's list for the /notifications
+// page until it draws each product's own (kindsOf), with Toran's labels.
+export const KINDS_OF = { teder: KINDS, toran: ['conversation_waiting', 'monthly'] };
+export const kindsOf = (product) => KINDS_OF[product] || [];
+// The products whose boxes /notifications shows (the owner, 2026-11-06: "if an option isnt relevant dont show it"):
+// Teder's. Toran sends its own two kinds since 2026-11-08 (KINDS_OF; owners get them by default, byDefault below), and
+// is added here once the page draws each product's own kinds (html.js, kindsOf) with labels for Toran's.
 export const MAIL_PRODUCTS = ['teder'];
 const mailing = (db, workspaceId) => enabledProducts(db, workspaceId).filter((p) => MAIL_PRODUCTS.includes(p));
 export const NOTIFY_PER_DAY = 3;
@@ -77,7 +82,7 @@ export function checkNotify(body) {
   if (!body || typeof body !== 'object' || Array.isArray(body)) throw new NotifyError('bad');
   if (!Number.isSafeInteger(body.workspace) || body.workspace < 1) throw new NotifyError('bad_workspace');
   if (!PRODUCTS.includes(body.product)) throw new NotifyError('bad_product');
-  if (!KINDS.includes(body.kind)) throw new NotifyError('bad_kind');
+  if (!kindsOf(body.product).includes(body.kind)) throw new NotifyError('bad_kind');
   if (typeof body.subject !== 'string' || body.subject.length > LIMITS.subject) throw new NotifyError('bad_subject');
   const subject = oneLine(body.subject);
   if (!subject) throw new NotifyError('bad_subject');

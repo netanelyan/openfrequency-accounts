@@ -97,6 +97,9 @@ test('the request is checked: each bad field is a 400 with its code, a workspace
       [{ workspace: 1.5 }, 'bad_workspace'],
       [{ product: 'other' }, 'bad_product'],
       [{ kind: 'daily' }, 'bad_kind'],
+      // Each product sends its own kinds (KINDS_OF): Teder not Toran's, Toran not Teder's.
+      [{ kind: 'conversation_waiting' }, 'bad_kind'],
+      [{ product: 'toran', kind: 'posts_waiting' }, 'bad_kind'],
       [{ subject: '' }, 'bad_subject'],
       [{ subject: ' ‮\r\n ' }, 'bad_subject'],
       [{ subject: 5 }, 'bad_subject'],
@@ -122,7 +125,7 @@ test('the request is checked: each bad field is a 400 with its code, a workspace
     assert.deepEqual((await t.notify('[1]')).json, { error: 'bad' });
     assert.equal((await t.notify(BODY(t.ws, { html: 'x'.repeat(300_000) }))).status, 413);
     assert.deepEqual((await t.notify(BODY(t.ws, { workspace: 999 }))).json, { error: 'no_workspace' });
-    const off = await t.notify(BODY(t.ws, { product: 'toran' }));
+    const off = await t.notify(BODY(t.ws, { product: 'toran', kind: 'conversation_waiting' }));
     assert.deepEqual([off.status, off.json], [409, { error: 'product_off' }]);
     assert.equal((await t.notify(BODY(t.ws), { authorization: 'Bearer nope' })).status, 401);
     assert.equal((await t.owners('GET', '/internal/notify')).status, 405);
@@ -189,5 +192,15 @@ test('/notifications: each person chooses per product and kind; an opt-out is sk
     assert.equal(out.headers.location, `/login?next=${encodeURIComponent(`/notifications?workspace=${t.ws.id}`)}`);
   } finally {
     await t.done();
+  }
+});
+
+test("Toran sends its own two kinds, a customer waiting and the month's results, and they reach the owners by default", async () => {
+  const { KINDS_OF, kindsOf } = await import('../src/accounts/notify.js');
+  assert.deepEqual(KINDS_OF.toran, ['conversation_waiting', 'monthly']);
+  assert.deepEqual(kindsOf('other'), []);
+  for (const kind of KINDS_OF.toran) {
+    const got = checkNotify({ workspace: 7, product: 'toran', kind, subject: 'לקוח מחכה לתשובה שלכם', text: 'שאלה.', link: 'https://toran.openfrequency.co.il/chat/5' });
+    assert.equal(got.kind, kind);
   }
 });

@@ -173,7 +173,7 @@ const RUN = {
   'notify /internal/notify :: sent (sent is 0 when nobody wants this kind)': (w) => w.call('POST', '/internal/notify', { workspace: w.dana.id, ...NOTIFY }),
   'notify /internal/notify :: a field that breaks its rule': (w) => w.call('POST', '/internal/notify', { workspace: w.dana.id, ...NOTIFY, kind: 'nope' }),
   'notify /internal/notify :: a workspace we do not have, or a deleted one': (w) => w.call('POST', '/internal/notify', { workspace: 999, ...NOTIFY }),
-  'notify /internal/notify :: the product is not on for it': (w) => w.call('POST', '/internal/notify', { workspace: fresh(w, 'teder-shop').id, ...NOTIFY, product: 'toran' }),
+  'notify /internal/notify :: the product is not on for it': (w) => w.call('POST', '/internal/notify', { workspace: fresh(w, 'teder-shop').id, ...NOTIFY, product: 'toran', kind: 'conversation_waiting' }),
   'notify /internal/notify :: past 3 of one kind for one product to one workspace in 24 hours': async (w) => {
     for (let i = 0; i < 3; i++) await w.call('POST', '/internal/notify', { workspace: w.dana.id, ...NOTIFY });
     return w.call('POST', '/internal/notify', { workspace: w.dana.id, ...NOTIFY });
