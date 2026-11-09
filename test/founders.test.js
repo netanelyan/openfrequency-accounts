@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { tempHome } from './helpers.js';
 import { pathOf, startSite, tokenOf } from './site.js';
 import { setNow } from '../src/core/clock.js';
-import { foundersSpots, foundersState } from '../src/accounts/founders.js';
+import { foundersEarlier, foundersSpots, foundersState } from '../src/accounts/founders.js';
 import { eraseWorkspace } from '../src/accounts/erase.js';
 
 // The founders' offer (src/accounts/founders.js; the owner, 2026-11-09: "no דמי הקמה for the next 10 people"): the
@@ -38,6 +38,14 @@ test('the spots: 10 when unset, a whole number when set, 0 (off) for anything el
   assert.equal(foundersSpots({}), 10);
   assert.equal(foundersSpots({ OF_FOUNDERS_SPOTS: '3' }), 3);
   for (const v of ['0', '-1', '2.5', 'ten', '5000']) assert.equal(foundersSpots({ OF_FOUNDERS_SPOTS: v }), 0, v);
+});
+
+test('businesses already using OpenFrequency hold a spot each, by name, beside the sign-ups that took one', () => {
+  const db = { get: () => ({ n: 1 }) }; // one sign-up took a spot
+  assert.deepEqual(foundersEarlier({ OF_FOUNDERS_EARLIER: ' brickdealil, tiyulplus ,' }), ['brickdealil', 'tiyulplus']);
+  assert.deepEqual(foundersState(db, { OF_FOUNDERS_EARLIER: 'brickdealil,tiyulplus' }), { spots: 10, taken: 3, left: 7 });
+  assert.deepEqual(foundersState(db, {}), { spots: 10, taken: 1, left: 9 }, 'none named: only the sign-ups');
+  assert.deepEqual(foundersState(db, { OF_FOUNDERS_SPOTS: '2', OF_FOUNDERS_EARLIER: 'a,b' }), { spots: 2, taken: 3, left: 0 }, 'never below 0');
 });
 
 test('the next sign-ups take a spot each and pay no setup fee for both products; once the spots are gone, the list price; the count is real', async () => {

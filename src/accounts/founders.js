@@ -20,10 +20,17 @@ export function foundersSpots(env = process.env) {
   return Number.isInteger(n) && n > 0 && n <= 1000 ? n : 0;
 }
 
+/**
+ * The businesses already using OpenFrequency before the offer opened, each holding one of its spots: OF_FOUNDERS_EARLIER,
+ * their names comma-separated (the owner, 2026-11-09: "change it to 8/10 because brickdealil and tiyulplus use
+ * openfrequency"). Named here, not made up as a number, so the counter still counts only real businesses.
+ */
+export const foundersEarlier = (env = process.env) => String(env.OF_FOUNDERS_EARLIER ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+
 /** { spots, taken, left }: left is 0 when the offer is off or full. */
 export function foundersState(db, env = process.env) {
   const spots = foundersSpots(env);
-  const taken = db.get('SELECT COUNT(*) AS n FROM founders').n;
+  const taken = foundersEarlier(env).length + db.get('SELECT COUNT(*) AS n FROM founders').n;
   return { spots, taken, left: Math.max(0, spots - taken) };
 }
 
