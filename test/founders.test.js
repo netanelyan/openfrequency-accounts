@@ -2,7 +2,9 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { tempHome } from './helpers.js';
 import { pathOf, startSite, tokenOf } from './site.js';
-import { setNow } from '../src/core/clock.js';
+import { now, setNow } from '../src/core/clock.js';
+import { setSuperadmin } from '../src/accounts/superadmin.js';
+import { newTotpSecret, stepAt, totpCode } from '../src/auth/totp.js';
 import { foundersEarlier, foundersSpots, foundersState } from '../src/accounts/founders.js';
 import { eraseWorkspace } from '../src/accounts/erase.js';
 
@@ -91,6 +93,36 @@ test('off (OF_FOUNDERS_SPOTS=0): no spot, no note, and the count says none', asy
     const one = await signUp(t, 1);
     assert.deepEqual(setups(t.db, one.w), [['teder', 1490], ['toran', 990]]);
     assert.deepEqual(JSON.parse((await t.browser().get('/public/founders.json')).body), { spots: 0, left: 0 });
+  } finally {
+    await t.done();
+  }
+});
+
+test('a test account spot is given back on /admin: the counter counts it again, and the next sign-up takes that number', async () => {
+  const t = await setup({ OF_FOUNDERS_SPOTS: '3', OF_FOUNDERS_EARLIER: 'brickdealil' });
+  try {
+    const secret = newTotpSecret();
+    setSuperadmin(t.db, { email: 'admin@example.com', password: 'a long enough password', totpSecret: secret });
+    const admin = t.browser({ ip: '192.0.2.1' });
+    await admin.get('/admin/login');
+    await admin.post('/admin/login', { email: 'admin@example.com', password: 'a long enough password', code: totpCode(secret, stepAt(now())) });
+
+    const mine = await signUp(t, 1);
+    const real = await signUp(t, 2);
+    assert.deepEqual(JSON.parse((await t.browser().get('/public/founders.json')).body), { spots: 3, left: 0 });
+    const page = (await admin.get('/admin/accounts')).body;
+    assert.match(page, /תפס מקום במבצע המייסדים/);
+
+    assert.equal((await admin.post(`/admin/workspaces/${mine.w.id}/founders`)).status, 303);
+    assert.match((await admin.get('/admin/accounts')).body, /המקום של Store 1 במבצע המייסדים חזר/);
+    assert.deepEqual(JSON.parse((await t.browser().get('/public/founders.json')).body), { spots: 3, left: 1 });
+    assert.deepEqual(setups(t.db, mine.w), [['teder', 0], ['toran', 0]], 'its setup fees stay as they are');
+    assert.ok(t.db.get("SELECT 1 FROM audit WHERE action = 'founders_spot_back' AND workspace_id = ?", mine.w.id));
+    assert.equal((await admin.post(`/admin/workspaces/${mine.w.id}/founders`)).status, 303, 'again: nothing to give back, no error');
+
+    const next = await signUp(t, 3);
+    assert.deepEqual(t.db.all('SELECT spot, workspace_id FROM founders ORDER BY spot').map((r) => ({ ...r })), [{ spot: 2, workspace_id: next.w.id }, { spot: 3, workspace_id: real.w.id }]);
+    assert.deepEqual(setups(t.db, next.w), [['teder', 0], ['toran', 0]]);
   } finally {
     await t.done();
   }

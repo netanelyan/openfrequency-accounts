@@ -45,9 +45,26 @@ export const isFounder = (db, workspaceId) => Boolean(db.get('SELECT 1 FROM foun
 export function takeFoundersSpot(db, workspaceId, { env = process.env, by = null, ip = null } = {}) {
   const { spots, left } = foundersState(db, env);
   if (!left || isFounder(db, workspaceId)) return null;
-  const spot = spots - left + 1;
+  // The first number free after the earlier businesses': one given back (giveBackSpot) is taken again.
+  const used = new Set(db.all('SELECT spot FROM founders').map((r) => r.spot));
+  let spot = foundersEarlier(env).length + 1;
+  while (used.has(spot)) spot += 1;
   db.run('INSERT INTO founders (spot, workspace_id, taken_at) VALUES (?, ?, ?)', spot, Number(workspaceId), nowIso());
   db.run('UPDATE subscriptions SET setup = 0, updated_at = ? WHERE workspace_id = ?', nowIso(), Number(workspaceId));
   audit(db, { actor: by, action: 'founders_spot', workspaceId: Number(workspaceId), ip, detail: { spot, of: spots } });
   return spot;
+}
+
+/**
+ * A spot taken by a workspace that is not a business joining, given back from /admin (the owner, 2026-11-09, signed up
+ * a test account with their own demo store, and it took a spot): the website's counter goes up by one again. The
+ * subscriptions keep the setup fee they have; /admin sets it by hand if it should be charged. Returns whether a spot
+ * was given back.
+ */
+export function giveBackSpot(db, workspaceId, { by = null, ip = null } = {}) {
+  const row = db.get('SELECT spot FROM founders WHERE workspace_id = ?', Number(workspaceId));
+  if (!row) return false;
+  db.run('DELETE FROM founders WHERE workspace_id = ?', Number(workspaceId));
+  audit(db, { actor: by, action: 'founders_spot_back', workspaceId: Number(workspaceId), ip, detail: { spot: row.spot } });
+  return true;
 }

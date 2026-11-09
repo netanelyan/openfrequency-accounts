@@ -289,6 +289,10 @@ export const T = {
   accessLine: (name, open, until) => `גישה: ${name}, ${open ? 'פתוח' : 'סגור'}${until ? `, עד ${until}` : ''}`,
   compOn: 'לסמן ללא תשלום',
   compOff: 'לבטל את הפטור מתשלום',
+  // A spot of the founders' offer this workspace took at sign-up (src/accounts/founders.js), and the button that gives it back.
+  founderLine: 'תפס מקום במבצע המייסדים, בלי דמי הקמה.',
+  founderBack: 'להחזיר את המקום',
+  flashFounderBack: (name) => `המקום של ${name} במבצע המייסדים חזר. דמי ההקמה שלו נשארו כמו שהם.`,
   flashCompOn: (p, name) => `${p} ב-${name} מסומן ללא תשלום.`,
   flashCompOff: (p, name) => `${p} ב-${name} כבר לא ללא תשלום. מעכשיו הוא פתוח רק כשיש תשלום.`,
   wsDelete: 'מחיקת החשבון',

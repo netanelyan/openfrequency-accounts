@@ -15,7 +15,7 @@ import { acceptInvite, consumeMagicLink, createInvite, InviteError, normEmail, p
 import { verifySuperadmin } from '../accounts/superadmin.js';
 import { createWorkspace, getWorkspace, listWorkspaces, recentAudit, setDisabled, setProduct, startViewAs, stopViewAs, WorkspaceError } from '../accounts/workspaces.js';
 import { checkSignup, completeSignup, CONTACT_URL, dropSignup, peekSignup, requestSignup, SignupError, signupNotify, signupOpen, signupProducts, startProducts } from '../accounts/signup.js';
-import { foundersState, isFounder } from '../accounts/founders.js';
+import { foundersState, giveBackSpot, isFounder } from '../accounts/founders.js';
 import { assistantWa, billingReady, checkoutUrl, payHow, paymentMode, supportWa } from '../accounts/billing.js';
 import { accessAll, accessFor, BillingError, cancelSubscription, resumeSubscription, setComp } from '../accounts/entitlement.js';
 import { eraseWorkspace, productsEver, sameName } from '../accounts/erase.js';
@@ -1344,7 +1344,7 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
           }
         }
 
-        m = /^\/admin\/workspaces\/(\d+)\/(invite|products|disable|enable|view-as)$/.exec(p);
+        m = /^\/admin\/workspaces\/(\d+)\/(invite|products|disable|enable|founders|view-as)$/.exec(p);
         if (m) {
           const [, id, action] = m;
           try {
@@ -1363,6 +1363,10 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
               setDisabled(db, w.id, action === 'disable', by);
               accessChanged(w.id, enabledProducts(db, w.id), 'workspace');
               setFlash((action === 'disable' ? T.flashDisabled : T.flashEnabled)(w.name));
+            } else if (action === 'founders') {
+              // A test account's spot given back (src/accounts/founders.js): the website's counter counts it again.
+              giveBackSpot(db, w.id, by);
+              setFlash(T.flashFounderBack(w.name));
             } else {
               startViewAs(db, session, w.id, by);
               const product = f('product');

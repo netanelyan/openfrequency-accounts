@@ -891,6 +891,7 @@ ${invoiceForm(base, p, s, csrf)}</li>`;
 <p class="section-l">${esc(T.colProducts)}</p>
 <ul class="toggles">${products}</ul>
 ${subs ? `<p class="section-l">${esc(T.subTitle)}</p><ul class="subs-admin">${subs}</ul>` : ''}
+${w.founder ? `<p class="access"><span class="muted">${esc(T.founderLine)}</span>${button(`${base}/founders`, T.founderBack, csrf, { kind: 'quiet' })}</p>` : ''}
 ${w.invoices?.length ? `<p class="section-l">${esc(T.dashInvoices)}</p><ul class="people">${w.invoices
     .map((i) => `<li><a class="who" href="/admin/invoices/${esc(i.id)}">${esc(T.invAdminLine(i.number, dayHe(i.issued_on), ils(total(i))))}</a><span class="muted">${esc(PRODUCT_NAMES[i.product])}</span><span class="end">${button(`/admin/invoices/${i.id}/remove`, T.invRemove, csrf, { kind: 'quiet' })}</span></li>`)
     .join('')}</ul>` : ''}
