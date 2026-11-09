@@ -15,6 +15,7 @@ import { acceptInvite, consumeMagicLink, createInvite, InviteError, normEmail, p
 import { verifySuperadmin } from '../accounts/superadmin.js';
 import { createWorkspace, getWorkspace, listWorkspaces, recentAudit, setDisabled, setProduct, startViewAs, stopViewAs, WorkspaceError } from '../accounts/workspaces.js';
 import { checkSignup, completeSignup, CONTACT_URL, dropSignup, peekSignup, requestSignup, SignupError, signupNotify, signupOpen, signupProducts, startProducts } from '../accounts/signup.js';
+import { foundersState, isFounder } from '../accounts/founders.js';
 import { assistantWa, billingReady, checkoutUrl, payHow, paymentMode, supportWa } from '../accounts/billing.js';
 import { accessAll, accessFor, BillingError, cancelSubscription, resumeSubscription, setComp } from '../accounts/entitlement.js';
 import { eraseWorkspace, productsEver, sameName } from '../accounts/erase.js';
@@ -387,6 +388,15 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
       const url = new URL(req.url, 'http://x');
       const p = url.pathname;
       if (req.method === 'GET' && p === '/healthz') return text(200, 'ok');
+      // The founders' offer, as the website's counter reads it (src/accounts/founders.js): the spots and how many are
+      // left, counted, for anyone; cached a minute, and readable from openfrequency.co.il's own pages.
+      if (req.method === 'GET' && p === '/public/founders.json') {
+        const { spots, left } = foundersState(db, env);
+        const origin = String(req.headers.origin || '');
+        const allowed = /^https:\/\/(www\.)?openfrequency\.co\.il$/.test(origin) || /^http:\/\/(localhost|127\.0\.0\.1):\d+$/.test(origin);
+        res.writeHead(200, headers({ 'content-type': 'application/json; charset=utf-8', 'cache-control': 'public, max-age=60', ...(allowed ? { 'access-control-allow-origin': origin, vary: 'Origin' } : {}) }));
+        return res.end(JSON.stringify({ spots, left }));
+      }
       // Ready: the database answers and is at this build's schema (src/web/ready.js). The deploy waits for it, and the
       // uptime monitor watches it. The details only to this machine.
       if (req.method === 'GET' && p === '/readyz') {
@@ -574,7 +584,7 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
         // Paying over WhatsApp: the button's link with the workspace's code, while something is owed, now or the month
         // ahead within the week (payOverWa() asks dueForPay()); read-only (view-as) makes no code.
         const payWa = payOverWa(db, { env, workspaceId: wsId, business: d.body.workspace.name, mint: !d.body.readOnly });
-        return page(200, SETUP.title, P.setupPage({ state, productUrls: urls, readOnly: d.body.readOnly, flash, access: accessAll(db, wsId), prices: subscriptionsOf(db, wsId), payHow: payHow(env), payWa }), { wide: true, banner });
+        return page(200, SETUP.title, P.setupPage({ state, productUrls: urls, readOnly: d.body.readOnly, flash, access: accessAll(db, wsId), prices: subscriptionsOf(db, wsId), payHow: payHow(env), payWa, founder: isFounder(db, wsId) }), { wide: true, banner });
       }
 
       // The account, for a customer in their own workspace: cancelling a product's subscription (a confirmation page,
@@ -681,7 +691,7 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
             const row = peekSignup(db, t, 'email');
             return row ? page(200, SIGNUP.confirmTitle, P.signupConfirmPage({ csrf, token: t, row, payment })) : dead();
           }
-          const done = completeSignup(db, f('t'), { kind: 'email', ip });
+          const done = completeSignup(db, f('t'), { kind: 'email', ip, env });
           if (!done) return dead();
           if (done.exists) return page(409, SIGNUP.existsTitle, P.messagePage({ title: SIGNUP.existsTitle, lead: SIGNUP.existsLead, links: [['/login', SIGNUP.toLogin]] }));
           noticeSignup(done, 'email', base);
@@ -704,12 +714,12 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
           // a Teder name (full, small) is Teder's, a Toran name (store, big) Toran's.
           const asked = url.searchParams.get('plan') || '';
           const start = { products: startProducts(url.searchParams.get('p'), openProducts), plan: Object.hasOwn(PLANS.teder, asked) ? asked : '', plan_toran: Object.hasOwn(PLANS.toran, asked) ? asked : '' };
-          return page(200, SIGNUP.title, P.signupPage({ csrf, google: Boolean(google), open: openProducts, payment, form: start }));
+          return page(200, SIGNUP.title, P.signupPage({ csrf, google: Boolean(google), open: openProducts, payment, form: start, founders: foundersState(db, env) }));
         }
 
         const via = f('via') === 'google' && google ? 'google' : 'email';
         const raw = { name: f('name').slice(0, 200), business: f('business').slice(0, 200), email: f('email').slice(0, 254), products: form.getAll('products'), plan: f('plan').slice(0, 20), plan_toran: f('plan_toran').slice(0, 20), terms: f('terms') === '1' };
-        const again = (status, error, extra) => send(status, layout({ title: SIGNUP.title, body: P.signupPage({ csrf, form: raw, error, google: Boolean(google), open: openProducts, payment }) }), extra);
+        const again = (status, error, extra) => send(status, layout({ title: SIGNUP.title, body: P.signupPage({ csrf, form: raw, error, google: Boolean(google), open: openProducts, payment, founders: foundersState(db, env) }) }), extra);
         const sent = (email) => page(200, SIGNUP.sentTitle, P.signupSentPage({ email }));
         // The honeypot: a field people never see. Filled, it was not a person: the same page as a real sign-up, and
         // nothing kept or sent.
@@ -934,7 +944,7 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
             dropSignup(db, flow.signup, 'google');
             return fail(403, SIGNUP.googleTaken, SIGNUP.googleTakenLead);
           }
-          const done = completeSignup(db, flow.signup, { kind: 'google', email: who.email, ip });
+          const done = completeSignup(db, flow.signup, { kind: 'google', email: who.email, ip, env });
           if (!done) return signupDead();
           if (done.exists) return fail(403, SIGNUP.googleTaken, SIGNUP.googleTakenLead);
           bindGoogle(db, done.user, who);
@@ -1069,7 +1079,7 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
         if (p === '/admin' && req.method === 'GET') {
           const viewAs = Boolean(session.view_as_workspace_id);
           const t = viewAs ? null : { ...(await toran.ops()), base: toran.base };
-          const body = dashboardPage({ csrf, flash, flashBad, toran: t, customers: viewAs ? null : opsCustomers(db), at: now(), viewAs, receipts: viewAs ? [] : receiptsWaiting(db) });
+          const body = dashboardPage({ csrf, flash, flashBad, toran: t, customers: viewAs ? null : opsCustomers(db), at: now(), viewAs, receipts: viewAs ? [] : receiptsWaiting(db), founders: viewAs ? null : foundersState(db, env) });
           return send(200, layout({ title: OPS.title, body, wide: true, banner, script: true }), { 'content-security-policy': CSP_SCRIPT });
         }
         if (p === '/admin/accounts' && req.method === 'GET') return console_(200);

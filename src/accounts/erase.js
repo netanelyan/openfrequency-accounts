@@ -40,6 +40,8 @@ export function eraseWorkspace(db, workspaceId, { by, ip = null, source = 'owner
     for (const table of ['signups', 'tokens', 'phone_links', 'user_phones', 'notify_prefs', 'notify_log', 'billing_notices', 'retention_notices', 'terms_notices', 'pay_codes', 'pay_receipts', 'paid_months', 'subscriptions', 'workspace_products', 'memberships'])
       db.run(`DELETE FROM ${table} WHERE workspace_id = ?`, w.id);
     db.run('UPDATE sessions SET workspace_id = NULL WHERE workspace_id = ?', w.id);
+    // A founders' spot stays taken (src/accounts/founders.js), with nothing left to say whose it was.
+    db.run('UPDATE founders SET workspace_id = NULL WHERE workspace_id = ?', w.id);
     db.run('UPDATE sessions SET view_as_workspace_id = NULL, view_as_since = NULL WHERE view_as_workspace_id = ?', w.id);
     // Someone who was only here has nothing left with us: their account goes too (its sessions and links with it).
     let usersDeleted = 0;

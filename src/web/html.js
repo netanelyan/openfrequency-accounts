@@ -434,7 +434,7 @@ ${owner ? `<p class="links"><a href="/account/delete">${esc(T.dashDelete)}</a></
  * (the owner, 2026-11-02): that product goes in a hidden field, the heading names it, and its plans (or its price) and
  * how paying works stand where the question was; the products not open yet are left out.
  */
-export function signupPage({ csrf, form = {}, error = '', google = false, open = ['teder', 'toran'], payment = 'manual' }) {
+export function signupPage({ csrf, form = {}, error = '', google = false, open = ['teder', 'toran'], payment = 'manual', founders = null }) {
   const chosen = [].concat(form.products || []);
   const only = open.length === 1 ? open[0] : null;
   // A product sign-up does not offer yet (OF_SIGNUP_PRODUCTS): shown after the open ones, its box disabled and outside
@@ -479,6 +479,7 @@ ${open.length > 1 ? `<small>${esc(SIGNUP.productsHint)}</small>` : ''}
 <section class="card signup">
 <h1>${esc(only ? SIGNUP.headingFor(PRODUCT_NAMES[only]) : SIGNUP.heading)}</h1>
 <p class="lead">${esc(SIGNUP.lead)}</p>
+${founders?.left ? `<p class="founders-note">${esc(SIGNUP.founders(founders.spots, founders.left))}</p>` : ''}
 <form method="post" action="/signup">
 ${csrfField(csrf)}
 <label for="su-name">${esc(SIGNUP.nameLabel)}</label>
@@ -555,7 +556,7 @@ function stepRow(s, { readOnly, first, locked = false }) {
  * while something is owed, is its own card (payWaCard()): the amount, one line and the one blue button.
  * Read-only (view-as) shows the card the customer sees, without its button.
  */
-function billingCard(b, { readOnly, first, products, access, prices, payHow = '', payWa = null }) {
+function billingCard(b, { readOnly, first, products, access, prices, payHow = '', payWa = null, founder = false }) {
   const done = b.status === 'done';
   // What is to pay now, product by product (a month, and the setup fee until the first payment), and the months after;
   // with nothing owed today, the month ahead within the week, as Toran quotes it (pay.js dueForPay()).
@@ -572,7 +573,9 @@ function billingCard(b, { readOnly, first, products, access, prices, payHow = ''
   const wa = /^https:\/\/wa\.me\//.test(href || '');
   const overWa = Boolean(payWa && payHow && !checkout && open && due.items.length);
   const label = checkout ? SETUP.billingPay : wa ? (payHow ? SETUP.billingSendReceipt : SETUP.billingWrite) : SETUP.billingContact;
-  if (overWa) return payWaCard({ done, due, readOnly, first, payWa });
+  // A founder's first payment has no setup fee (src/accounts/founders.js): one line says why it is not there.
+  const founderNote = founder && due.lines.some((l) => l.kind === 'owed') ? `<p class="founders-note">${esc(SETUP.founders)}</p>` : '';
+  if (overWa) return payWaCard({ done, due, readOnly, first, payWa, founderNote });
   const btn =
     open && href && !readOnly
       ? `<a class="button ${checkout && first() ? 'primary' : 'quiet'}" href="${esc(href)}">${esc(label)}</a>`
@@ -594,6 +597,7 @@ function billingCard(b, { readOnly, first, products, access, prices, payHow = ''
   return `<section class="card setup-p" id="setup-billing"><header><div><h2>${esc(SETUP.billingTitle)}</h2></div><span class="tag${done ? '' : ' off'}">${esc(done ? SETUP.ready : SETUP.notReady)}</span></header>
 <ol class="steps"><li class="step st-${done ? 'done' : 'todo'}"><span class="chip">${esc(SETUP.status[done ? 'done' : 'todo'])}</span><span class="what"><b>${esc(SETUP.billingStep)}</b><small>${esc(detail)}</small></span>${btn}</li></ol>
 ${lines ? `<ul class="prices">${lines}</ul>` : ''}
+${founderNote}
 ${open && now ? `<p class="pay-total"><b>${esc(SETUP.billingNow(ils(now.total), ils(now.net), now.vat ? ils(now.vat) : ''))}</b>${then ? ` ${esc(SETUP.billingThen(ils(then)))}` : ''}</p>` : ''}
 ${open && payHow ? `<p>${esc(SETUP.billingHow(payHow))}</p>` : ''}
 ${open && payHow && !checkout ? after : ''}
@@ -609,7 +613,7 @@ ${open && !checkout ? `<p class="muted">${esc(SETUP.billingAsk(wa))}</p>` : ''}
  * "לתשלום אוטומטי בוואטסאפ". The transfer's details, the receipt (אסמכתא) and the breakdown of the VAT are Toran's
  * answer there (GET /internal/pay). `due` is dueOf() with something owed; no button read-only, or without a code.
  */
-function payWaCard({ done, due, readOnly, first, payWa }) {
+function payWaCard({ done, due, readOnly, first, payWa, founderNote = '' }) {
   const owed = due.lines.filter((l) => l.item);
   const what = owed.map((l) =>
     SETUP.payFor(productLabel(l.product, l.plan), { from: l.kind === 'ahead' && l.paidUntil ? dayHe(addDays(l.paidUntil, 1)) : '', first: l.kind === 'owed' && l.item.firstMonth, setup: l.item.setup > 0 })
@@ -627,6 +631,7 @@ function payWaCard({ done, due, readOnly, first, payWa }) {
   return `<section class="card setup-p pay-wa" id="setup-billing"><header><div><h2>${esc(SETUP.billingTitle)}</h2></div><span class="tag${done ? '' : ' off'}">${esc(done ? SETUP.ready : SETUP.notReady)}</span></header>
 <p class="pay-amount"><b>${esc(ils(due.total))}</b> <span>${esc(T.vatIncluded)}</span></p>
 <p class="pay-for">${esc([...what, ...when].join(' '))}</p>
+${founderNote}
 ${btn}
 </section>`;
 }
@@ -636,11 +641,11 @@ ${btn}
  * workspace has turned on, and nothing about one it has not. A product the paywall keeps closed shows its steps
  * locked, "נפתח אחרי התשלום".
  */
-export function setupPage({ state, productUrls, readOnly = false, flash = '', access = {}, prices = {}, payHow = '', payWa = null }) {
+export function setupPage({ state, productUrls, readOnly = false, flash = '', access = {}, prices = {}, payHow = '', payWa = null, founder = false }) {
   let used = false;
   const first = () => (used ? false : (used = true));
   const steps = (list, locked) => `<ol class="steps">${list.map((s) => stepRow(s, { readOnly, first, locked })).join('')}</ol>`;
-  const billing = state.billing ? billingCard(state.billing, { readOnly, first, products: state.sections.map((s) => s.product), access, prices, payHow, payWa }) : '';
+  const billing = state.billing ? billingCard(state.billing, { readOnly, first, products: state.sections.map((s) => s.product), access, prices, payHow, payWa, founder }) : '';
   const sections = state.sections
     .map((sec) => {
       const p = sec.product;

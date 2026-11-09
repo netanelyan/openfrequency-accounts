@@ -6,6 +6,7 @@ import { hashToken, looksLikeToken, newToken } from '../auth/tokens.js';
 import { MAGIC_TTL, normEmail, validEmail } from './links.js';
 import { openWorkspace } from './workspaces.js';
 import { PLANS, defaultPlan } from './subscriptions.js';
+import { takeFoundersSpot } from './founders.js';
 
 // Public sign-up: a business opens its own account, without the superadmin. Open only while OF_SIGNUP=1.
 //
@@ -32,7 +33,7 @@ import { PLANS, defaultPlan } from './subscriptions.js';
  * legal.contractsUpdated) as part of the deal, and since 2026-11-03 gives a new month's payment 72 hours after the
  * paid month ends (subscriptions.js GRACE_HOURS) instead of 14 days. Stored on the user and the workspace at sign-up.
  */
-export const TERMS_VERSION = '2026-11-08';
+export const TERMS_VERSION = '2026-11-09';
 export const TERMS_URL = 'https://openfrequency.co.il/terms';
 /** Each product's short contract on the website (openfrequency-web src/pages/legal.mjs), linked beside the terms. */
 export const CONTRACT_URLS = { teder: 'https://openfrequency.co.il/teder/contract', toran: 'https://openfrequency.co.il/toran/contract' };
@@ -183,7 +184,7 @@ function slugFor(db, business) {
  * Returns { user, workspace }; { exists: user } when the address has a user by now (nothing is opened, the sign-up
  * is used up); or null when the token is unknown, used or expired.
  */
-export function completeSignup(db, token, { kind = 'email', email = null, ip = null } = {}) {
+export function completeSignup(db, token, { kind = 'email', email = null, ip = null, env = process.env } = {}) {
   if (!looksLikeToken(token)) return null;
   return db.tx(() => {
     const t = nowIso();
@@ -205,8 +206,10 @@ export function completeSignup(db, token, { kind = 'email', email = null, ip = n
       { by: user, ip, source: 'signup' }
     );
     db.insert('memberships', { user_id: user.id, workspace_id: workspace.id, role: 'client_owner', created_at: t });
+    // One of the founders' spots, while any is left: no setup fee for what this sign-up chose (src/accounts/founders.js).
+    const founder = takeFoundersSpot(db, workspace.id, { env, by: user, ip });
     db.update('signups', row.id, { user_id: user.id, workspace_id: workspace.id, email: address });
-    audit(db, { actor: user, action: 'signed_up', workspaceId: workspace.id, ip, detail: { method: kind, products: row.products, ...(row.plan ? { plan: row.plan } : {}), ...(row.plan_toran ? { plan_toran: row.plan_toran } : {}), terms: row.terms_version } });
-    return { user, workspace };
+    audit(db, { actor: user, action: 'signed_up', workspaceId: workspace.id, ip, detail: { method: kind, products: row.products, ...(row.plan ? { plan: row.plan } : {}), ...(row.plan_toran ? { plan_toran: row.plan_toran } : {}), terms: row.terms_version, ...(founder ? { founder } : {}) } });
+    return { user, workspace, founder };
   });
 }

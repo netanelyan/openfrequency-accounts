@@ -640,6 +640,8 @@ export const SIGNUP = {
   soon: 'בקרוב',
   productSoon: 'ההרשמה אליו תיפתח בקרוב.',
   price: (monthly, setup) => `${monthly} לחודש ועוד מע״מ, ודמי הקמה של ${setup} פעם אחת`,
+  // The founders' offer (src/accounts/founders.js), with the real count of spots left.
+  founders: (spots, left) => `מבצע מייסדים: ${spots} העסקים הראשונים שנרשמים לא משלמים דמי הקמה. נשארו ${left} מתוך ${spots} מקומות, ומי שנרשם עכשיו תופס אחד מהם.`,
   planLegend: 'איזו חבילה של תדר',
   planLegendToran: 'איזו חבילה של תורן',
   // Teder's setup fee is not refunded (its terms: "דמי ההקמה לא מוחזרים"). Toran's terms say it otherwise, and this note
@@ -717,6 +719,8 @@ export const SIGNUP = {
 
 export const SETUP = {
   title: 'הגדרה',
+  // A founder's first payment (src/accounts/founders.js): why it has no setup fee.
+  founders: 'אתם בין העסקים הראשונים שנרשמו במבצע המייסדים, אז אין דמי הקמה. משלמים רק את החודש.',
   heading: 'מגדירים את החשבון',
   lead: 'מה שנשאר לעשות כדי שהמוצרים שלכם יעבדו. כל צעד מוביל למקום שבו עושים אותו.',
   progress: (done, total) => `${done} מתוך ${total} צעדים`,
@@ -1049,6 +1053,8 @@ export const ils = (n) => `${Number(n).toLocaleString('he-IL', Number.isInteger(
 // what Toran says after an action come from Toran as they are.
 
 export const OPS = {
+  // The founders' offer (src/accounts/founders.js), on the money section.
+  founders: (spots, taken) => `מבצע המייסדים: ${taken} מתוך ${spots} המקומות נלקחו. מי שנרשם עכשיו לא משלם דמי הקמה, עד שהמקומות נגמרים.`,
   title: 'היום',
   tabs: 'הלוח',
   tabToday: 'היום',

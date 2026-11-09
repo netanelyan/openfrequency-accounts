@@ -10,6 +10,8 @@ import { TERMS_VERSION } from '../src/accounts/signup.js';
 // against ./private/. No key is ever set, so no email can leave the machine.
 
 delete process.env.RESEND_API_KEY;
+// The founders offer (OF_FOUNDERS_SPOTS, 10 when unset) is off, so a sign-up owes the list setup fee.
+process.env.OF_FOUNDERS_SPOTS = '0';
 
 /** Databases opened by a test, closed before its folder is removed (Windows will not delete an open file). */
 const opened = [];

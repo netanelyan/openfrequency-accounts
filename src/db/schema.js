@@ -422,4 +422,14 @@ export const MIGRATIONS = [
   UPDATE subscriptions SET plan = CASE WHEN monthly >= 1190 THEN 'big' ELSE 'store' END WHERE product = 'toran' AND plan IS NULL;
   ALTER TABLE signups ADD COLUMN plan_toran TEXT CHECK (plan_toran IS NULL OR plan_toran IN ('store', 'big'));
   `,
+  `
+  -- The founders' offer (src/accounts/founders.js; the owner, 2026-11-09: no setup fee for the next 10): one row a spot
+  -- taken at sign-up, its number the key so two sign-ups at once cannot take the same one. A workspace deleted later
+  -- keeps its spot taken (workspace_id NULL): the count is of the sign-ups that took the offer.
+  CREATE TABLE founders (
+    spot            INTEGER PRIMARY KEY,
+    workspace_id    INTEGER UNIQUE REFERENCES workspaces(id) ON DELETE SET NULL,
+    taken_at        TEXT NOT NULL
+  );
+  `,
 ];

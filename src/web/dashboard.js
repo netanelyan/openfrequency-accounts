@@ -234,7 +234,7 @@ function receiptsSection(list, at) {
  * The page. `toran` is toranClient().ops() with its base: { ok, data } or { ok: false, why, base }. `customers` is
  * opsCustomers(db). `at` is now, in ms. `receipts`, the transfers waiting for a decision, show near the top.
  */
-export function dashboardPage({ csrf, flash = '', flashBad = false, toran, customers, at, viewAs = false, receipts = [] }) {
+export function dashboardPage({ csrf, flash = '', flashBad = false, toran, customers, at, viewAs = false, receipts = [], founders = null }) {
   const top = `${adminTop({ csrf, tab: 'today' })}
 ${flash ? `<p class="flash${flashBad ? ' bad' : ''}" role="${flashBad ? 'alert' : 'status'}">${esc(flash)}</p>` : ''}
 <p class="toast" id="toast" role="status" aria-live="polite" data-offline="${esc(OPS.offline)}" data-unexpected="${esc(OPS.unexpected)}"></p>`;
@@ -294,5 +294,6 @@ ${funnel}
 </section>
 <section id="money"><div class="list-h"><h2>${esc(OPS.moneyTitle)}</h2></div>
 ${moneyPanel(m)}
+${founders?.spots ? `<p class="muted">${esc(OPS.founders(founders.spots, founders.spots - founders.left))}</p>` : ''}
 </section>`;
 }
