@@ -154,6 +154,24 @@ Toran's answer comes back as it is (status, cookies, location, compression, its 
 the hop-by-hop headers and without ours. When Toran is down or does not answer in 30 seconds,
 the page is a 502 that says "תורן לא ענה כרגע" with a link back to `/admin`.
 
+### /admin/teder, Teder's pages proxied
+
+The same, for Teder (`src/web/admin-teder.js`, docs/admin-split.md): every method on `/admin/teder`
+and `/admin/teder/*` goes to Teder at `OF_TEDER_INTERNAL` (default `http://127.0.0.1:4700`) with
+`x-of-admin-prefix: /admin/teder` and the same signed `x-of-operator`. Of the browser's cookies only
+Teder's own go with it, which Teder names `td_*` on this host (so they never meet our `of_flash`),
+and `of-theme`; of the `x-of-*` headers only `x-of-ajax: 1`. Teder's demos, its leads, every
+workspace's accounts and the server's settings (when posts are written, the stop for everything,
+costs) are there now, and Teder's own site shows the product only. When Teder does not answer, the
+502 says "תדר לא ענה כרגע".
+
+### The operator's own workspace on the products' sites
+
+With `OF_OPERATOR_WORKSPACE=<workspace id>`, the superadmin who opens Teder or Toran on its own site
+is in that workspace, as its owner (docs/internal-session.md, docs/admin-split.md): they see the
+product exactly as a customer does, and their operator pages are under `/admin`. Unset, or for a
+product the workspace does not have, the products show a short page that points to `/admin`.
+
 ## Try it
 
 ```sh

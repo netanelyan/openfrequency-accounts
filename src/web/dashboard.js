@@ -1,6 +1,6 @@
 import { opsCustomersStage, opsMoney } from '../accounts/ops.js';
 import { OPS, PAY, PRODUCT_NAMES, WAIT, agoHe, dayHe, ils, stampHe } from './copy.js';
-import { adminTop, csrfField, esc, productMark, tederBase } from './html.js';
+import { adminTop, csrfField, esc, PRODUCT_TOOLS, productMark } from './html.js';
 import { LOST_REASONS } from './toran.js';
 
 // The operator's dashboard, /admin: who to write to today about Toran or Teder, with the message ready; who asked
@@ -131,6 +131,20 @@ ${nextForm(csrf, c, c.next_step, 'talking')}
 <div class="op-more">${won}${lostForm(csrf, c, 'talking')}</div>
 </article>`;
 }
+
+/**
+ * The operator's pages inside each product, two groups (html.js PRODUCT_TOOLS): each product's mark and name, a link to
+ * its home under /admin, and its pages as buttons. Toran's waitlist, from the website, sits with Toran's.
+ */
+const toolsNav = () =>
+  `<nav class="product-tools" aria-label="${esc(OPS.tools)}">${Object.entries(PRODUCT_TOOLS)
+    .map(
+      ([p, list]) =>
+        `<section class="card tool-group"><header class="op-who">${productMark(p)}<h3>${esc(PRODUCT_NAMES[p])}</h3><a class="end" href="/admin/${p}/">${esc(OPS.toolsAll)}</a></header><div class="row">${list
+          .map(([href, key]) => `<a class="button" href="${esc(href)}">${esc(OPS.tool[key])}</a>`)
+          .join('')}${p === 'toran' ? `<a class="button" href="/admin/waitlist">${esc(WAIT.tool)}</a>` : ''}</div></section>`
+    )
+    .join('')}</nav>`;
 
 /** The rate from the stage before, as a whole percent, or null when the stage before is empty (Toran's rate()). */
 export const rate = (stages, i, k) => (i > 0 && stages[i - 1][k] ? Math.round((100 * stages[i][k]) / stages[i - 1][k]) : null);
@@ -278,7 +292,7 @@ ${d.noContact.length ? `<details class="card no-contact"><summary>${esc(OPS.noCo
 ${d ? numberLine(d.demoLine) : ''}
 ${receiptsSection(receipts, at)}
 ${kpis}
-<nav class="row tools" aria-label="${esc(OPS.tools)}">${[['leads', OPS.toolTederLeads], ['demos', OPS.toolTederDemos], ['all', OPS.toolTederAll]].map(([path, label]) => `<a class="button" href="${esc(tederBase() + path)}">${esc(label)}</a>`).join('')}<a class="button" href="/admin/waitlist">${esc(WAIT.tool)}</a></nav>
+${toolsNav()}
 ${d && !d.teder.ok ? `<p class="muted note">${esc(OPS.tederStale)}</p>` : ''}
 <section id="contact"><div class="list-h"><h2>${esc(OPS.contactTitle)}</h2><p class="muted">${esc(OPS.contactOrder)}</p></div>
 ${contact}

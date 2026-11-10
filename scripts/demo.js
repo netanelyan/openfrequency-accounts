@@ -48,6 +48,8 @@ for (const product of ['teder', 'toran']) {
   db.insert('workspace_products', { workspace_id: ws, product, enabled: 1, updated_at: nowIso() });
   ensureSubscription(db, ws, product);
 }
+// The superadmin's own workspace on Teder's and Toran's sites (docs/admin-split.md): the demo shop, as its owner sees it.
+process.env.OF_OPERATOR_WORKSPACE ||= String(ws);
 // The paywall in both states: Teder paid for a month, Toran not paid yet (its steps locked on /setup).
 payMonth(db, ws, 'teder', { by: admin });
 const inv = createInvite(db, { workspaceId: ws, email: 'dana@example.com', role: 'client_owner', by: admin });

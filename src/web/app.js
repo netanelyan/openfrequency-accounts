@@ -39,6 +39,7 @@ import { leadPage, leadsPage } from './leads.js';
 import { ACTIONS, ID, LEAD_ACTIONS, LOST_REASONS, WHERE, toranClient } from './toran.js';
 import { siteClient, waitlistPage } from './waitlist.js';
 import { isAdminToran, operatorAssertion, proxyToToran, toranBase, touchesInternal } from './admin-toran.js';
+import { isAdminTeder, proxyToTeder, tederAt as tederInternal } from './admin-teder.js';
 import { readiness } from './ready.js';
 import * as P from './html.js';
 
@@ -337,6 +338,7 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
   const CSP = `default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action ${formAction}`;
   const CSP_SCRIPT = CSP;
   const toranAt = toranBase(env);
+  const tederHere = tederInternal(env);
   // The invoice-receipt in Morning after "התשלום הגיע" (src/accounts/morning.js), while its keys are set; else none.
   const morningSet = morningConfig(env);
   const morning = morningSet ? morningClient(morningSet, { fetchImpl: morningFetch, ...(morningMs ? { timeoutMs: morningMs } : {}) }) : null;
@@ -420,8 +422,10 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
       const found = sid ? findSession(db, sid) : null;
 
       // Toran's operator pages, on our /admin: the superadmin's only, outside view-as, as for /admin, and never
-      // Toran's /internal routes. Everything else about the request (its CSRF, its forms) is Toran's to check.
-      if (isAdminToran(p)) {
+      // Toran's /internal routes. Everything else about the request (its CSRF, its forms) is Toran's to check. Teder's,
+      // under /admin/teder, on the same terms (admin-teder.js, docs/admin-split.md).
+      const teder_ = isAdminTeder(p);
+      if (teder_ || isAdminToran(p)) {
         const page_ = (status, title, body) => send(status, layout({ title, body }));
         if (!found?.user.is_superadmin || found.session.view_as_workspace_id) {
           if (req.method === 'GET') return redirect(`/admin/login?next=${encodeURIComponent(p + url.search)}`);
@@ -430,8 +434,8 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
         if (touchesInternal(p)) return page_(404, T.notFound, P.messagePage({ title: T.notFound, lead: '', links: [['/admin', T.adminTitle]] }));
         const o = req.headers.origin;
         if (req.method !== 'GET' && req.method !== 'HEAD' && o && o !== origin) return page_(403, T.loginTitle, P.messagePage({ title: T.crossSite, lead: '' }));
-        return proxyToToran(req, res, {
-          base: toranAt,
+        return (teder_ ? proxyToTeder : proxyToToran)(req, res, {
+          base: teder_ ? tederHere : toranAt,
           path: p + url.search,
           secure,
           origin: base,
@@ -439,7 +443,11 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
           timeoutMs: toranProxyMs,
           log,
           failed: (status) =>
-            status === 413 ? text(413, 'too large') : page_(502, OPS.toranNoAnswerTitle, P.messagePage({ title: OPS.toranNoAnswerTitle, lead: OPS.toranNoAnswerLead, links: [['/admin', OPS.toranNoAnswerBack]] })),
+            status === 413
+              ? text(413, 'too large')
+              : teder_
+                ? page_(502, OPS.tederNoAnswerTitle, P.messagePage({ title: OPS.tederNoAnswerTitle, lead: OPS.tederNoAnswerLead, links: [['/admin', OPS.toranNoAnswerBack]] }))
+                : page_(502, OPS.toranNoAnswerTitle, P.messagePage({ title: OPS.toranNoAnswerTitle, lead: OPS.toranNoAnswerLead, links: [['/admin', OPS.toranNoAnswerBack]] })),
         });
       }
 

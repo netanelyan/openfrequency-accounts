@@ -81,8 +81,10 @@ export const toranBase = (env = process.env) => new URL((String(env.OF_TORAN_INT
  * Hand one request to Toran and stream its answer back. `path` is the path and query to ask for (prefix kept),
  * `secure` whether the browser reached us over HTTPS, `origin` our public origin. Calls `failed(status)` before
  * anything was written when Toran cannot be asked (413: the body is too large; 502: Toran is down or slow).
+ * Teder's pages under /admin/teder go the same way (admin-teder.js): `prefix` is the one Teder is told, `keep` picks
+ * its cookies, `more` adds the headers it takes besides PASS, `name` is what the log line calls it.
  */
-export function proxyToToran(req, res, { base, path, secure, origin, failed, operator = null, timeoutMs = TIMEOUT_MS, log = console.error }) {
+export function proxyToToran(req, res, { base, path, secure, origin, failed, operator = null, timeoutMs = TIMEOUT_MS, log = console.error, prefix = PREFIX, keep = toranCookies, more = {}, name = 'toran' }) {
   const declared = Number(req.headers['content-length']);
   if (Number.isFinite(declared) && declared > BODY_MAX) {
     req.resume();
@@ -91,12 +93,12 @@ export function proxyToToran(req, res, { base, path, secure, origin, failed, ope
 
   const headers = {};
   for (const k of PASS) if (req.headers[k] != null) headers[k] = req.headers[k];
-  const cookie = toranCookies(req.headers.cookie);
+  const cookie = keep(req.headers.cookie);
   if (cookie) headers.cookie = cookie;
   if (operator) headers['x-of-operator'] = operator;
-  Object.assign(headers, {
+  Object.assign(headers, more, {
     host: base.host,
-    'x-of-admin-prefix': PREFIX,
+    'x-of-admin-prefix': prefix,
     'x-forwarded-proto': secure ? 'https' : 'http',
     'x-of-admin-origin': origin,
   });
@@ -106,7 +108,7 @@ export function proxyToToran(req, res, { base, path, secure, origin, failed, ope
     if (finished) return;
     finished = true;
     clearTimeout(timer);
-    log(`[accounts] toran ${req.method} ${path.split('?')[0]}: ${why}`);
+    log(`[accounts] ${name} ${req.method} ${path.split('?')[0]}: ${why}`);
     upstream.destroy();
     if (!res.headersSent) failed(status);
     else res.destroy();

@@ -624,6 +624,15 @@ main.wide .card.empty { margin: 0; padding: 20px 22px; }
 .card.empty p:empty { display: none; }
 p.more { margin: 14px 4px 0; }
 
+/* The operator's pages inside each product (dashboard.js toolsNav): two cards side by side on a desk, one under the
+   other on a phone, each with its product's mark, a link to its home, and its pages as buttons that wrap. */
+.product-tools { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 380px), 1fr)); gap: 16px; margin: 0 0 8px; }
+main.wide .card.tool-group { margin: 0; padding: 16px 18px; }
+.card.tool-group .op-who { align-items: center; margin-bottom: 12px; }
+.card.tool-group .op-who .mark { width: 28px; height: 28px; margin: 0; }
+.card.tool-group .op-who .end { margin-inline-start: auto; font-size: 14px; }
+.card.tool-group .row { display: flex; flex-wrap: wrap; gap: 8px; }
+
 /* The funnels side by side, each a table of stages: all time, and the last 30 days, with the rate from the stage before. */
 .funnels { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); gap: 16px; }
 main.wide .card.funnel { margin: 0; padding: 18px 20px; }

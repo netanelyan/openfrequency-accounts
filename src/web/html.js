@@ -800,15 +800,29 @@ ${error ? `<p class="error" role="alert">${esc(error)}</p>` : ''}
  */
 export const adminTop = ({ csrf, tab }) => {
   const a = (href, label, on) => `<a href="${href}"${on ? ' aria-current="page"' : ''}>${esc(label)}</a>`;
-  return `<header class="top admin-top"><div class="brand">${ofMark()}<h1>${esc(tab === 'today' ? OPS.pageTitle : tab === 'leads' ? LEADS.title : T.adminTitle)}</h1></div><nav class="tabs" aria-label="${esc(OPS.tabs)}">${a('/admin', OPS.tabToday, tab === 'today')}${a('/admin/leads', LEADS.tab, tab === 'leads')}${a('/admin/accounts', OPS.tabAccounts, tab === 'accounts')}${a('/admin/toran/', OPS.tabToran, false)}${a(esc(`${tederBase()}leads`), OPS.tabTeder, false)}</nav>${button('/logout', T.adminSignOut, csrf, { kind: 'quiet' })}</header>`;
+  return `<header class="top admin-top"><div class="brand">${ofMark()}<h1>${esc(tab === 'today' ? OPS.pageTitle : tab === 'leads' ? LEADS.title : T.adminTitle)}</h1></div><nav class="tabs" aria-label="${esc(OPS.tabs)}">${a('/admin', OPS.tabToday, tab === 'today')}${a('/admin/leads', LEADS.tab, tab === 'leads')}${a('/admin/toran/', OPS.tabToran, false)}${a('/admin/teder/', OPS.tabTeder, false)}${a('/admin/accounts', OPS.tabAccounts, tab === 'accounts')}</nav>${button('/logout', T.adminSignOut, csrf, { kind: 'quiet' })}</header>`;
 };
 
 /**
- * Teder's own address (TEDER_URL, as app.js productUrls reads it), with a slash at its end: its operator pages are
- * there, on Teder's host, signed in with the same account (the owner, 2026-11-05: "admin dashboard should be the
- * workspace, with everything in there"): the leads to write to, the demos, and every account at once.
+ * The operator's pages inside each product, grouped under its name on /admin (docs/admin-split.md; the owner,
+ * 2026-11-10: "Everything else, leads etc should be in other places. The admin dashboard is for that"). Each is a page
+ * of the product, proxied under /admin/toran or /admin/teder (admin-toran.js, admin-teder.js), so it opens here, signed
+ * in as the operator, and the product's own site shows the product only. The tabs above lead to each one's home.
  */
-export const tederBase = (env = process.env) => (String(env.TEDER_URL || '').trim() || 'https://teder.openfrequency.co.il/').replace(/\/?$/, '/');
+export const PRODUCT_TOOLS = {
+  toran: [
+    ['/admin/toran/review', 'toranReview'],
+    ['/admin/toran/followups', 'toranFollowups'],
+    ['/admin/toran/leads?all=1', 'toranStores'],
+    ['/admin/toran/settings', 'toranSettings'],
+  ],
+  teder: [
+    ['/admin/teder/demos', 'tederDemos'],
+    ['/admin/teder/leads', 'tederLeads'],
+    ['/admin/teder/all', 'tederAll'],
+    ['/admin/teder/settings', 'tederSettings'],
+  ],
+};
 
 const roleSelect = (name) =>
   `<select name="${name}" aria-label="${esc(T.inviteRole)}">${['client_member', 'client_owner'].map((r) => `<option value="${r}">${esc(ROLE_NAMES[r])}</option>`).join('')}</select>`;

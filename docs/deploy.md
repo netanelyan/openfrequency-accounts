@@ -48,7 +48,8 @@ MAIL_REPLY_TO=                # where "reply to this email" lands; your own inbo
 OF_SUPPORT_WA=                # our WhatsApp for "write to us", digits only (972...); unset, a question about paying opens an email to MAIL_REPLY_TO
 OF_ASSISTANT_WA=              # the owner line's WhatsApp number, digits only; the same as TORAN_ASSISTANT_WA in Toran's .env; with OF_PAYMENT_METHOD, customers pay over WhatsApp (docs/internal-pay.md)
 OF_TORAN_INTERNAL=            # Toran on this machine, for /admin and /admin/toran (and /setup, deleting, telling it of a payment); empty means http://127.0.0.1:4710
-OF_TEDER_INTERNAL=            # Teder on this machine, for /setup, deleting and telling it of a payment; empty means http://127.0.0.1:4700
+OF_TEDER_INTERNAL=            # Teder on this machine, for /admin/teder, /setup, deleting and telling it of a payment; empty means http://127.0.0.1:4700
+OF_OPERATOR_WORKSPACE=        # the superadmin's own workspace on Teder's and Toran's sites (docs/admin-split.md); 1, the company's own
 GOOGLE_CLIENT_ID=             # sign in with Google (below); unset, only the emailed link is offered
 GOOGLE_CLIENT_SECRET=
 
@@ -87,6 +88,12 @@ each load, and forwards each of its buttons to `POST /internal/ops/<kind>/<id>/<
 (`X-OF-Admin-Prefix`); its own subdomain then shows the product only. Nothing to set here beyond
 `PUBLIC_HOST`, which gives Toran the address to build links on (`X-OF-Admin-Origin`). See the
 README for the headers that are passed.
+
+`/admin/teder/` (the **תדר** tab) is Teder's, the same way, from `OF_TEDER_INTERNAL`; Teder must be a
+build that knows the `/admin/teder` prefix. Set `OF_OPERATOR_WORKSPACE=1` (the company's own
+workspace) so the superadmin sees Toran and Teder on their own sites as that workspace's owner
+(docs/admin-split.md); the workspace needs each product turned on in `/admin/accounts` for it to
+open there. Without it the products show the superadmin a page pointing to `/admin`.
 
 **Sign in with Google.** In [Google Cloud](https://console.cloud.google.com/), in a project of
 OpenFrequency's own, open *Google Auth Platform*:

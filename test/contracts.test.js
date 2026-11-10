@@ -117,6 +117,17 @@ const RUN = {
     startViewAs(w.db, s.row, w.dana.id, { by: w.admin });
     return w.site.internal(s.id, 'teder');
   },
+  'session /internal/session :: the superadmin outside view-as, in the workspace OF_OPERATOR_WORKSPACE names (docs/admin-split.md): as its owner sees it; without the setting, or for a product it lacks, the operator\'s answer with a null workspace and every product': async (w) => {
+    const s = await startSite(w.db, { env: { OF_OPERATOR_WORKSPACE: String(w.dana.id) } });
+    try {
+      const r = await s.internal(createSession(w.db, w.admin).id, 'teder');
+      assert.equal(r.json.workspace.id, w.dana.id);
+      assert.equal(r.json.role, 'client_owner');
+      return r;
+    } finally {
+      await s.close();
+    }
+  },
   'session /internal/session :: no session, a signed-out, expired or idle one, or a disabled user': (w) => w.site.internal('nope', 'teder'),
   'session /internal/session :: a member of several workspaces who has not picked one': (w) => {
     const u = makeUser(w.db, 'two@example.com');

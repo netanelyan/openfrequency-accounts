@@ -60,13 +60,21 @@ Every answer is JSON with `Cache-Control: no-store`.
 | `viewAs` | `null`, or `{ "by": { "id", "email" }, "since": iso }` when the superadmin is viewing this workspace as its customer would. The product must show a banner saying so, on every page. `readOnly` is always true here. |
 | `expiresAt` | The session's absolute end. Idleness can end it sooner (14 days for a customer, 12 hours for the superadmin). |
 
-The three shapes a 200 takes:
+The four shapes a 200 takes:
 
 | Who | `workspace` | `role` | `products` | `readOnly` | `viewAs` |
 |---|---|---|---|---|---|
 | a customer | theirs | `client_owner` / `client_member` | the workspace's | `false` | `null` |
+| the superadmin, in their own workspace | `OF_OPERATOR_WORKSPACE`'s | `client_owner` | the workspace's | `false` | `null` |
 | the superadmin | `null` | `superadmin` | all | `false` | `null` |
 | the superadmin, viewing as | the one viewed | `superadmin` | the workspace's | `true` | set |
+
+The second (docs/admin-split.md): the superadmin cannot be a member of a workspace, so
+`OF_OPERATOR_WORKSPACE` names the one they use the products in, on the products' own sites, exactly as its
+owner does; `user.superadmin` is still `true`. It is given only when that workspace exists, is not closed,
+and has the `?product=` asked about; otherwise the answer is the third shape, and the product shows a short
+page pointing to `/admin`. The operator's pages are reached through `/admin/toran` and `/admin/teder`,
+where accounts says who the operator is in `X-OF-Operator` instead (docs/contracts/admin-toran-operator.json).
 
 ### Errors
 

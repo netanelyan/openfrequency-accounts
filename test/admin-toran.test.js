@@ -318,16 +318,84 @@ test('Toran down or slow: 502 with our page and a way back to /admin; a body ove
   }
 });
 
-test('the admin pages have a third tab, תורן, to /admin/toran/, and a fourth, תדר, to the leads page in Teder', async () => {
+test('the admin pages\' tabs: היום, לידים, then תורן and תדר under /admin, then חשבונות (docs/admin-split.md)', async () => {
   const t = await setup();
   try {
     for (const [p, re] of [
-      ['/admin', /<a href="\/admin" aria-current="page">היום<\/a><a href="\/admin\/leads">לידים<\/a><a href="\/admin\/accounts">חשבונות<\/a><a href="\/admin\/toran\/">תורן<\/a><a href="[^"]*\/leads">תדר<\/a><\/nav>/],
-      ['/admin/accounts', /<a href="\/admin">היום<\/a><a href="\/admin\/leads">לידים<\/a><a href="\/admin\/accounts" aria-current="page">חשבונות<\/a><a href="\/admin\/toran\/">תורן<\/a><a href="[^"]*\/leads">תדר<\/a><\/nav>/],
+      ['/admin', /<a href="\/admin" aria-current="page">היום<\/a><a href="\/admin\/leads">לידים<\/a><a href="\/admin\/toran\/">תורן<\/a><a href="\/admin\/teder\/">תדר<\/a><a href="\/admin\/accounts">חשבונות<\/a><\/nav>/],
+      ['/admin/accounts', /<a href="\/admin">היום<\/a><a href="\/admin\/leads">לידים<\/a><a href="\/admin\/toran\/">תורן<\/a><a href="\/admin\/teder\/">תדר<\/a><a href="\/admin\/accounts" aria-current="page">חשבונות<\/a><\/nav>/],
     ]) {
       assert.match((await t.op.get(p)).body, re, p);
     }
   } finally {
     await t.done();
+  }
+});
+
+// /admin/teder: Teder's operator pages, on the same terms (src/web/admin-teder.js). The owner, 2026-11-10: "Everything
+// else, leads etc should be in other places. The admin dashboard is for that".
+
+async function setupTeder(env = {}) {
+  const t = await setup({ env: { ...env } });
+  const teder = await startEcho();
+  const site = await startSite(t.db, { env: { OF_TEDER_INTERNAL: teder.url, OF_TORAN_INTERNAL: t.fake.url, ...env } });
+  const op = signedIn(site, t.db, t.admin, { secure: true });
+  return { ...t, site, teder, op, done: async () => (await site.close(), await teder.close(), await t.done()) };
+}
+
+test('/admin/teder reaches Teder with its prefix and a signed statement; only td_* cookies, of-theme and X-OF-Ajax: 1 go with it', async () => {
+  const t = await setupTeder();
+  try {
+    const cookie = `__Secure-of_session=${t.op.cookie('__Secure-of_session')}; of_flash=ours; td_acct=demo; td_flash=saved; tn_side=mini; of-theme=dark; __Host-of_csrf=abc`;
+    const r = await t.op.get('/admin/teder/demos?x=1', { cookie, ...SPOOFED, 'x-of-ajax': '1' });
+    assert.equal(r.status, 200);
+    assert.deepEqual(JSON.parse(r.body), { method: 'GET', path: '/admin/teder/demos?x=1' });
+    const c = t.teder.calls.at(-1);
+    assert.equal(c.headers['x-of-admin-prefix'], '/admin/teder');
+    assert.equal(c.headers['x-of-admin-origin'], `https://${PUBLIC}`);
+    assert.equal(c.headers.host, t.teder.host);
+    assert.equal(c.headers.cookie, 'td_acct=demo; td_flash=saved; of-theme=dark', 'never our session, our of_flash or Toran\'s cookies');
+    assert.equal(c.headers['x-of-ajax'], '1');
+    for (const k of ['authorization', 'x-forwarded-for', 'forwarded', 'x-real-ip', 'x-of-session', 'x-something-else']) assert.equal(c.headers[k], undefined, k);
+    const who = readOperator(c.headers['x-of-operator']);
+    assert.deepEqual([who.id, who.email], [t.admin.id, 'admin@example.com']);
+    // Any other value of X-OF-Ajax is not passed on; Toran's prefix still goes to Toran.
+    await t.op.get('/admin/teder/leads', { 'x-of-ajax': 'yes' });
+    assert.equal(t.teder.calls.at(-1).headers['x-of-ajax'], undefined);
+    await t.op.get('/admin/toran/leads');
+    assert.equal(t.fake.calls.at(-1).headers['x-of-admin-prefix'], '/admin/toran');
+    assert.equal(t.teder.calls.length, 2);
+  } finally {
+    await t.done();
+  }
+});
+
+test('/admin/teder refuses a customer, a signed-out browser and view-as, never asks Teder for /internal, and says when Teder is down', async () => {
+  const t = await setupTeder();
+  try {
+    const ws = makeWorkspace(t.db, 'dana-shop', { name: 'החנות של דנה', products: ['teder'], members: { 'dana@example.com': 'client_owner' } });
+    const dana = signedIn(t.site, t.db, t.db.get("SELECT * FROM users WHERE email = 'dana@example.com'"));
+    const viewing = signedIn(t.site, t.db, t.admin);
+    await viewing.get('/admin/accounts');
+    await viewing.post(`/admin/workspaces/${ws.id}/view-as`, { product: 'teder' });
+    for (const b of [dana, t.site.browser(), viewing]) {
+      const r = await b.get('/admin/teder/demos/3');
+      assert.equal(r.status, 303);
+      assert.equal(r.headers.location, `/admin/login?next=${encodeURIComponent('/admin/teder/demos/3')}`);
+      assert.equal((await b.post('/admin/teder/settings/kill', { on: '1' })).status, 403);
+    }
+    for (const p of ['/admin/teder/internal/demos', '/admin/teder/internal%2Fleads']) assert.equal((await t.op.get(p)).status, 404, p);
+    assert.equal(t.teder.calls.length, 0);
+  } finally {
+    await t.done();
+  }
+  const down = await setup({ env: { OF_TEDER_INTERNAL: 'http://127.0.0.1:9' } });
+  try {
+    const r = await down.op.get('/admin/teder/');
+    assert.equal(r.status, 502);
+    assert.match(r.body, /<h1>תדר לא ענה כרגע<\/h1>/);
+    assert.match(r.body, /<a href="\/admin">חזרה ללוח<\/a>/);
+  } finally {
+    await down.done();
   }
 });

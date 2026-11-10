@@ -1,5 +1,5 @@
 import { timingSafeEqual } from 'node:crypto';
-import { describeSession } from '../auth/sessions.js';
+import { describeSession, operatorHome } from '../auth/sessions.js';
 import { PRODUCTS } from '../db/schema.js';
 import { opsCustomers } from '../accounts/ops.js';
 import { claimPhone, ownerOf, ownersOf, PhoneError, setConsent, validPhone } from '../accounts/phones.js';
@@ -126,7 +126,9 @@ export function internalHandler(db, { env = process.env, log = console.error, ma
         case '/internal/session': {
           const product = url.searchParams.get('product');
           if (product != null && !PRODUCTS.includes(product)) return json(res, 400, { error: 'bad_product' });
-          const { status, body } = describeSession(db, String(req.headers['x-of-session'] || ''));
+          const { status, body: found } = describeSession(db, String(req.headers['x-of-session'] || ''));
+          // The superadmin, on a product's own site, is in their own workspace when OF_OPERATOR_WORKSPACE names one (sessions.js).
+          const body = status === 200 ? operatorHome(db, found, { env, product }) : found;
           if (status === 200 && product && !body.products.includes(product)) return json(res, 403, { error: 'product_disabled' });
           return json(res, status, body);
         }

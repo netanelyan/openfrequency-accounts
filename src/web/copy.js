@@ -1068,10 +1068,19 @@ export const OPS = {
   tabAccounts: 'חשבונות',
   tabToran: 'תורן',
   tabTeder: 'תדר',
-  tools: 'הכלים של תדר',
-  toolTederLeads: 'הלידים של תדר',
-  toolTederDemos: 'הדמואים',
-  toolTederAll: 'כל החשבונות בתדר',
+  // The operator's pages inside each product (html.js PRODUCT_TOOLS), two groups under the cards at the top.
+  tools: 'הדפים של תורן ותדר',
+  toolsAll: 'לכל הדפים',
+  tool: {
+    toranReview: 'לבדיקה',
+    toranFollowups: 'מעקב',
+    toranStores: 'חנויות ולידים',
+    toranSettings: 'הגדרות וערוצים',
+    tederDemos: 'דמואים',
+    tederLeads: 'לידים',
+    tederAll: 'כל החשבונות',
+    tederSettings: 'הגדרות השרת',
+  },
   pageTitle: 'מה עושים היום',
 
   kpiContact: 'לפנות היום',
@@ -1184,6 +1193,9 @@ export const OPS = {
   toranNoAnswerTitle: 'תורן לא ענה כרגע',
   toranNoAnswerLead: 'הדפים האלה מגיעים מתורן, ותוך 30 שניות לא הגיעה ממנו תשובה, או שהוא לא רץ עכשיו. כדאי לרענן בעוד רגע. הלוח של היום והחשבונות עובדים כרגיל.',
   toranNoAnswerBack: 'חזרה ללוח',
+  // /admin/teder, the same for Teder.
+  tederNoAnswerTitle: 'תדר לא ענה כרגע',
+  tederNoAnswerLead: 'הדפים האלה מגיעים מתדר, ותוך 30 שניות לא הגיעה ממנו תשובה, או שהוא לא רץ עכשיו. כדאי לרענן בעוד רגע. הלוח של היום והחשבונות עובדים כרגיל.',
 
   // After an action, when the line is ours and not Toran's
   toranNoAnswer: 'תורן לא ענה, אז שום דבר לא נרשם. כדאי לנסות שוב בעוד רגע.',

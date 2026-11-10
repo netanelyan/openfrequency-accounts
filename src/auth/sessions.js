@@ -153,9 +153,35 @@ export function describeSession(db, cookieValue) {
   return { status: 200, body: { ...base, workspace: workspaceOut(row), role: row.role, products: enabledProducts(db, row.id), readOnly: false, viewAs: null } };
 }
 
+/**
+ * The operator's own workspace on the products' sites (docs/admin-split.md). The owner, 2026-11-10: "Make teder and
+ * toran of natikyan153@gmail.com regular, just like a customer's. Everything else, leads etc should be in other
+ * places. The admin dashboard is for that. Toran and teder should stay toran and teder, even for admins".
+ *
+ * The superadmin cannot be a member of a workspace (workspaces.js, the invites), so OF_OPERATOR_WORKSPACE names one: a
+ * workspace id, on the live server the company's own (the one Teder's OF_OWN_WORKSPACES names). For the superadmin
+ * outside view-as, /internal/session (internal.js) then answers that workspace as its owner would get it: the
+ * workspace, client_owner, its products, not read-only, not view-as; `user.superadmin` still says who it is. Their
+ * operator pages are reached through /admin (admin-toran.js), where the products are told who they are another way.
+ *
+ * `body` is describeSession()'s 200. Unchanged (the operator's, workspace null) when the setting is unset or not a
+ * whole number, when the workspace is gone or closed, or when `product` is named and the workspace does not have it:
+ * the product then shows its short page pointing to /admin.
+ */
+export function operatorHome(db, body, { env = process.env, product = null } = {}) {
+  if (!body || body.role !== 'superadmin' || body.viewAs || body.workspace) return body;
+  const id = String(env.OF_OPERATOR_WORKSPACE || '').trim();
+  if (!/^[1-9]\d{0,8}$/.test(id)) return body;
+  const w = db.get('SELECT * FROM workspaces WHERE id = ?', Number(id));
+  if (!w || w.disabled_at) return body;
+  const products = enabledProducts(db, w.id);
+  if (product && !products.includes(product)) return body;
+  return { ...body, workspace: workspaceOut(w), role: 'client_owner', products, readOnly: false, viewAs: null };
+}
+
 // ---- the cookie
 
-export const COOKIE = { secure: '__Secure-of_session', dev: 'of_session' };
+export const COOKIE ={ secure: '__Secure-of_session', dev: 'of_session' };
 
 /** The cookie value a request carries: the secure name behind HTTPS, the plain one in development. */
 export const sessionFromJar = (jar, secure) => (secure ? jar[COOKIE.secure] : jar[COOKIE.dev]) || null;

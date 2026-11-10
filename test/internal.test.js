@@ -171,3 +171,37 @@ test('the superadmin is answered as the operator', async () => {
     await t.done();
   }
 });
+
+// The operator's own workspace on the products' sites (docs/admin-split.md; the owner, 2026-11-10: "Make teder and toran
+// of natikyan153@gmail.com regular, just like a customer's"): OF_OPERATOR_WORKSPACE, answered as its owner sees it.
+test('the superadmin is in OF_OPERATOR_WORKSPACE as its owner, and the operator again without it, for a product it lacks, or when it is closed', async () => {
+  const base = await setup();
+  const ws = base.db.get("SELECT * FROM workspaces WHERE slug = 'dana-shop'");
+  await base.done();
+  const t = await setup({ OF_INTERNAL_TOKEN: TOKEN, OF_OPERATOR_WORKSPACE: String(ws.id) });
+  try {
+    const admin = makeUser(t.db, 'admin@example.com', { superadmin: true });
+    const { id } = createSession(t.db, admin);
+    const r = await t.ask(id, { product: 'teder' });
+    assert.equal(r.status, 200);
+    assert.deepEqual([r.body.workspace.id, r.body.role, r.body.readOnly, r.body.viewAs, r.body.user.superadmin], [ws.id, 'client_owner', false, null, true]);
+    assert.deepEqual(r.body.products, ['teder']);
+    // Toran is not in that workspace: the operator's answer, every product, no workspace (the product's short page).
+    const toran = await t.ask(id, { product: 'toran' });
+    assert.deepEqual([toran.status, toran.body.workspace, toran.body.role], [200, null, 'superadmin']);
+    // Closed: the operator's answer too.
+    t.db.run('UPDATE workspaces SET disabled_at = ? WHERE id = ?', '2026-11-10T10:00:00.000Z', ws.id);
+    const closed = await t.ask(id, { product: 'teder' });
+    assert.deepEqual([closed.status, closed.body.workspace, closed.body.role], [200, null, 'superadmin']);
+  } finally {
+    await t.done();
+  }
+  const u = await setup();
+  try {
+    const admin = makeUser(u.db, 'admin@example.com', { superadmin: true });
+    const r = await u.ask(createSession(u.db, admin).id, { product: 'teder' });
+    assert.deepEqual([r.body.workspace, r.body.role], [null, 'superadmin'], 'unset: the operator, as before');
+  } finally {
+    await u.done();
+  }
+});
