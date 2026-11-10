@@ -5,6 +5,7 @@ import { createInvite, normEmail, validEmail } from './links.js';
 import { ensureSubscription, subscriptionsOf } from './subscriptions.js';
 import { invoicesOf } from './invoices.js';
 import { isFounder } from './founders.js';
+import { monthReceipted } from './pay.js';
 
 // What the superadmin does to workspaces: open one (and invite its owner), turn
 // a product on or off, disable or enable it, and view it as its customer does.
@@ -121,6 +122,8 @@ export function listWorkspaces(db) {
     subscriptions: subscriptionsOf(db, w.id),
     invoices: invoicesOf(db, w.id),
     founder: isFounder(db, w.id),
+    // The products whose last paid month has no invoice-receipt yet: the console offers to issue one (pay.js).
+    unbilled: Object.values(subscriptionsOf(db, w.id)).filter((s) => s.paid_until && Number(s.monthly) > 0 && !monthReceipted(db, w.id, s.product, s.paid_until)).map((s) => s.product),
   }));
 }
 

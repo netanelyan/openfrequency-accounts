@@ -199,7 +199,39 @@ export const receiptById = (db, id) => out(db.get(`${RECEIPT} WHERE r.id = ?`, N
  * null. That number wrote to us about this very payment, and the money was found; one waiting, or marked "לא הגיע", may
  * be a mistake or someone else's, so it counts for nothing. The payment reminders on WhatsApp go to it (src/web/daily.js).
  */
-export const paidFrom = (db, workspaceId) => db.get("SELECT phone FROM pay_receipts WHERE workspace_id = ? AND decision = 'paid' ORDER BY decided_at DESC, id DESC LIMIT 1", workspaceId)?.phone ?? null;
+export const paidFrom = (db, workspaceId) => db.get("SELECT phone FROM pay_receipts WHERE workspace_id = ? AND decision = 'paid' AND code != ? ORDER BY decided_at DESC, id DESC LIMIT 1", workspaceId, MANUAL)?.phone ?? null;
+
+// ---- a payment the operator recorded by hand
+//
+// "התקבל תשלום לחודש" on /admin records a month with no picture of a transfer (a payment that came some other way).
+// It is kept as a receipt already marked paid, code MANUAL and no file, so its invoice-receipt is issued in Morning
+// exactly as one from "התשלום הגיע" is, with the same guard against a second document (the owner, 2026-11-10: "I did
+// not get an invoice, for my 1.18NIS payment. Not as a customer, nor as the seller": that button issued none). Its
+// phone is empty, and paidFrom() never takes it.
+
+export const MANUAL = 'MANUAL';
+
+/** The bill of one product's month, as the invoice says it: its price as recorded, the setup fee on its first month. */
+export function monthBill(sub, product, until, { first = false } = {}) {
+  const vat = sub.vat === 'included' ? 'included' : 'excluded';
+  const monthly = Number(sub.monthly || 0);
+  const setup = first ? Number(sub.setup || 0) : 0;
+  const parts = [{ sum: monthly, vat }, ...(setup ? [{ sum: setup, vat }] : [])];
+  const item = { product, plan: sub.plan ?? null, monthly, setup, vat, total: payTotal(parts).total, from: addMonths(addDays(until, 1), -1), until };
+  return { items: [item], ...payTotal(parts) };
+}
+
+/** The month recorded by hand, kept as a receipt marked paid (above). Returns its id. */
+export function manualReceipt(db, workspaceId, bill, { by = null, ip = null } = {}) {
+  const at = nowIso();
+  const id = db.insert('pay_receipts', { workspace_id: workspaceId, code: MANUAL, phone: '', created_at: at, name: 'נרשם ידנית', type: 'application/pdf', size: 0, file: null, items_json: JSON.stringify({ items: [], lines: [], total: bill.total, net: bill.net, vat: bill.vat }), decided_at: at, decided_by: by?.id ?? null, decision: 'paid', bill_json: JSON.stringify(bill) });
+  audit(db, { actor: by, action: 'pay_manual', workspaceId, ip, detail: { receipt: id, product: bill.items[0]?.product, until: bill.items[0]?.until, total: bill.total } });
+  return id;
+}
+
+/** Whether a month paid until `until` already has a receipt marked paid (by hand or from a transfer's picture). */
+export const monthReceipted = (db, workspaceId, product, until) =>
+  db.all("SELECT bill_json FROM pay_receipts WHERE workspace_id = ? AND decision = 'paid' AND bill_json IS NOT NULL", workspaceId).some((r) => (j(r.bill_json)?.items || []).some((i) => i.product === product && i.until === until));
 
 /** The receipts nobody has decided on yet, newest first, without their files: the list on /admin. */
 export const receiptsWaiting = (db) =>

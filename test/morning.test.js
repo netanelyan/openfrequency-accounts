@@ -4,7 +4,7 @@ import { makeUser, makeWorkspace, tempHome } from './helpers.js';
 import { signedIn, startSite } from './site.js';
 import { now, setNow } from '../src/core/clock.js';
 import { ensureSubscription } from '../src/accounts/subscriptions.js';
-import { payCodeFor, checkOf } from '../src/accounts/pay.js';
+import { payCodeFor, checkOf, paidFrom } from '../src/accounts/pay.js';
 import { documentFor, morningClient, morningConfig, MorningError, morningProblem, MORNING_URLS, vatProblem } from '../src/accounts/morning.js';
 
 // After "התשלום הגיע": what Toran read on the picture, shown to the operator and deciding nothing; and the
@@ -411,4 +411,38 @@ test('documentFor: two products in one document, a price with VAT in it as vatTy
   assert.equal(doc.description, 'מנוי תדר ותורן');
   assert.deepEqual(doc.income.map((i) => [i.description, i.price, i.vatType]), [['מנוי תדר, החבילה המלאה, 1.11.2026 עד 30.11.2026', 790, 0], ['מנוי תורן, 1.11.2026 עד 30.11.2026', 500, 1]]);
   assert.deepEqual(doc.payment, [{ date: '2026-11-01', type: 4, price: 1432.2, currency: 'ILS' }]);
+});
+
+test('a month recorded by hand ("התקבל תשלום לחודש") gets its invoice-receipt too, and a month recorded before with none gets a button that issues it', async () => {
+  // The owner, 2026-11-10: "I did not get an invoice, for my 1.18NIS payment. Not as a customer, nor as the seller".
+  const m = fakeMorning({ files: { 'https://storage.example.com/doc-1.pdf': [pdfOk, pdfOk], 'https://storage.example.com/doc-2.pdf': [pdfOk, pdfOk] } });
+  const t = await site({ morning: m });
+  try {
+    t.db.run("UPDATE subscriptions SET monthly = 1, setup = 0, vat = 'excluded' WHERE workspace_id = ?", t.ws.id);
+    const base = `/admin/workspaces/${t.ws.id}`;
+    await t.op.get('/admin/accounts');
+    const r = await t.op.post(`${base}/subscription/pay`, { product: 'teder', expect: '' });
+    assert.equal(r.status, 303);
+    assert.equal(m.docs().length, 1, 'one document');
+    const asked = m.docs()[0].body;
+    assert.deepEqual(asked.income, [{ description: 'מנוי תדר, החבילה הקטנה, 22.10.2026 עד 21.11.2026', quantity: 1, price: 1, currency: 'ILS', vatType: 0 }]);
+    assert.deepEqual(asked.payment, [{ date: '2026-10-22', type: 4, price: 1.18, currency: 'ILS' }]);
+    const row = t.db.get("SELECT * FROM pay_receipts WHERE workspace_id = ? AND code = 'MANUAL'", t.ws.id);
+    assert.deepEqual([row.decision, row.morning_state, row.morning_doc_number, row.phone], ['paid', 'issued', '40001', '']);
+    assert.ok(t.db.get('SELECT 1 FROM invoices WHERE id = ?', row.invoice_id), 'a copy on the customer\'s page');
+    assert.doesNotMatch((await t.op.get('/admin/accounts')).body, /להפיק חשבונית לחודש ששולם/, 'it has its invoice');
+    assert.equal(paidFrom(t.db, t.ws.id), null, 'a month by hand has no phone to remind');
+
+    // A month recorded before this (no receipt): the button, once, and nothing recorded again.
+    t.db.run("DELETE FROM pay_receipts WHERE code = 'MANUAL'");
+    assert.match((await t.op.get('/admin/accounts')).body, /להפיק חשבונית לחודש ששולם/);
+    const again = await t.op.post(`${base}/subscription/invoice`, { product: 'teder' });
+    assert.equal(again.status, 303);
+    assert.equal(m.docs().length, 2);
+    assert.equal(t.db.get('SELECT paid_until FROM subscriptions WHERE workspace_id = ?', t.ws.id).paid_until, '2026-11-21', 'no month added');
+    await t.op.post(`${base}/subscription/invoice`, { product: 'teder' });
+    assert.equal(m.docs().length, 2, 'a second press issues nothing');
+  } finally {
+    await t.done();
+  }
 });

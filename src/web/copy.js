@@ -292,6 +292,9 @@ export const T = {
   // A spot of the founders' offer this workspace took at sign-up (src/accounts/founders.js), and the button that gives it back.
   founderLine: 'תפס מקום במבצע המייסדים, בלי דמי הקמה.',
   founderBack: 'להחזיר את המקום',
+  // A month recorded with no invoice-receipt yet (pay.js monthReceipted): the button that issues it in Morning.
+  invoiceMonth: 'להפיק חשבונית לחודש ששולם',
+  flashInvoiceNone: 'לחודש הזה כבר יש חשבונית, או שאין חודש ששולם.',
   flashFounderBack: (name) => `המקום של ${name} במבצע המייסדים חזר. דמי ההקמה שלו נשארו כמו שהם.`,
   flashCompOn: (p, name) => `${p} ב-${name} מסומן ללא תשלום.`,
   flashCompOff: (p, name) => `${p} ב-${name} כבר לא ללא תשלום. מעכשיו הוא פתוח רק כשיש תשלום.`,

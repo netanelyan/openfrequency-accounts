@@ -875,6 +875,7 @@ ${PLANS[p] ? `<label>${esc(T.subPlanLabel)}<select name="plan">${plansOf(p).map(
 <label>${esc(T.subPaid)}<input name="paid_until" type="date" value="${esc(s.paid_until ?? '')}"></label>
 <label>${esc(T.subEnds)}<input name="ends_on" type="date" value="${esc(s.ends_on ?? '')}"></label>
 <button class="quiet">${esc(T.subSave)}</button></form>${button(`${base}/subscription/pay`, T.subPayMonth, csrf, { fields: { product: p, expect: s.paid_until ?? '', once: newPayOnce() }, kind: 'quiet' })}
+${w.unbilled?.includes(p) ? button(`${base}/subscription/invoice`, T.invoiceMonth, csrf, { fields: { product: p }, kind: 'quiet' }) : ''}
 ${accessRow(base, p, w.access?.[p], w.products[p], csrf)}
 ${invoiceForm(base, p, s, csrf)}</li>`;
     })

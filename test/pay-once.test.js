@@ -376,16 +376,18 @@ test('kept as a receipt of its own: the same picture after the first was marked 
 test('two payments meant as two both record, at the same moment: the next month from the page drawn again, another product, another workspace, two receipts of two businesses', async () => {
   const morning = fakeMorning();
   const t = await site({ morning });
+    // A month recorded by hand gets its invoice too (pay.js manualReceipt): the line about it is not what this checks.
+    const noInvoice = (s) => String(s).replace(/ Morning הפיק חשבונית מס קבלה \d+\.$/, '');
   try {
     t.mails.length = 0;
     // The customer paid two months: pressed, the console drawn again, pressed again.
     let page = (await t.op.get('/admin/accounts')).body;
     let f = payForm(page, t.ws.id, 'teder');
-    assert.equal(flashOf(await t.op.post(f.action, f.fields)), 'Noa Shop: תדר שולם עד 21.11.2026.');
+    assert.equal(noInvoice(flashOf(await t.op.post(f.action, f.fields))), 'Noa Shop: תדר שולם עד 21.11.2026.');
     page = (await t.op.get('/admin/accounts')).body;
     f = payForm(page, t.ws.id, 'teder');
     assert.equal(f.fields.expect, '2026-11-21');
-    assert.equal(flashOf(await t.op.post(f.action, f.fields)), 'Noa Shop: תדר שולם עד 21.12.2026.');
+    assert.equal(noInvoice(flashOf(await t.op.post(f.action, f.fields))), 'Noa Shop: תדר שולם עד 21.12.2026.');
     assert.equal(paidUntil(t, t.ws.id, 'teder'), '2026-12-21');
 
     // Another product of the same business, and another business, from one page, at once.
@@ -393,7 +395,7 @@ test('two payments meant as two both record, at the same moment: the next month 
     const toran = payForm(page, t.ws.id, 'toran');
     const ron = payForm(page, t.other.id, 'teder');
     const both = await Promise.all([t.op.post(toran.action, toran.fields), t.op.post(ron.action, ron.fields)]);
-    assert.deepEqual(both.map(flashOf).sort(), ['Noa Shop: תורן שולם עד 21.11.2026.', 'Ron Studio: תדר שולם עד 21.11.2026.'].sort());
+    assert.deepEqual(both.map((r) => noInvoice(flashOf(r))).sort(), ['Noa Shop: תורן שולם עד 21.11.2026.', 'Ron Studio: תדר שולם עד 21.11.2026.'].sort());
     assert.deepEqual([paidUntil(t, t.ws.id, 'toran'), paidUntil(t, t.other.id, 'teder')], ['2026-11-21', '2026-11-21']);
     assert.equal(audits(t, 'subscription_paid'), 4);
     assert.equal(paidMails(t).length, 2 + 2 + 2 + 1);
@@ -411,7 +413,7 @@ test('two payments meant as two both record, at the same moment: the next month 
     const decided = await Promise.all([t.op.post(f1.action, f1.fields), t.op.post(f2.action, f2.fields)]);
     assert.deepEqual(decided.map((r) => [r.status, r.headers.location]), [[303, '/admin'], [303, '/admin']]);
     assert.deepEqual([paidUntil(t, gal.id), paidUntil(t, tal.id)], ['2026-11-21', '2026-11-21']);
-    assert.equal(morning.issued.length, 2);
+    assert.equal(morning.issued.length, 4 + 2, 'the 4 months recorded by hand above, and the 2 receipts');
     assert.equal(audits(t, 'pay_receipt_paid'), 2);
     assert.equal(audits(t, 'subscription_paid'), 6);
   } finally {

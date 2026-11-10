@@ -29,7 +29,7 @@ import { changedClient } from './changed.js';
 import { createLinkCode, openLinkCode, phoneIn, phonesFor, removePhone } from '../accounts/phones.js';
 import { PLANS, describe, graceChangeOf, listPrice, payMonth, payTotal, setSubscription, subscriptionsOf } from '../accounts/subscriptions.js';
 import { addInvoice, invoiceIn, invoicesOf, PDF_MAX, removeInvoice } from '../accounts/invoices.js';
-import { decideReceipt, PayError, RECEIPT_TYPES, receiptById, receiptProducts, receiptsWaiting } from '../accounts/pay.js';
+import { decideReceipt, manualReceipt, monthBill, monthReceipted, PayError, RECEIPT_TYPES, receiptById, receiptProducts, receiptsWaiting } from '../accounts/pay.js';
 import { invoiceReceipt, morningClient, morningConfig } from '../accounts/morning.js';
 import { cancelTeamInvite, inviteToTeam, removeMember, TEAM_LIMIT, TeamError, teamOf } from '../accounts/team.js';
 import { opsCustomers } from '../accounts/ops.js';
@@ -1276,6 +1276,29 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
           return toConsole();
         }
 
+        // An invoice-receipt for a month already recorded with none (a month paid before "התקבל תשלום לחודש" issued
+        // one; the owner, 2026-11-10: "I did not get an invoice, for my 1.18NIS payment"). Nothing more is recorded.
+        m = /^\/admin\/workspaces\/(\d+)\/subscription\/invoice$/.exec(p);
+        if (m) {
+          try {
+            const w = getWorkspace(db, m[1]);
+            const product = f('product');
+            const s = subscriptionsOf(db, w.id)[product];
+            if (!s?.paid_until || monthReceipted(db, w.id, product, s.paid_until)) {
+              setFlash(T.flashInvoiceNone);
+              return toConsole();
+            }
+            const first = (db.get('SELECT COUNT(*) AS n FROM paid_months WHERE workspace_id = ? AND product = ?', w.id, product)?.n || 0) <= 1;
+            const rid = manualReceipt(db, w.id, monthBill(s, product, s.paid_until, { first }), by);
+            const inv = await invoiceReceipt(db, rid, { client: morning, by: me, ip });
+            if (inv.state === 'issued') setFlash(MORNING.flashIssued(inv.number));
+            else if (inv.state === 'failed' || inv.state === 'blocked') setFlash(MORNING.flashFailed, true);
+            return redirect(`/admin/receipts/${rid}`);
+          } catch (e) {
+            return problem(e, {});
+          }
+        }
+
         m = /^\/admin\/workspaces\/(\d+)\/subscription(\/pay)?$/.exec(p);
         if (m) {
           try {
@@ -1288,6 +1311,8 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
               let until;
               // The product's access just before, for what the owners' email says first (tellPaid()).
               const before = { [product]: accessFor(db, w.id, product) };
+              // Whether this is its first month (its setup fee is on the invoice then), as payMonth() finds it.
+              const paidBefore = subscriptionsOf(db, w.id)[product]?.paid_until || null;
               try {
                 until = payMonth(db, w.id, product, { ...by, expect: form.has('expect') ? f('expect') : undefined, once: f('once') || undefined });
               } catch (e) {
@@ -1300,7 +1325,15 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
               // owner that the payment is in.
               accessChanged(w.id, [product], 'paid');
               tellPaid(base, w.id, w.name, [{ product, until }], before);
-              setFlash(T.flashSubPaid(PRODUCT_NAMES[product], w.name, dayHe(until)));
+              // Its invoice-receipt in Morning, as for a transfer's receipt (pay.js manualReceipt()).
+              const rid = manualReceipt(db, w.id, monthBill(subscriptionsOf(db, w.id)[product], product, until, { first: !paidBefore }), by);
+              const inv = await invoiceReceipt(db, rid, { client: morning, by: me, ip });
+              const line = T.flashSubPaid(PRODUCT_NAMES[product], w.name, dayHe(until));
+              if (inv.state === 'failed' || inv.state === 'blocked') {
+                setFlash(`${line} ${MORNING.flashFailed}`, true);
+                return redirect(`/admin/receipts/${rid}`);
+              }
+              setFlash(inv.state === 'issued' ? `${line} ${MORNING.flashIssued(inv.number)}` : line);
             } else {
               setSubscription(db, w.id, product, { plan: f('plan'), monthly: f('monthly'), setup: f('setup'), vat: f('vat'), started_on: f('started_on'), paid_until: f('paid_until'), ends_on: f('ends_on') }, by);
               // The paid-until day, the last day or Teder's plan may have moved: the product asks again.
