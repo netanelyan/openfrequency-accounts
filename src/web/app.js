@@ -1325,9 +1325,11 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
               // owner that the payment is in.
               accessChanged(w.id, [product], 'paid');
               tellPaid(base, w.id, w.name, [{ product, until }], before);
-              // Its invoice-receipt in Morning, as for a transfer's receipt (pay.js manualReceipt()).
-              const rid = manualReceipt(db, w.id, monthBill(subscriptionsOf(db, w.id)[product], product, until, { first: !paidBefore }), by);
-              const inv = await invoiceReceipt(db, rid, { client: morning, by: me, ip });
+              // Its invoice-receipt in Morning, as for a transfer's receipt (pay.js manualReceipt()); none for a month of
+              // 0 ₪ (the owner, 2026-11-10: "When i get a payment other than 0NIS, it should be done automatically").
+              const bill = monthBill(subscriptionsOf(db, w.id)[product], product, until, { first: !paidBefore });
+              const rid = bill.total > 0 ? manualReceipt(db, w.id, bill, by) : null;
+              const inv = rid ? await invoiceReceipt(db, rid, { client: morning, by: me, ip }) : { state: 'off' };
               const line = T.flashSubPaid(PRODUCT_NAMES[product], w.name, dayHe(until));
               if (inv.state === 'failed' || inv.state === 'blocked') {
                 setFlash(`${line} ${MORNING.flashFailed}`, true);

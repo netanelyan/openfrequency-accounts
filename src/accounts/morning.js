@@ -201,6 +201,9 @@ const owners = (db, workspaceId) =>
 export async function invoiceReceipt(db, receiptId, { client, by = null, ip = null, today = israelToday() }) {
   if (!client) return { state: 'off' };
   const id = Number(receiptId);
+  // Nothing to invoice for a payment of 0 ₪ (the owner, 2026-11-10: "When i get a payment other than 0NIS, it should be
+  // done automatically"): every other one is issued with no button.
+  if (!(Number(j(db.get('SELECT bill_json FROM pay_receipts WHERE id = ?', id)?.bill_json)?.total) > 0)) return { state: 'nothing' };
   const claimed = db.run(
     `UPDATE pay_receipts SET morning_state = 'issuing', morning_at = ?, morning_error_json = NULL
       WHERE id = ? AND decision = 'paid' AND bill_json IS NOT NULL AND morning_doc_id IS NULL

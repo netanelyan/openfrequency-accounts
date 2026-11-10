@@ -446,3 +446,18 @@ test('a month recorded by hand ("התקבל תשלום לחודש") gets its inv
     await t.done();
   }
 });
+
+test('a payment of 0 ₪ gets no invoice; any other one gets it with no button', async () => {
+  const m = fakeMorning();
+  const t = await site({ morning: m });
+  try {
+    t.db.run("UPDATE subscriptions SET monthly = 0, setup = 0 WHERE workspace_id = ?", t.ws.id);
+    await t.op.get('/admin/accounts');
+    assert.equal((await t.op.post(`/admin/workspaces/${t.ws.id}/subscription/pay`, { product: 'teder', expect: '' })).status, 303);
+    assert.equal(m.docs().length, 0, 'nothing asked of Morning');
+    assert.equal(t.db.get("SELECT COUNT(*) AS n FROM pay_receipts WHERE code = 'MANUAL'").n, 0);
+    assert.doesNotMatch((await t.op.get('/admin/accounts')).body, /להפיק חשבונית לחודש ששולם/);
+  } finally {
+    await t.done();
+  }
+});
