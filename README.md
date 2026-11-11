@@ -40,8 +40,12 @@ the terms and the privacy policy. An emailed link (15 minutes, one use, like the
 "continue with Google", opens the user, the workspace with only those products (each with its
 subscription at the list price and nothing paid yet) and makes them its owner, without an invite.
 An address that already has an account gets a sign-in link instead, never a second workspace.
-`OF_SIGNUP_PRODUCTS` (default `teder,toran`) says which products the form offers: one left out
-is refused (Toran waits for Meta's approval of WhatsApp: `teder`). With only one open the form
+`OF_SIGNUP_PRODUCTS` (default `teder,toran`; both are on sale since 2026-11-08) says which products the
+form offers: one left out is refused, and an account cannot add it. An owner adds the product their
+account does not have from its home page ("עוד מאיתנו", and `/signup` while signed in lead to
+`/subscription/<product>/add`): its plan, the terms ticked as at sign-up, its subscription at the list
+price unpaid, the founders' offer by the sign-up's rule, the email about it with how to pay, and
+`OF_SIGNUP_NOTIFY` told (`src/accounts/signup.js` `addProduct`). With only one open the form
 does not ask: that product is ticked in a hidden field and the heading names it. With both,
 `?p=teder` or `?p=toran` (the website's and Teder's buttons) starts that one ticked.
 Each confirmed sign-up sends a short email to every address in `OF_SIGNUP_NOTIFY` (unset: none),

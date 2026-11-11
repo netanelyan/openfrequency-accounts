@@ -156,6 +156,8 @@ export const T = {
   dashMore: 'עוד מאיתנו',
   dashMoreWhat: { teder: 'מצגות בעברית לטיקטוק, לאינסטגרם ולפייסבוק', toran: 'עונה ללקוחות שלכם בוואטסאפ' },
   dashMoreLink: 'לפרטים',
+  // For an owner, while sign-up sells it: the product is added to this account (/subscription/<product>/add).
+  dashMoreAdd: 'להוסיף לחשבון',
   dashTeam: 'מי בחשבון',
   dashYou: '(אתם)',
   teamCount: (n, max) => (n > max ? `${n} אנשים` : `${n} מתוך ${max}`),
@@ -792,12 +794,49 @@ export const SIGNUP = {
 
   signedInTitle: (email) => `אתם כבר מחוברים בתור ${email}`,
   signedInLead: 'כדי לפתוח חשבון חדש עם כתובת אחרת, צאו קודם מהחשבון הזה.',
+  // Signed in, about a product the account has already, or one only its owners add (app.js /signup).
+  hasTitle: (product, business) => `${product} כבר פועל בחשבון של ${business}`,
+  ownerAdds: (product) => `את ${product} מוסיפים לחשבון בעלי החשבון, מהדף הראשי שלהם.`,
   home: 'לדף הראשי',
   signOut: 'יציאה',
 
   googleExisting: (email) => `כבר יש לכם חשבון עם ${email}, אז נכנסתם אליו. לא פתחנו חשבון נוסף.`,
   googleTaken: 'אי אפשר לפתוח חשבון עם הכתובת הזאת',
   googleTakenLead: 'בחרו ב-Google חשבון אחר, או הירשמו עם כתובת מייל.',
+};
+
+// ---- a product added to an account that has the other, /subscription/<product>/add (src/accounts/signup.js addProduct)
+//
+// The owner, 2026-11-11, before the launch: a customer of one product adds the other from their account, in the same
+// account (same sign-in, same people, one place to pay), choosing its plan and accepting its terms as at sign-up.
+
+export const ADD = {
+  title: (product) => `הוספת ${product}`,
+  heading: (product, business) => `להוסיף את ${product} לחשבון של ${business}?`,
+  lead: (what) => `${what}. הוא נוסף לחשבון הזה, עם אותה כניסה ואותם אנשים.`,
+  // The founders' offer (src/accounts/founders.js): a workspace that took a spot at sign-up adds with no setup fee too;
+  // one that did not takes a spot while any is left.
+  founder: 'אתם בין העסקים הראשונים שנרשמו במבצע המייסדים, אז גם כאן אין דמי הקמה.',
+  founders: (spots, left) => `במבצע המייסדים, ${spots} העסקים הראשונים לא משלמים דמי הקמה. נשארו ${left} מקומות, ומי שמוסיף מוצר עכשיו מקבל אחד מהם.`,
+  /** How paying works, by the payment mode (OF_PAYMENT), and cancelling, as on /signup. */
+  pricesNote: (mode, product) =>
+    `${mode === 'provider' ? 'אחרי ההוספה משלמים עליו בכרטיס אשראי, בדף ההגדרה' : 'אחרי ההוספה נשלח לכם במייל את הסכום ואת פרטי התשלום'}, ו${opensAfter(mode, product, false)} אפשר לבטל את המנוי מהדף הראשי, והוא עובד עד סוף התקופה ששולמה.`,
+  submit: (product) => `להוסיף את ${product}`,
+  details: (product) => `לפרטים על ${product} באתר`,
+  ownersOnly: (product) => `רק בעלי החשבון יכולים להוסיף את ${product}`,
+  ownersOnlyLead: 'אפשר לבקש מהם. הם מוסיפים אותו מהדף הראשי שלהם.',
+  closed: (product) => `ההרשמה ל${product} עוד לא נפתחה`,
+  closedLead: 'כשהיא תיפתח, אפשר יהיה להוסיף אותו מכאן.',
+  // It was in the account before (turned off, or its subscription ended): its old subscription is the operator's to
+  // bring back, so the customer writes to us.
+  hadTitle: (product) => `${product} כבר היה בחשבון הזה`,
+  hadLead: (wa) => (wa ? 'כדי להחזיר אותו, כתבו לנו בוואטסאפ ונחזיר אותו לחשבון.' : 'כדי להחזיר אותו, ענו לאחד המיילים שקיבלתם מאיתנו ונחזיר אותו לחשבון.'),
+  hadText: (business, product) => `היי, כותבים מ״${business}״. רוצים להחזיר את ${product} לחשבון.`,
+  readOnly: 'בצפייה כלקוח אי אפשר להוסיף כלום.',
+  errors: {
+    no_terms: 'כדי להוסיף מוצר צריך להסכים להסכם שלו, לתנאי השימוש ולמדיניות הפרטיות.',
+  },
+  flashAdded: (product) => `${product} נוסף לחשבון. שלחנו לכם מייל עם כל הפרטים.`,
 };
 
 // ---- the setup page, /setup (src/web/setup.js, docs/setup.md)

@@ -412,7 +412,7 @@ ul.more a:hover { background: var(--fill); }
 ul.more .mark { width: 36px; height: 36px; }
 ul.more b { display: block; font-weight: 600; }
 ul.more small { margin: 2px 0 0; }
-ul.more .go { margin-inline-start: auto; color: var(--accent); font-size: 14px; font-weight: 600; }
+ul.more .go { margin-inline-start: auto; color: var(--accent); font-size: 14px; font-weight: 600; white-space: nowrap; flex: none; }
 
 .pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; margin-top: 32px; }
 main.wide .pair .card { margin: 0; }

@@ -7,7 +7,7 @@ import { ISSUING_STALE_MS } from '../accounts/morning.js';
 import { now as clockNow } from '../core/clock.js';
 import { total } from '../accounts/invoices.js';
 import { MAIL_PRODUCTS, kindsOf } from '../accounts/notify.js';
-import { AUDIT_NAMES, CANCEL, ERASE, LEADS, MORNING, NOTIFY, OPS, PAY, PLAN_NAMES, PRODUCT_NAMES, ROLE_NAMES, SETUP, SIGNUP, T, dayHe, hourHe, ils, opensAfter, phoneHe, planWhat, weekdayHe, when } from './copy.js';
+import { ADD, AUDIT_NAMES, CANCEL, ERASE, LEADS, MORNING, NOTIFY, OPS, PAY, PLAN_NAMES, PRODUCT_NAMES, ROLE_NAMES, SETUP, SIGNUP, T, WAIT, dayHe, hourHe, ils, opensAfter, phoneHe, planWhat, weekdayHe, when } from './copy.js';
 import { CONTRACT_URLS, PRIVACY_URL, TERMS_URL } from '../accounts/signup.js';
 import { productUrls } from './products.js';
 
@@ -391,7 +391,7 @@ ${form}
 // then WhatsApp's; every other one is a grey pill. The account's own settings, signing out on every device (on /logout,
 // where the header's "יציאה" leads) and deleting it are quiet, and the product emails show only for a product that sends
 // them (MAIL_PRODUCTS).
-export function homePage({ csrf, user, workspace, products, productUrls, canSwitch, subscriptions = {}, access = {}, providerReady = false, others = [], invoices = null, team, role, readOnly = false, support = null, supportTeam = null, flash = '', teamError = '', teamForm = {}, whatsapp = {}, setup = null }) {
+export function homePage({ csrf, user, workspace, products, productUrls, canSwitch, subscriptions = {}, access = {}, providerReady = false, others = [], addable = [], invoices = null, team, role, readOnly = false, support = null, supportTeam = null, flash = '', teamError = '', teamForm = {}, whatsapp = {}, setup = null }) {
   const owner = role === 'client_owner' && !readOnly;
   let used = false;
   const first = () => (used ? false : (used = true));
@@ -400,10 +400,15 @@ export function homePage({ csrf, user, workspace, products, productUrls, canSwit
     ? `<div class="subs">${products.map((p) => subCard(p, subscriptions[p], productUrls[p], { access: access[p], csrf, owner, providerReady, first })).join('')}</div>`
     : `<section class="card"><p class="muted">${esc(T.homeNoProducts)}</p></section>`;
   const mails = products.some((p) => MAIL_PRODUCTS.includes(p));
+  // The other products: for an owner, while sign-up sells it (`addable`), added to this account from here (the owner,
+  // 2026-11-11: a customer of one product adds the other); otherwise its page on the website.
   const more = others.length
     ? `<div class="list-h"><h2>${esc(T.dashMore)}</h2></div>
 <ul class="more">${others
-        .map((p) => `<li><a href="https://openfrequency.co.il/${esc(p)}">${productMark(p)}<span><b>${esc(PRODUCT_NAMES[p])}</b><small>${esc(T.dashMoreWhat[p])}</small></span><span class="go">${esc(T.dashMoreLink)}</span></a></li>`)
+        .map((p) => {
+          const add = owner && addable.includes(p);
+          return `<li><a href="${esc(add ? `/subscription/${p}/add` : `https://openfrequency.co.il/${p}`)}">${productMark(p)}<span><b>${esc(PRODUCT_NAMES[p])}</b><small>${esc(T.dashMoreWhat[p])}</small></span><span class="go">${esc(add ? T.dashMoreAdd : T.dashMoreLink)}</span></a></li>`;
+        })
         .join('')}</ul>`
     : '';
   return `
@@ -558,6 +563,38 @@ export const signupConfirmPage = ({ csrf, token, row, payment = 'manual' }) => `
 <p class="muted">${esc(SIGNUP.confirmPay(payment, opensAfter(payment, row.products.map((p) => PRODUCT_NAMES[p]).join(SIGNUP.and), row.products.length > 1)))}</p>
 <form method="post" action="/signup/confirm">${csrfField(csrf)}<input type="hidden" name="t" value="${esc(token)}"><button class="primary">${esc(SIGNUP.confirmButton)}</button></form>
 </section>`;
+
+/**
+ * Adding a product to an account that has the other (app.js /subscription/<product>/add; the owner, 2026-11-11: a
+ * customer of one product adds the other from their account): what it does, its plans with their prices, how paying
+ * works, the box with its contract and the terms (as at sign-up), and one button. The setup fee is left out while the
+ * founders' offer waives it: `founder`, the workspace took a spot at its sign-up; else `founders`, the offer's state,
+ * while it has spots (src/accounts/signup.js addProduct takes one). A quiet link to its page on the website, and home.
+ */
+export function addProductPage({ csrf, product, workspace, form = {}, error = '', errorAt = '', payment = 'manual', founder = false, founders = null }) {
+  const name = PRODUCT_NAMES[product];
+  const free = founder || Boolean(founders?.left);
+  const note = founder ? ADD.founder : founders?.left ? ADD.founders(founders.spots, founders.left) : '';
+  const err = (at) => (error && errorAt === at ? `<p class="error" id="add-err" role="alert">${esc(error)}</p>` : '');
+  return `
+<section class="card signup add">
+<h1>${esc(ADD.heading(name, workspace.name))}</h1>
+<p class="lead">${esc(ADD.lead(SIGNUP.productWhat[product]))}</p>
+${note ? `<p class="founders-note">${esc(note)}</p>` : ''}
+<form method="post" action="/subscription/${esc(product)}/add">
+${csrfField(csrf)}
+<fieldset class="products-pick"><legend>${esc(planLegend(product))}</legend>${planRows(product, form, { free })}<small>${esc(planHint(product, free))}</small>
+<small>${esc(ADD.pricesNote(payment, name))}</small>
+</fieldset>
+${err('plan')}
+${termsBox([product], form.terms)}
+${err('terms')}
+${error && errorAt !== 'plan' && errorAt !== 'terms' ? `<p class="error" id="add-err" role="alert">${esc(error)}</p>` : ''}
+<button class="primary">${esc(ADD.submit(name))}</button>
+</form>
+</section>
+${links([[`https://openfrequency.co.il/${product}`, ADD.details(name)], ['/', T.logoutBack]])}`;
+}
 
 // ---- the setup page (src/web/setup.js)
 

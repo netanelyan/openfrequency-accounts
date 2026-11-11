@@ -265,10 +265,15 @@ test('the link opens exactly one user and one workspace, with only the products 
     assert.equal((await again.get(pathOf(mail.link))).status, 410);
     assert.equal(count(t.db, 'workspaces'), 1);
 
-    // Signed in, /signup says so and opens nothing.
+    // Signed in, /signup opens nothing: it leads the owner to adding the product the account does not have (the owner,
+    // 2026-11-11: the cross-sell was a dead end), and says the one it has is there.
     const signedIn = await b.get('/signup');
-    assert.match(signedIn.body, /אתם כבר מחוברים בתור noa@example\.com/);
-    assert.doesNotMatch(signedIn.body, /name="business"/);
+    assert.equal(signedIn.status, 303);
+    assert.equal(signedIn.headers.location, '/subscription/toran/add');
+    const has = await b.get('/signup?p=teder');
+    assert.match(has.body, /<h1>תדר כבר פועל בחשבון של Noa Ceramics<\/h1>/);
+    assert.doesNotMatch(has.body, /name="business"/);
+    assert.equal(count(t.db, 'workspaces'), 1);
   } finally {
     await t.done();
   }

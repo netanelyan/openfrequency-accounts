@@ -15,14 +15,14 @@ import { chooseWorkspace, createSession, describeSession, enabledProducts, findS
 import { acceptInvite, consumeMagicLink, createInvite, InviteError, normEmail, peekInvite, peekMagicLink, requestMagicLink, revokeInvite, validEmail } from '../accounts/links.js';
 import { verifySuperadmin } from '../accounts/superadmin.js';
 import { createWorkspace, getWorkspace, listWorkspaces, recentAudit, setDisabled, setProduct, startViewAs, stopViewAs, WorkspaceError } from '../accounts/workspaces.js';
-import { checkSignup, completeSignup, CONTACT_URL, dropSignup, peekSignup, requestSignup, SignupError, signupNotify, signupOpen, signupProducts, startProducts } from '../accounts/signup.js';
+import { addProduct, checkSignup, completeSignup, CONTACT_URL, dropSignup, hadProduct, peekSignup, requestSignup, SignupError, signupNotify, signupOpen, signupProducts, startProducts } from '../accounts/signup.js';
 import { foundersSpots, foundersState, giveBackSpot, isFounder } from '../accounts/founders.js';
 import { amountDue, assistantWa, billingReady, checkoutUrl, payHow, paymentMode, supportWa } from '../accounts/billing.js';
 import { accessAll, accessFor, BillingError, cancelSubscription, resumeSubscription, setComp } from '../accounts/entitlement.js';
 import { eraseWorkspace, productsEver, sameName } from '../accounts/erase.js';
 import { prefsOf, savePrefs } from '../accounts/notify.js';
 import { cancelMail, cancelNoticeMail, deleteNoticeMail, existingAccountMail, inviteMail, magicLinkMail, paidMail, paidOpening, signupMail, signupNoticeMail, welcomeMail } from '../mail/messages.js';
-import { CANCEL, ERASE, LEADS, MAIL, MORNING, NOTIFY, OPS, PAY, PRODUCT_NAMES, SETUP, SIGNUP, T, WAIT, dayHe, ils, opensAfter, phoneHe } from './copy.js';
+import { ADD, CANCEL, ERASE, LEADS, MAIL, MORNING, NOTIFY, OPS, PAY, PRODUCT_NAMES, SETUP, SIGNUP, T, WAIT, dayHe, ils, opensAfter, phoneHe } from './copy.js';
 import { payOverWa } from './pay.js';
 import { setupClient, setupState } from './setup.js';
 import { eraseClient } from './erase.js';
@@ -525,8 +525,9 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
         const mine = memberships(db, found.user.id).filter((m) => !m.disabled_at);
         const change = graceChangeOf(db, wsId);
         const subscriptions = Object.fromEntries(Object.entries(subscriptionsOf(db, wsId)).map(([prod, row]) => [prod, describe(row, undefined, change)]));
-        // Only a product they can buy now (OF_SIGNUP_PRODUCTS): while Toran waits for Meta, a Teder workspace is not shown
-        // Toran (the owner, 2026-11-06: "if an option isnt relevant dont show it").
+        // Only a product they can buy now (OF_SIGNUP_PRODUCTS): a product not on sale is not shown (the owner,
+        // 2026-11-06: "if an option isnt relevant dont show it"). While sign-up is open, its owner adds it here
+        // (/subscription/<product>/add; the owner, 2026-11-11); otherwise it leads to its page on the website.
         const others = PRODUCTS.filter((prod) => !d.body.products.includes(prod) && openProducts.includes(prod));
         const body = P.homePage({
           csrf,
@@ -539,6 +540,7 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
           access: accessAll(db, wsId),
           providerReady: billingReady(env),
           others,
+          addable: signupOn ? others : [],
           // Invoices are the owners' only: a member sees the team and the products, not what the business pays.
           invoices: d.body.role === 'client_owner' ? invoicesOf(db, wsId) : null,
           team: teamOf(db, wsId),
@@ -616,6 +618,64 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
         if (d.status !== 200 || d.body.readOnly) return { go: '/' };
         return { d };
       };
+
+      // A product added to the account (the owner, 2026-11-11: a customer of one product adds the other from their
+      // account, where before only the operator could): its owner chooses its plan and accepts its terms as at sign-up
+      // (src/accounts/signup.js addProduct), and it is turned on unpaid at its list price, the founders' offer by the
+      // sign-up's rule. The email about it and the operator's notice go as on a sign-up, and they land on /setup, where
+      // they pay and set it up. Only while sign-up sells it (OF_SIGNUP, OF_SIGNUP_PRODUCTS). A product the account had
+      // before is the operator's to bring back. The superadmin (whose view-as is read-only) adds nothing here.
+      const addMatch = /^\/subscription\/(teder|toran)\/add$/.exec(p);
+      if (addMatch) {
+        if (!found) return redirect(`/login?next=${encodeURIComponent(p + url.search)}`);
+        if (found.user.is_superadmin) return page(403, SIGNUP.title, P.messagePage({ title: ADD.readOnly, lead: '', links: [['/admin', T.adminTitle]] }));
+        const { d, go } = customerIn(p + url.search);
+        if (go) return redirect(go);
+        const product = addMatch[1];
+        const name = PRODUCT_NAMES[product];
+        const ws = d.body.workspace;
+        const title = ADD.title(name);
+        const say = (status, heading, lead, more = []) => page(status, title, P.messagePage({ title: heading, lead, links: [...more, ['/', T.logoutBack]] }));
+        const closed = () => say(403, ADD.closed(name), ADD.closedLead);
+        const owners = () => say(403, ADD.ownersOnly(name), ADD.ownersOnlyLead);
+        const had = () => {
+          const wa = supportUrl(env, ADD.hadText(ws.name, name));
+          return say(409, ADD.hadTitle(name), ADD.hadLead(Boolean(wa)), wa ? [[wa, T.supportWrite]] : []);
+        };
+        if (d.body.products.includes(product)) return redirect('/');
+        if (!signupOn || !openProducts.includes(product)) return closed();
+        if (d.body.role !== 'client_owner') return owners();
+        if (hadProduct(db, ws.id, product)) return had();
+        const field = P.PLAN_FIELD[product];
+        const founder = isFounder(db, ws.id);
+        const view = (status, form_ = {}, error = '', errorAt = '') =>
+          page(status, title, P.addProductPage({ csrf, product, workspace: ws, form: form_, error, errorAt, payment, founder, founders: founder ? null : foundersState(db, env) }));
+        if (req.method !== 'POST') {
+          // ?plan= (the website's button under a plan card, kept through /signup) starts that plan chosen.
+          const asked = url.searchParams.get('plan') || '';
+          return view(200, { [field]: Object.hasOwn(PLANS[product], asked) ? asked : '' });
+        }
+        const form_ = { [field]: f(field).slice(0, 20), terms: f('terms') === '1' };
+        let added;
+        try {
+          added = addProduct(db, { workspaceId: ws.id, product, plan: form_[field], terms: form_.terms, by: found.user, ip, env, open: signupOn ? openProducts : [] });
+        } catch (e) {
+          if (!(e instanceof SignupError)) throw e;
+          // Sent twice (a double click): it is on, and home says so.
+          if (e.code === 'already') return redirect('/');
+          if (e.code === 'product_closed') return closed();
+          if (e.code === 'not_owner') return owners();
+          if (e.code === 'had_before') return had();
+          return view(400, form_, ADD.errors[e.code] || SIGNUP.errors[e.code] || e.code, e.code === 'no_terms' ? 'terms' : 'plan');
+        }
+        // Committed: the product hears at once, then the emails, which never stand in the way.
+        accessChanged(ws.id, [product], 'product');
+        const done = { user: found.user, workspace: getWorkspace(db, ws.id), founder: added.founder };
+        welcome(done, base, { added: product });
+        noticeSignup(done, 'account', base, { added: product });
+        setFlash(ADD.flashAdded(name));
+        return redirect('/setup');
+      }
 
       const subMatch = /^\/subscription\/(teder|toran)\/(cancel|resume)$/.exec(p);
       if (subMatch) {
@@ -721,10 +781,23 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
           return redirect('/setup');
         }
 
-        // Someone already signed in: their account is open. A second workspace is the superadmin's to open.
+        // Someone already signed in: their account is open. A second workspace is the superadmin's to open. A product
+        // their workspace does not have is added to it (/subscription/<product>/add; the owner, 2026-11-11): the one
+        // ?p= names (the website's buttons), or the only one there is to add; ?plan= goes with it. Otherwise, the page
+        // says what is so: the product is there already, its owners add it, or who they are signed in as.
         if (found) {
-          const links = found.user.is_superadmin ? [['/admin', T.adminTitle]] : [['/', SIGNUP.home], ['/logout', SIGNUP.signOut]];
-          return page(200, SIGNUP.title, P.messagePage({ title: SIGNUP.signedInTitle(found.user.email), lead: found.user.is_superadmin ? '' : SIGNUP.signedInLead, links }));
+          if (found.user.is_superadmin) return page(200, SIGNUP.title, P.messagePage({ title: SIGNUP.signedInTitle(found.user.email), lead: '', links: [['/admin', T.adminTitle]] }));
+          const d = describeSession(db, sid);
+          if (d.status === 409) return redirect(`/workspace?next=${encodeURIComponent(p + url.search)}`);
+          const ws = d.status === 200 && !d.body.readOnly ? d.body.workspace : null;
+          const want = startProducts(url.searchParams.get('p'), PRODUCTS)[0] || null;
+          const can = ws && req.method !== 'POST' ? PRODUCTS.filter((x) => openProducts.includes(x) && !d.body.products.includes(x)) : [];
+          const pick = can.includes(want) ? want : !want && can.length === 1 ? can[0] : null;
+          const plan = url.searchParams.get('plan') || '';
+          if (pick && d.body.role === 'client_owner') return redirect(`/subscription/${pick}/add${Object.hasOwn(PLANS[pick], plan) ? `?plan=${plan}` : ''}`);
+          const links = [['/', SIGNUP.home], ['/logout', SIGNUP.signOut]];
+          if (ws && want && d.body.products.includes(want)) return page(200, SIGNUP.title, P.messagePage({ title: SIGNUP.hasTitle(PRODUCT_NAMES[want], ws.name), lead: '', links }));
+          return page(200, SIGNUP.title, P.messagePage({ title: SIGNUP.signedInTitle(found.user.email), lead: pick ? SIGNUP.ownerAdds(PRODUCT_NAMES[pick]) : SIGNUP.signedInLead, links }));
         }
         // The product the visitor came from (?p=) starts ticked when it is open, and the only one open always, without
         // asking (startProducts; the owner, 2026-11-02, in place of 2026-10-31's "nothing starts ticked"). The POST
