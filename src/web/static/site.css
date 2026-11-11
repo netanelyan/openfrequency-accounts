@@ -749,7 +749,7 @@ ol.steps .button { min-height: 40px; padding: 0 18px; font-size: 15px; }
 /* A product card's buttons: into the product (or to the payment), then cancelling or taking it back, one per row. */
 .card.sub .go { display: grid; gap: 8px; }
 .card.sub .go form, .card.sub .go form button { width: 100%; margin: 0; }
-.card.sub .go form button { min-height: 44px; }
+.card.sub .go form button { min-height: 48px; }
 .s-open .tag, .s-cancelled .tag { background: var(--warn-bg); color: var(--warn); }
 .s-comp .tag { background: var(--ok-bg); color: var(--ok); }
 /* A step of a product that opens after the payment: there, quieter, and nothing to press. */
@@ -785,7 +785,7 @@ label.product-pick small.price { color: var(--ink-2); }
 .card.receipt .row.inv-retry { margin: 0 0 16px; }
 .card.receipt-list ul.people .who { overflow-wrap: anywhere; }
 /* The console: a product's access, and the form that deletes a workspace. */
-p.access { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin: 6px 0 0; flex: 1 0 100%; }
+div.access { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin: 6px 0 0; flex: 1 0 100%; }
 details.ws-delete { margin-top: 12px; }
 details.ws-delete summary { cursor: pointer; color: var(--bad); font-size: 14px; font-weight: 500; min-height: 32px; display: flex; align-items: center; }
 details.ws-delete form { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px 12px; margin-top: 8px; }

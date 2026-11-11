@@ -269,12 +269,14 @@ function subCard(p, s, href, { access = null, csrf = '', owner = false, provider
     change = button(`/subscription/${p}/resume`, T.subResume, csrf, { kind: 'quiet', label: T.subResumeLabel(name) });
   else if (owner && ['active', 'open', 'due'].includes(status))
     cancel = `<p class="links sub-cancel"><a href="/subscription/${esc(p)}/cancel" aria-label="${esc(T.subCancelLabel(name))}">${esc(T.subCancel)}</a></p>`;
+  // The buttons in a <div>: a <p> cannot hold the form of "להמשיך את המנוי", so the parser closed it and the form fell
+  // out of the row, 5px under "כניסה לתדר" (the audit of 2026-11-11). In the div, the grid keeps them 8px apart.
   return `<article class="card sub s-${status}">
 <header>${productMark(p)}<h3>${esc(name)}</h3><span class="tag">${esc(T.subStatus[status])}</span></header>
 ${s?.monthly != null && !comp ? `<p class="price">${esc(T.subPrice(ils(s.monthly), vat))}</p>` : ''}
 ${s?.plan ? `<p class="muted">${esc(planLine(p, s.plan))}</p>` : ''}
 ${lines.join('\n')}
-${go || change ? `<p class="go">${go}${change}</p>` : ''}
+${go || change ? `<div class="go">${go}${change}</div>` : ''}
 ${cancel}
 </article>`;
 }
@@ -860,7 +862,8 @@ function accessRow(base, p, a, on, csrf) {
   if (!a) return '';
   const until = a.access === 'cancelled' ? a.lastDay : a.access === 'paid' ? a.paidUntil : a.access === 'due' ? a.graceUntil : null;
   const toggle = on ? button(`${base}/comp`, a.comp ? T.compOff : T.compOn, csrf, { fields: { product: p, comp: a.comp ? '0' : '1' }, kind: 'quiet' }) : '';
-  return `<p class="access a-${esc(a.access)}"><span class="muted">${esc(T.accessLine(T.accessNames[a.access], a.allowed, until ? dayHe(until) : ''))}</span>${toggle}</p>`;
+  // A <div>: a <p> cannot hold the button's form (the audit of 2026-11-11, the same as the product card's).
+  return `<div class="access a-${esc(a.access)}"><span class="muted">${esc(T.accessLine(T.accessNames[a.access], a.allowed, until ? dayHe(until) : ''))}</span>${toggle}</div>`;
 }
 
 function workspaceTile(w, csrf) {
@@ -912,7 +915,7 @@ ${invoiceForm(base, p, s, csrf)}</li>`;
 <p class="section-l">${esc(T.colProducts)}</p>
 <ul class="toggles">${products}</ul>
 ${subs ? `<p class="section-l">${esc(T.subTitle)}</p><ul class="subs-admin">${subs}</ul>` : ''}
-${w.founder ? `<p class="access"><span class="muted">${esc(T.founderLine)}</span>${button(`${base}/founders`, T.founderBack, csrf, { kind: 'quiet' })}</p>` : ''}
+${w.founder ? `<div class="access"><span class="muted">${esc(T.founderLine)}</span>${button(`${base}/founders`, T.founderBack, csrf, { kind: 'quiet' })}</div>` : ''}
 ${w.invoices?.length ? `<p class="section-l">${esc(T.dashInvoices)}</p><ul class="people">${w.invoices
     .map((i) => `<li><a class="who" href="/admin/invoices/${esc(i.id)}">${esc(T.invAdminLine(i.number, dayHe(i.issued_on), ils(total(i))))}</a><span class="muted">${esc(PRODUCT_NAMES[i.product])}</span><span class="end">${button(`/admin/invoices/${i.id}/remove`, T.invRemove, csrf, { kind: 'quiet' })}</span></li>`)
     .join('')}</ul>` : ''}
