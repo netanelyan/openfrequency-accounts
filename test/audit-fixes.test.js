@@ -42,3 +42,19 @@ test('a cancelled product keeps its two buttons in one row: the resume form insi
     await t.done();
   }
 });
+
+test('a dead invite has no button that leads nowhere: a new one comes from whoever sent it, and a quiet way in for someone who joined', async () => {
+  const t = await setup();
+  try {
+    const page = await t.browser().get('/invite?t=AbCdEfGhIjKlMnOpQrStUvWxYz0123456789_-abcdEF');
+    assert.equal(page.status, 410);
+    assert.match(page.body, /בקשו ממי שהזמין אתכם לשלוח אותה שוב/);
+    assert.doesNotMatch(page.body, /class="button primary"|ענו למייל ההזמנה/);
+    assert.match(page.body, /<p class="links"><a href="\/login">לכניסה<\/a><\/p>/);
+    // The invite page itself: "לחשבון של", never "ל-" before the name.
+    const inv = createInvite(t.db, { workspaceId: t.ws.id, email: 'gal@example.com', role: 'client_member', by: t.admin });
+    assert.match((await t.browser().get(`/invite?t=${inv.token}`)).body, /<h1>הוזמנתם לחשבון של החנות של דנה<\/h1>/);
+  } finally {
+    await t.done();
+  }
+});

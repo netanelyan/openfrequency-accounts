@@ -55,12 +55,12 @@ test('opening a workspace sends its owner a 72-hour invite; accepting it signs t
     assert.equal(t.mails.length, 1);
     const mail = t.mails[0];
     assert.equal(mail.to, 'dana@example.com');
-    assert.equal(mail.subject, 'הזמנה ל-חנות של דנה ב-OpenFrequency');
+    assert.equal(mail.subject, 'הזמנה לחשבון של חנות של דנה ב-OpenFrequency');
     assert.match(mail.link, /^https:\/\/accounts\.openfrequency\.co\.il\/invite\?t=/);
     assert.match(mail.text, /עד 25\.10\.2026, 12:00/);
 
     const page = await t.browser().get(pathOf(mail.link));
-    assert.match(page.body, /הוזמנתם ל-חנות של דנה/);
+    assert.match(page.body, /הוזמנתם לחשבון של חנות של דנה/);
 
     const { b, r: joined } = await accept(t, mail);
     assert.equal(joined.headers.location, '/');

@@ -88,6 +88,12 @@ export const LIMITS = {
   // Public sign-up (/signup): every form sent is counted, the honeypot's and an address that has an account included.
   signupPerEmail: { rules: [{ max: 3, windowMs: 15 * MINUTE }, { max: 10, windowMs: DAY }] },
   signupPerIp: { rules: [{ max: 5, windowMs: HOUR }, { max: 20, windowMs: DAY }] },
+  // Invites from a customer's home page (/team/invite), counted for each email sent, a re-send included. Sign-up is open
+  // and needs no payment, so without these anyone could sign up and loop invites to any address from our domain, with
+  // their own words in the business's name (the audit of 2026-11-11, PRA-SEC-005's kin). A workspace sends 10 a day;
+  // one address gets one each 10 minutes and 3 a day, from every workspace together. The console's are not counted.
+  invitePerWorkspace: { rules: [{ max: 10, windowMs: DAY }] },
+  invitePerAddress: { rules: [{ max: 1, windowMs: 10 * MINUTE }, { max: 3, windowMs: DAY }] },
 };
 
 /**

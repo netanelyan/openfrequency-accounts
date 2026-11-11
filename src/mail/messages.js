@@ -82,10 +82,18 @@ ${body}
 
 export const magicLinkMail = (to, link) => ({ to, ...build(MAIL.magicSubject, MAIL.magicLines(link), MAIL.magicButton) });
 
-export const inviteMail = (to, workspaceName, link, expiresAt) => ({
-  to,
-  ...build(MAIL.inviteSubject(workspaceName), MAIL.inviteLines(workspaceName, link, when(expiresAt)), MAIL.inviteButton),
-});
+/**
+ * An invite to a workspace. `from` is who sent it from the home page's team form (an owner's name, else their
+ * address), named in it so the invite is theirs; without one, the console's (the operator opened the account).
+ */
+export const inviteMail = (to, workspaceName, link, expiresAt, from = null) => {
+  const ws = plain(workspaceName, 80);
+  const who = plain(from, 120);
+  return {
+    to,
+    ...build(MAIL.inviteSubject(ws), who ? MAIL.inviteFromLines(who, ws, link, when(expiresAt)) : MAIL.inviteLines(ws, link, when(expiresAt)), MAIL.inviteButton),
+  };
+};
 
 /**
  * Public sign-up: the link that confirms the address and opens the account (src/accounts/signup.js). Nothing the form

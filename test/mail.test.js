@@ -86,11 +86,17 @@ test('the magic-link email: Hebrew, right to left, the link as a button and in f
 
 test('the invite email names the workspace and when the invite ends, escaped', () => {
   const m = inviteMail('noa@example.com', 'Dana <b>Shop</b>', LINK.replace('/auth/link', '/invite'), '2026-10-25T10:00:00.000Z');
-  assert.equal(m.subject, 'הזמנה ל-Dana <b>Shop</b> ב-OpenFrequency');
+  // "לחשבון של", never "ל-" before a name (the audit of 2026-11-11: "הזמנה ל-הסטודיו של דנה").
+  assert.equal(m.subject, 'הזמנה לחשבון של Dana <b>Shop</b> ב-OpenFrequency');
   assert.ok(m.html.includes('Dana &lt;b&gt;Shop&lt;/b&gt;'));
   assert.ok(!m.html.includes('<b>Shop</b>'));
   // Israel time: summer time ends on 25 October 2026 at 02:00, so 10:00 UTC is 12:00.
   assert.match(m.text, /25\.10\.2026, 12:00/);
+  // From an owner on the home page: who sent it, made plain (no line breaks or bidi overrides in it) and escaped.
+  const from = inviteMail('noa@example.com', 'Dana Shop', LINK.replace('/auth/link', '/invite'), '2026-10-25T10:00:00.000Z', 'דנה <i>' + String.fromCharCode(0x202e) + 'כהן</i>\nX');
+  assert.match(from.text, /קיבלתם הזמנה מ-דנה <i> כהן<\/i> X להצטרף לחשבון של Dana Shop ב-OpenFrequency\./);
+  assert.ok(from.html.includes('מ-דנה &lt;i&gt; כהן&lt;/i&gt; X להצטרף'));
+  assert.match(from.text, /בקשו מ-דנה <i> כהן<\/i> X לשלוח הזמנה חדשה\./);
 });
 
 test('an amount of a thousand and up stays whole and left to right in the HTML: 3,610.80, never "610.80,3" (the audit of 2026-11-11)', () => {

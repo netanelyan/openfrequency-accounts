@@ -27,6 +27,13 @@ export const planWhat = (plan) => (plan?.conversations != null ? planConversatio
 export const opensAfter = (mode, names, many) => `${names} ${many ? 'נפתחים' : 'נפתח'} ${mode === 'provider' ? 'אחרי שהתשלום מאושר' : 'אחרי שהתשלום מגיע אלינו'}.`;
 
 const minutes = (seconds) => Math.max(1, Math.ceil(seconds / 60));
+/** A wait, said the way people say it: "בעוד 9 דקות", "בעוד שעה", "בעוד 23 שעות" (a day's limit waits hours, not 1,380 minutes). */
+const inHe = (seconds) => {
+  const m = minutes(seconds);
+  if (m < 60) return `בעוד ${m} דקות`;
+  const h = Math.ceil(m / 60);
+  return h === 1 ? 'בעוד שעה' : `בעוד ${h} שעות`;
+};
 
 export const T = {
   brand: 'OpenFrequency',
@@ -84,12 +91,18 @@ export const T = {
   },
 
   // ---- invites
-  inviteTitle: (ws) => `הוזמנתם ל-${ws}`,
+  inviteTitle: (ws) => `הוזמנתם לחשבון של ${ws}`,
   inviteLead: (email) => `ההזמנה נשלחה אל ${email}. לחצו כדי להצטרף ולהיכנס.`,
   inviteNameLabel: 'השם שלכם (לא חובה)',
   inviteButton: 'הצטרפות',
   inviteDeadTitle: 'ההזמנה הזאת כבר לא בתוקף',
-  inviteDeadLead: 'הזמנה עובדת פעם אחת, במשך 72 שעות. ענו למייל ההזמנה ונשלח לכם חדשה.',
+  // A reply to the invite reaches us, not the owner who sent it (the audit of 2026-11-11), so the way to a new one is
+  // whoever invited them; someone who already joined signs in.
+  inviteDeadLead: 'הזמנה עובדת פעם אחת, במשך 72 שעות. כדי לקבל חדשה, בקשו ממי שהזמין אתכם לשלוח אותה שוב. כבר הצטרפתם? אפשר להיכנס עם קישור למייל.',
+  inviteDeadLogin: 'לכניסה',
+  // The team form's limits (src/auth/limiter.js LIMITS.invitePerWorkspace and invitePerAddress): each says when it can go.
+  inviteTooMany: (seconds) => `שלחתם היום הרבה הזמנות מהחשבון הזה. אפשר לשלוח עוד ${inHe(seconds)}.`,
+  inviteTooSoon: (email, seconds) => `ל-${email} כבר נשלחה הזמנה לא מזמן. אפשר לשלוח שוב ${inHe(seconds)}.`,
 
   // ---- signed in
   homeHello: (name) => `שלום ${name}`,
@@ -416,7 +429,20 @@ export const MAIL = {
   ],
   magicButton: 'כניסה',
 
-  inviteSubject: (ws) => `הזמנה ל-${ws} ב-OpenFrequency`,
+  // "לחשבון של", never "ל-" before a Hebrew name ("הזמנה ל-הסטודיו של דנה", the audit of 2026-11-11).
+  inviteSubject: (ws) => `הזמנה לחשבון של ${ws} ב-OpenFrequency`,
+  // From a customer's owner (the home page's team form): who sent it, by name or address, so the invite is theirs and
+  // not ours; a new one is theirs to send (a reply to this email reaches us), and one not expected can be ignored.
+  inviteFromLines: (from, ws, link, until) => [
+    'שלום,',
+    `קיבלתם הזמנה מ-${from} להצטרף לחשבון של ${ws} ב-OpenFrequency. כדי להצטרף, לחצו על הקישור:`,
+    { link },
+    `ההזמנה עובדת פעם אחת, עד ${until}.`,
+    'אין סיסמה לזכור. בכל כניסה נשלח לכם קישור חדש לכתובת הזאת.',
+    `אם עבר הזמן, בקשו מ-${from} לשלוח הזמנה חדשה.`,
+    'לא ציפיתם להזמנה? אפשר להתעלם מהמייל הזה. בלי הקישור לא מצטרפים לשום חשבון.',
+  ],
+  // From the console (the operator opened the account, or added someone to it).
   inviteLines: (ws, link, until) => [
     'שלום,',
     `פתחנו לכם חשבון ב-OpenFrequency עבור ${ws}. כדי להיכנס בפעם הראשונה, לחצו על הקישור:`,

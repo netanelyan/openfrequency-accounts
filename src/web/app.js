@@ -83,6 +83,8 @@ export function defaultLimiters() {
     signupEmail: createLimiter(LIMITS.signupPerEmail),
     signupIp: createLimiter(LIMITS.signupPerIp),
     signupMail: createLimiter(signupMailDaily()),
+    inviteWorkspace: createLimiter(LIMITS.invitePerWorkspace),
+    inviteAddress: createLimiter(LIMITS.invitePerAddress),
   };
 }
 
@@ -499,6 +501,10 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
       const f = (k) => String(form?.get(k) ?? '');
       const page = (status, title, body, opts = {}) => send(status, layout({ title, body, flash, ...opts }));
       const next = (raw) => safeNext(raw, { allowLocal: dev });
+      // An invite that does not work any more: a new one comes from whoever sent it, so there is no button (its "לקישור
+      // חדש" led to the sign-in, useless to someone without an account; the audit of 2026-11-11), and a quiet way in for
+      // someone who joined already.
+      const deadInvite = () => P.messagePage({ title: T.inviteDeadTitle, lead: T.inviteDeadLead, links: [['/login', T.inviteDeadLogin]] });
       const setSession = (user, opts = {}) => {
         const s = createSession(db, user, { ip, userAgent: req.headers['user-agent'], ...opts });
         out.cookies.push(sessionCookie(s.id, { secure, maxAgeMs: user.is_superadmin ? LIFETIME.superadmin.maxMs : LIFETIME.client.maxMs }));
@@ -785,8 +791,20 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
         try {
           if (d.body.role !== 'client_owner') throw new TeamError('not_owner');
           if (p === '/team/invite') {
+            // Each email counted (src/auth/limiter.js LIMITS.invitePerWorkspace, invitePerAddress), a re-send too:
+            // sign-up is open, so an account must not be a way to send our emails to anyone, again and again (the
+            // audit of 2026-11-11). Refused, nothing is stored or sent, and the form says when it can go.
+            const to = normEmail(f('email'));
+            const waitWs = limiters.inviteWorkspace.check(String(wsId));
+            const waitTo = validEmail(to) ? limiters.inviteAddress.check(to) : null;
+            if (waitWs || waitTo) {
+              return await dashboard(d, 429, { teamError: waitWs ? T.inviteTooMany(waitWs) : T.inviteTooSoon(to, waitTo), teamForm: { email: f('email'), role: f('role') } });
+            }
             const inv = inviteToTeam(db, { workspaceId: wsId, email: f('email'), role: f('role'), ...by });
-            mailer.send(inviteMail(inv.email, inv.workspace.name, `${base}/invite?t=${inv.token}`, inv.expiresAt));
+            limiters.inviteWorkspace.hit(String(wsId));
+            limiters.inviteAddress.hit(inv.email);
+            // Who sent it is named in it: the owner's name, else their address (the audit of 2026-11-11).
+            mailer.send(inviteMail(inv.email, inv.workspace.name, `${base}/invite?t=${inv.token}`, inv.expiresAt, found.user.name || found.user.email));
             setFlash(T.flashTeamInvited(inv.email));
           } else if ((m = /^\/team\/invites\/(\d+)\/cancel$/.exec(p))) {
             const email = cancelTeamInvite(db, { workspaceId: wsId, tokenId: m[1], ...by });
@@ -885,7 +903,7 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
       // back to the callback, which signs in the customer that Google account is, or accepts the invite for them.
       if (p === '/auth/google' || p === '/auth/google/callback') {
         const missing = () => page(404, T.notFound, P.messagePage({ title: T.notFound, lead: '', links: [['/login', T.notFoundBack]] }));
-        const inviteDead = () => page(410, T.inviteDeadTitle, P.deadPage({ title: T.inviteDeadTitle, lead: T.inviteDeadLead }));
+        const inviteDead = () => page(410, T.inviteDeadTitle, deadInvite());
         if (!google || req.method === 'POST') return missing();
 
         if (p === '/auth/google') {
@@ -970,7 +988,7 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
       }
 
       if (p === '/invite') {
-        const dead = () => page(410, T.inviteDeadTitle, P.deadPage({ title: T.inviteDeadTitle, lead: T.inviteDeadLead }));
+        const dead = () => page(410, T.inviteDeadTitle, deadInvite());
         if (req.method !== 'POST') {
           const t = url.searchParams.get('t') || '';
           const live = peekInvite(db, t);
