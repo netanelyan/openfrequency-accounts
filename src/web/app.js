@@ -1143,7 +1143,8 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
 
         // A lead's button (src/web/leads.js): its own (build, send, mark, notes, skip) to Toran's /internal/leads, the
         // dashboard's status buttons to /internal/ops for Toran's lead. Back to the lead's page with Toran's line, or,
-        // for a demo made from the list (back=list), to the list as it was, at the lead's row.
+        // for a demo made from the list (back=list), to the list as it was: at the lead's row, whose tags now say what
+        // is being built, or at the top when Toran refused, where its line is.
         m = /^\/admin\/leads\/(\d{1,9})\/([a-z-]{1,20})$/.exec(p);
         if (m) {
           const [, id, action] = m;
@@ -1152,7 +1153,7 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
             setFlash(msg, bad);
             if (!list) return redirect(`/admin/leads/${id}`);
             const qs = new URLSearchParams(Object.entries({ where: WHERE.includes(f('where')) ? f('where') : '', q: f('q').trim().slice(0, 100) }).filter(([, v]) => v)).toString();
-            return redirect(`/admin/leads${qs ? `?${qs}` : ''}#lead-${id}`);
+            return redirect(`/admin/leads${qs ? `?${qs}` : ''}${bad ? '' : `#lead-${id}`}`);
           };
           if (session.view_as_workspace_id) return back(OPS.viewAsClosed, true);
           const by = me.name || me.email;

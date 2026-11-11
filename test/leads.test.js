@@ -144,6 +144,11 @@ test('the list: a missing demo is red, one that is there has its colour; each ro
     assert.equal(r.headers.location, '/admin/leads?where=new&q=x#lead-21');
     assert.deepEqual([t.fake.posts().at(-1).path, t.fake.posts().at(-1).body], ['/internal/leads/21/build-both', { by: 'נתנאל' }]);
     assert.match((await t.op.get('/admin/leads?where=new&q=x')).body, /<p class="flash" role="status">/);
+    // Refused: the list comes back at its top, where Toran's line is.
+    t.fake.state.answers['lead:build-teder'] = { status: 400, body: { ok: false, error: 'תדר לא ענה כרגע.' } };
+    const refused = await t.op.post('/admin/leads/22/build-teder', { back: 'list' });
+    assert.equal(refused.headers.location, '/admin/leads');
+    assert.match((await t.op.get('/admin/leads')).body, /<p class="flash bad" role="alert">תדר לא ענה כרגע\.<\/p>/);
     // Under a tab, the tag of where it stands is the tab's: not repeated on each row.
     assert.doesNotMatch((await t.op.get('/admin/leads?where=ready')).body, /class="tag where"/);
     assert.match((await t.op.get('/admin/leads')).body, /<span class="tag where">מוכנים לשליחה<\/span>/);
