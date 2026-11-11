@@ -313,6 +313,6 @@ Not edited from here (`openfrequency-web` is its own repository). What this adds
 > בוואטסאפ.
 
 UNVERIFIED, for whoever words the policy: what Toran itself keeps of the picture after it posts
-it here (Toran's side), where the server stands, and whether the policy already names Morning as
-the invoicing service (it now gets the business's name and its owners' addresses for each
-invoice-receipt).
+it here (Toran's side), and where the server stands. The policy names Morning as the invoicing
+service (openfrequency-web `src/pages/legal.mjs`, "Morning (חשבונית ירוקה)": the business's name,
+the amount and the owner's address), which is what it gets for each invoice-receipt.

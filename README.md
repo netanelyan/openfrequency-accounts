@@ -94,7 +94,7 @@ An owner cancels a product online from the home page (a confirmation page first)
 the last day paid for and then stops, with nothing more charged, and can be taken back until
 then; the owners get an email and `OF_SIGNUP_NOTIFY` a notice. An owner (or the superadmin) can
 delete the workspace and its data, typing its name to confirm: Teder and Toran are asked first
-(`POST /internal/workspaces/<id>/delete`; a 404 does not stop it, any other failure does), then
+(`POST /internal/workspaces/<id>/delete`; any failure stops it, a 404 included: `src/web/erase.js`), then
 ours is deleted, the invoices kept and detached as the law asks. Teder and Toran email a
 workspace's people through `POST /internal/notify`, and each person chooses which emails they
 get, per product and kind, on `/notifications`. All of it is in [docs/setup.md](docs/setup.md).
@@ -106,12 +106,15 @@ required step is left. The contract and the settings are in [docs/setup.md](docs
 
 ## The operator's dashboard, /admin
 
-The superadmin's `/admin` has three tabs. **היום** (`/admin`) is the operator's dashboard,
+The superadmin's `/admin` has five tabs. **היום** (`/admin`) is the operator's dashboard,
 which used to be on Toran's home page (toran.openfrequency.co.il now shows Toran only).
-**חשבונות** (`/admin/accounts`) is the console: workspaces, products, subscriptions,
-invoices, invites, view-as and the audit log. **תורן** (`/admin/toran/`) is Toran's operator
-dashboard: the leads, a lead's page, the review queue, the follow-ups, the chats, the settings
-and the pitch pages' previews, rendered by Toran and proxied from it (below).
+**לידים** (`/admin/leads`) is the shared lead dashboard, Toran's and Teder's leads on one list.
+**תורן** and **תדר** open the products' own sites, where the operator is in the company's
+workspace as its owner (`OF_OPERATOR_WORKSPACE`, docs/admin-split.md); the operator's pages
+inside each product (the review queue, the follow-ups, the settings, Teder's demos) are the
+links on `/admin`, rendered by the product and proxied under `/admin/toran/` and `/admin/teder/`
+(below). **חשבונות** (`/admin/accounts`) is the console: workspaces, products, subscriptions,
+invoices, invites, view-as and the audit log.
 
 The dashboard shows:
 
@@ -243,8 +246,9 @@ The full steps (DNS, Resend, Caddy, backups, checks) are in [docs/deploy.md](doc
 - Google: the authorization code flow with PKCE, a state and a nonce in a signed 10-minute
   cookie, a verified address only; the Google account is tied to the user on first use.
 - `?next=` only to `https://<one label>.openfrequency.co.il` or a path here.
-- The superadmin: password and TOTP (one use per code), 5 tries per address in 15 minutes, 12-hour
-  sessions, every action in the audit log, view-as read-only.
+- The superadmin: password and TOTP (one use per code), 5 tries per address in 15 minutes, sessions of
+  30 days (14 without a visit end one sooner; the owner, 2026-11-11), every action in the audit log,
+  view-as read-only.
 - Every form: a CSRF token and an Origin check. Every page: CSP with our own script files only and nothing inline
   (`static/a11y.js`, the accessibility panel and the light or dark switch, and `static/load.js`, the loading state, on
   every page; `static/admin.js`
