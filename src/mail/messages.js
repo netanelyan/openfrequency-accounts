@@ -17,9 +17,11 @@ const BRAND = {
 };
 const FONT = "-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif";
 
-// A number written with separators (a phone, 055-253-6259; a date, 1.12.2026; a time, 09:12) is kept whole and left
-// to right inside a Hebrew line: without it a narrow screen breaks it at a dash, and the bidi order moves the pieces.
-const ltrNumbers = (html) => html.replace(/\d+(?:[-.:/]\d+)+/g, (n) => `<span dir="ltr" style="white-space:nowrap">${n}</span>`);
+// A number written with separators (a phone, 055-253-6259; a date, 1.12.2026; a time, 09:12; an amount, 3,610.80) is
+// kept whole and left to right inside a Hebrew line: without it a narrow screen breaks it at a dash, and the bidi order
+// moves the pieces. The thousands comma is one of them (the audit of 2026-11-11: "3,610.80 ₪" came out "610.80,3 ₪",
+// the span holding only "610.80"); a digit must follow it, so "10.11.2026, והתשלום" keeps its comma outside.
+export const ltrNumbers = (html) => html.replace(/\d+(?:[-.:/,]\d+)+/g, (n) => `<span dir="ltr" style="white-space:nowrap">${n}</span>`);
 
 // A WhatsApp link with its message written (paying over WhatsApp, src/web/pay.js): its button is enough, and the
 // address is not printed under it in the HTML, where it would show the message's words encoded. The text part keeps
