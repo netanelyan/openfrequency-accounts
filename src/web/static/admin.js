@@ -1,6 +1,6 @@
-// The operator's dashboard on /admin (src/web/dashboard.js). Everything on it works without this file: each button is
-// a form that posts and comes back, and "copy and open" is a link to the chat with the message written in it (Toran's
-// wa.me text or mailto body). With it (ported from Toran's app.js):
+// The operator's dashboard on /admin (src/web/dashboard.js) and the lead pages (src/web/leads.js). Everything on them
+// works without this file: each button is a form that posts and comes back, and "copy and open" is a link to the chat
+// with the message written in it (Toran's wa.me text or mailto body). With it (ported from Toran's app.js):
 //   - [data-copy] copies the message in its card first, and the link opens the chat with the message as it is in the
 //     box now, edited or not
 //   - forms marked data-ajax post in the background; Toran's line shows at the bottom, and the card goes away
@@ -65,13 +65,35 @@
     say(ok ? b.dataset.done : b.dataset.fail, !ok);
   });
 
-  // "Not interested": opening one closes the others, and focuses its reasons.
+  // "Not interested" and a lead's "ליצור דמו" (leads.js): opening one closes the others; "not interested" focuses its
+  // reasons.
+  const MENUS = 'details.lost[open], details.make[open]';
   document.addEventListener('toggle', (e) => {
     const d = e.target;
-    if (!(d instanceof HTMLDetailsElement) || !d.classList.contains('lost') || !d.open) return;
-    for (const o of document.querySelectorAll('details.lost[open]')) if (o !== d) o.open = false;
+    if (!(d instanceof HTMLDetailsElement) || !d.open || !(d.classList.contains('lost') || d.classList.contains('make'))) return;
+    for (const o of document.querySelectorAll(MENUS)) if (o !== d) o.open = false;
     d.querySelector('select')?.focus();
   }, true);
+  // The tabs of the lead list scroll by themselves on a phone (site.css): the one open is brought into view, sideways
+  // only, so a row the page came back to (#lead-<id>) stays where it is.
+  const tabs = document.querySelector('nav.lead-tabs');
+  const open = tabs?.querySelector('[aria-current]');
+  if (open && tabs.scrollWidth > tabs.clientWidth) {
+    const a = open.getBoundingClientRect();
+    const n = tabs.getBoundingClientRect();
+    tabs.scrollBy({ left: a.left + a.width / 2 - (n.left + n.width / 2) });
+  }
+  // "ליצור דמו" opens as a small menu over the rows: a tap anywhere else closes it, and so does Escape.
+  document.addEventListener('click', (e) => {
+    for (const d of document.querySelectorAll('details.make[open]')) if (!d.contains(e.target)) d.open = false;
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    for (const d of document.querySelectorAll('details.make[open]')) {
+      d.open = false;
+      d.querySelector('summary')?.focus();
+    }
+  });
 
   document.addEventListener('submit', async (e) => {
     const form = e.target.closest('form[data-ajax]');

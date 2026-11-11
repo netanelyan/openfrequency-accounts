@@ -148,6 +148,8 @@ const demoOf = (d) => {
   };
 };
 const whereOf = (v) => (WHERE.includes(v) ? v : 'new');
+/** What can be built for the lead now, as Toran says; anything it does not say cannot. */
+const buildOf = (b) => ({ toran: b?.toran === true, teder: b?.teder === true, both: b?.both === true, toranWhyNot: str(b?.toranWhyNot, 300) });
 const rowOf = (x) => ({
   id: num(x.id),
   name: str(x.name, 200) || str(x.domain, 200) || '',
@@ -160,6 +162,9 @@ const rowOf = (x) => ({
   contact: { whatsapp: String(x.contact?.whatsapp ?? '').replace(/\D/g, '').slice(0, 15) || null, email: str(x.contact?.email, 254), phone: String(x.contact?.phone ?? '').replace(/\D/g, '').slice(0, 15) || null },
   toran: demoOf(x.toran),
   teder: demoOf(x.teder),
+  build: buildOf(x.build),
+  // Which demo the operator chose to make for it here: the lead's page leads with that one's message.
+  chosen: SENDS.includes(x.chosen) ? x.chosen : null,
   updatedAt: str(x.updatedAt, 40),
 });
 
@@ -191,7 +196,6 @@ export function readLead(b) {
     opens: num(x.opens) ?? 0,
     demoStartedAt: str(x.demoStartedAt, 40),
     tederOk: x.tederOk !== false,
-    build: { toran: x.build?.toran === true, teder: x.build?.teder === true, both: x.build?.both === true, toranWhyNot: str(x.build?.toranWhyNot, 300) },
     send: {
       stage: ['first', 'reminder'].includes(send.stage) ? send.stage : null,
       pitchable: send.pitchable === true,
@@ -200,6 +204,7 @@ export function readLead(b) {
       waitingUntil: str(send.waitingUntil, 40),
       bothText: str(send.bothText, 2000),
       toranText: str(send.toranText, 2000),
+      tederText: str(send.tederText, 2000),
       copy: copy?.href ? copy : null,
     },
     links: { toranPage: safeHref(x.links?.toranPage), toranReview: safeHref(x.links?.toranReview), tederLead: safeHref(x.links?.tederLead) },

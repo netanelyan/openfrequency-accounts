@@ -675,6 +675,111 @@ section#contact, section#stuck, section#teder-demos, section#site-leads, section
   .kpi, article.op { backdrop-filter: none; -webkit-backdrop-filter: none; }
 }
 
+/* ------------------------------------------------------------ the shared lead dashboard, /admin/leads (leads.js) */
+
+/* A demo's tag has its product's colour only when the demo is there; a missing one is red, one being built is grey
+   (the owner, 2026-11-11: "if something misses it should be red, not purple or green"). Where a lead stands is grey. */
+.tag.miss { background: var(--bad-bg); color: var(--bad); }
+.tag.wait { background: var(--fill); color: var(--ink-3); }
+.tag.where { background: var(--fill); color: var(--ink-2); font-weight: 500; }
+ul.leads-list .tag, #lead .list-h .tag, .demo-box h3 .tag { font-size: 12px; padding: 2px 10px; }
+small.bad, ul.people li.bad { color: var(--bad); }
+
+/* The tabs by where a lead stands: one row that scrolls by itself on a phone, never the page, its far end fading to
+   say there is more; then the search, the field and its button on one line. */
+nav.tabs.lead-tabs { display: flex; width: fit-content; max-width: 100%; margin: 0; overflow-x: auto; scrollbar-width: none; }
+nav.tabs.lead-tabs::-webkit-scrollbar { display: none; }
+nav.tabs.lead-tabs a { flex: none; gap: 6px; padding: 0 14px; white-space: nowrap; }
+@media (max-width: 640px) {
+  nav.tabs.lead-tabs { padding-inline-end: 28px; -webkit-mask-image: linear-gradient(to right, transparent, #000 28px); mask-image: linear-gradient(to right, transparent, #000 28px); }
+}
+form.lead-search { flex-wrap: nowrap; margin-top: 14px; }
+form.lead-search input { flex: 1 1 auto; width: auto; min-width: 0; }
+form.lead-search button { flex: none; }
+#leads > ul.leads-list { margin-top: 14px; }
+
+/* A row: the name and its one button on top, the tags under them; on a desk, the tags between the two. The row the
+   operator comes back to, after making a demo from the list, is lit. */
+ul.leads-list li { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px 12px; padding: 10px 14px; scroll-margin-top: 16px; }
+ul.leads-list .lead-who { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 10px; min-width: 0; }
+ul.leads-list .lead-who bdi { min-width: 0; overflow-wrap: anywhere; font-size: 13px; }
+ul.leads-list .lead-tags { display: flex; flex-wrap: wrap; gap: 6px; grid-column: 1 / -1; grid-row: 2; }
+ul.leads-list details.make { grid-column: 2; grid-row: 1; justify-self: end; }
+ul.leads-list li:target { background: color-mix(in srgb, var(--accent-fill) 8%, transparent); }
+@media (min-width: 720px) {
+  ul.leads-list li { grid-template-columns: minmax(0, 1fr) auto minmax(96px, auto); }
+  ul.leads-list .lead-tags { grid-column: 2; grid-row: 1; justify-content: flex-end; }
+  ul.leads-list details.make { grid-column: 3; }
+}
+
+/* "ליצור דמו": one pill that opens what can be made, as a small menu under it. Quiet on a row, blue on a lead's page
+   while it has no demo at all. */
+details.make { position: relative; }
+details.make > summary {
+  display: inline-flex; align-items: center; justify-content: center; min-height: 36px; padding: 0 14px; border-radius: 980px;
+  background: var(--fill); color: var(--ink); font: 500 14px/1 var(--text); white-space: nowrap; cursor: pointer; list-style: none;
+  -webkit-tap-highlight-color: transparent; transition: background-color 0.15s ease;
+}
+details.make > summary::-webkit-details-marker { display: none; }
+details.make > summary:hover, details.make[open] > summary { background: var(--fill-2); color: var(--ink); }
+details.make > summary.primary { min-height: 44px; padding: 0 22px; font-size: 16px; background: var(--accent-fill); color: var(--accent-ink); }
+details.make > summary.primary:hover { background: var(--accent-fill-2); }
+details.make[open] > summary.primary { background: var(--accent-fill-2); color: var(--accent-ink); }
+.make-pick {
+  position: absolute; z-index: 5; top: calc(100% + 6px); inset-inline-end: 0; display: flex; gap: 6px; padding: 8px; border-radius: 16px;
+  background: linear-gradient(var(--surface-hi), var(--surface-hi)), var(--bg); box-shadow: var(--shadow-float), inset 0 0 0 1px var(--edge);
+}
+/* Not the full width a card gives its form's blue button: the three are one row of choices. */
+.make-pick form > button, .make-pick form > button.primary { width: auto; min-height: 40px; margin: 0; padding: 0 16px; font-size: 15px; white-space: nowrap; }
+/* On a lead's page there is room: the choices open in place, under the button. */
+.make-row { margin: 14px 0 0; }
+.make-row .make-pick { position: static; flex-wrap: wrap; margin-top: 10px; padding: 0; background: none; box-shadow: none; }
+
+/* A lead's page: on a phone the cards keep a little more of the width. */
+#lead .list-h p { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
+@media (max-width: 560px) { main.wide .lead-cards > .card { padding: 18px 16px; } }
+
+/* What to send: the switch between the messages (while more than one can go), the message as the store will read it,
+   and its one button, full width on a phone. Without :has() the message the page leads with stays, and no switch. */
+fieldset.seg { display: none; gap: 2px; min-width: 0; margin: 14px 0 0; padding: 3px; border: 0; border-radius: 999px; background: var(--fill); }
+fieldset.seg legend { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+fieldset.seg label { position: relative; flex: 1; display: flex; align-items: center; justify-content: center; min-height: 38px; margin: 0; padding: 0 12px; border-radius: 999px; color: var(--ink-2); font-size: 15px; font-weight: 500; text-align: center; cursor: pointer; }
+fieldset.seg input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
+#send .pick { display: grid; gap: 12px; margin-top: 14px; }
+#send .pick:not(.on) { display: none; }
+@supports selector(:has(*)) {
+  fieldset.seg { display: flex; }
+  fieldset.seg label:has(input:checked) { background: var(--surface-hi); color: var(--ink); font-weight: 600; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1), inset 0 0 0 1px var(--edge); }
+  fieldset.seg label:has(input:focus-visible) { outline: 3px solid color-mix(in srgb, var(--accent-fill) 60%, transparent); outline-offset: 2px; }
+  #send:has(fieldset.seg) .pick { display: none; }
+  #send:has(input[value='both']:checked) .pick[data-pick='both'],
+  #send:has(input[value='toran']:checked) .pick[data-pick='toran'],
+  #send:has(input[value='teder']:checked) .pick[data-pick='teder'] { display: grid; }
+}
+blockquote.msg { margin: 0; padding: 14px 16px; border-radius: var(--r-m); background: var(--inset); box-shadow: inset 0 0 0 1px var(--line); color: var(--ink); font-size: 15px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
+p.msg-buttons { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; }
+a.chip { display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 0 14px; border-radius: 980px; background: var(--fill); color: var(--accent); font-size: 14px; font-weight: 500; text-decoration: none; }
+a.chip:hover { background: var(--fill-2); }
+#send textarea { min-height: 180px; }
+#send > p.muted { margin: 14px 0 0; }
+#send .op-acts form > button.primary { margin: 0; }
+#stands > .op-more { margin-top: 14px; }
+@media (max-width: 560px) {
+  #send .op-acts > a.button, #send .op-acts > form.inline { flex: 1 1 100%; }
+  #send .op-acts > form.inline > button { flex: 1; }
+}
+
+/* The two demos, side by side when there is room: each its mark (grey while it is missing), its state, its page and
+   its own buttons. */
+.demo-pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 12px; margin-top: 14px; }
+.demo-box { display: grid; align-content: start; gap: 10px; min-width: 0; padding: 14px; border-radius: var(--r-m); background: var(--inset); box-shadow: inset 0 0 0 1px var(--line); }
+.demo-box p { margin: 0; }
+.demo-box .op-who { align-items: center; }
+.demo-box .op-who .mark { width: 32px; height: 32px; margin: 0; }
+.demo-box.miss .mark { filter: grayscale(1); opacity: 0.45; }
+.demo-box .op-acts button, .demo-box .op-acts a.button { min-height: 38px; padding: 0 14px; font-size: 14px; }
+#demos > p.muted { margin: 12px 0 0; }
+
 /* ------------------------------------------------------------ sign-up (/signup) */
 
 /* The products to choose: each a row of glass with its mark, its name and its one line, the box at the start. */

@@ -1142,13 +1142,17 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
         if (req.method !== 'POST') return page(404, T.notFound, P.messagePage({ title: T.notFound, lead: '', links: [['/admin', T.adminTitle]] }), { banner });
 
         // A lead's button (src/web/leads.js): its own (build, send, mark, notes, skip) to Toran's /internal/leads, the
-        // dashboard's status buttons to /internal/ops for Toran's lead. Back to the lead's page with Toran's line.
+        // dashboard's status buttons to /internal/ops for Toran's lead. Back to the lead's page with Toran's line, or,
+        // for a demo made from the list (back=list), to the list as it was, at the lead's row.
         m = /^\/admin\/leads\/(\d{1,9})\/([a-z-]{1,20})$/.exec(p);
         if (m) {
           const [, id, action] = m;
+          const list = f('back') === 'list' && action.startsWith('build-');
           const back = (msg, bad) => {
             setFlash(msg, bad);
-            return redirect(`/admin/leads/${id}`);
+            if (!list) return redirect(`/admin/leads/${id}`);
+            const qs = new URLSearchParams(Object.entries({ where: WHERE.includes(f('where')) ? f('where') : '', q: f('q').trim().slice(0, 100) }).filter(([, v]) => v)).toString();
+            return redirect(`/admin/leads${qs ? `?${qs}` : ''}#lead-${id}`);
           };
           if (session.view_as_workspace_id) return back(OPS.viewAsClosed, true);
           const by = me.name || me.email;
@@ -1157,6 +1161,8 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
             const body = { by };
             if (action === 'notes') body.notes = f('notes').slice(0, 4000);
             if (action === 'skip') body.reason = f('reason').trim().slice(0, 300);
+            // "שלחתי" on the message the page showed: which demo it was for (Toran when the page says none).
+            if ((action === 'mark-sent' || action === 'mark-reminded') && ['both', 'toran', 'teder'].includes(f('product'))) body.product = f('product');
             r = await toran.leadAct(id, action, body);
           } else if (['replied', 'later', 'lost', 'reopen'].includes(action)) {
             const body = { by };
