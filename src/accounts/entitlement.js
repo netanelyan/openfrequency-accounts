@@ -2,7 +2,7 @@ import { nowIso } from '../core/clock.js';
 import { audit } from '../core/audit.js';
 import { PRODUCTS } from '../db/schema.js';
 import { WorkspaceError, getWorkspace } from './workspaces.js';
-import { endOfIsraelDay, ensureSubscription, graceChange, graceLast, israelToday, planOut, PLANS } from './subscriptions.js';
+import { endOfIsraelDay, ensureSubscription, graceChange, graceLast, israelToday, listPrice, planOut, PLANS, VAT } from './subscriptions.js';
 
 // The paywall: may this workspace use this product today? Teder and Toran ask at GET /internal/entitlement
 // (docs/setup.md), and accounts' own pages lock what is not paid for. No payment provider is connected yet, so
@@ -78,18 +78,34 @@ export function accessFor(db, workspaceId, product, today = israelToday()) {
 export const accessAll = (db, workspaceId, today = israelToday()) => Object.fromEntries(PRODUCTS.map((p) => [p, accessFor(db, workspaceId, p, today)]));
 
 /**
+ * What a month of the product costs the workspace before VAT, in shekels to the agora: the base the products weigh what
+ * they spend on the workspace against (Teder's AI cost, the owner, 2026-11-11: "just make sure there is a cap where if ai
+ * costs of an account reach 30% of the payment of the customer, we get alerted. them on 50% it stops"). Pure.
+ *   - the subscription's `monthly`, with the VAT (VAT, 18%) taken out when it was recorded with it included
+ *   - its plan's list price (listPrice) when the product is complimentary (access 'comp': free, so its payment says
+ *     nothing of what the month is worth), or when no price above 0 is recorded (none yet, or a month of 0 ₪: a gift
+ *     recorded as a price, as comp is; against 0 any cost at all would be over half of it)
+ */
+export function monthlyIls(product, sub = null, access = null) {
+  const m = Number(sub?.monthly);
+  const price = access === 'comp' || sub?.monthly == null || !Number.isFinite(m) || m <= 0 ? listPrice(product, sub?.plan ?? null).monthly : sub.vat === 'included' ? m / (1 + VAT) : m;
+  return Math.round(price * 100) / 100;
+}
+
+/**
  * The answer of GET /internal/entitlement, exactly as docs/setup.md has it, or null for no such workspace:
- * { workspace, product, enabled, access, allowed, paidThrough, cancelAt, graceUntil, plan? }. paidThrough is the end of
- * the last day paid for, cancelAt the end of the last day of a cancelled subscription, graceUntil the end of the last
- * day of the grace while it is due (72 hours after paidThrough, or more when a clock change is in them: never less),
- * all ISO instants (Israel days' ends, in UTC) or null.
+ * { workspace, product, enabled, access, allowed, paidThrough, cancelAt, graceUntil, plan?, monthlyIls }. paidThrough is
+ * the end of the last day paid for, cancelAt the end of the last day of a cancelled subscription, graceUntil the end of
+ * the last day of the grace while it is due (72 hours after paidThrough, or more when a clock change is in them: never
+ * less), all ISO instants (Israel days' ends, in UTC) or null.
  * `plan`, for a product with plans (Teder), is what its month gives: { name: "full" | "small", slideshows, redos } (the
- * full plan when none is recorded).
+ * full plan when none is recorded). `monthlyIls` is what a month of it costs the workspace before VAT (monthlyIls()).
  */
 export function entitlement(db, workspaceId, product, today = israelToday()) {
   const a = accessFor(db, workspaceId, product, today);
   if (!a) return null;
-  const plan = PLANS[product] ? planOut(product, db.get('SELECT plan FROM subscriptions WHERE workspace_id = ? AND product = ?', a.workspace, product)?.plan) : undefined;
+  const s = db.get('SELECT plan, monthly, vat FROM subscriptions WHERE workspace_id = ? AND product = ?', a.workspace, product) ?? null;
+  const plan = PLANS[product] ? planOut(product, s?.plan) : undefined;
   return {
     workspace: a.workspace,
     product,
@@ -100,6 +116,7 @@ export function entitlement(db, workspaceId, product, today = israelToday()) {
     cancelAt: a.access === 'cancelled' && a.lastDay ? endOfIsraelDay(a.lastDay) : null,
     graceUntil: a.graceUntil ? endOfIsraelDay(a.graceUntil) : null,
     ...(plan ? { plan } : {}),
+    monthlyIls: monthlyIls(product, s, a.access),
   };
 }
 

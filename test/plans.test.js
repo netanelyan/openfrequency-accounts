@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import { makeWorkspace, tempHome } from './helpers.js';
 import { pathOf, signedIn, startSite, tokenOf } from './site.js';
 import { advance, now, setNow } from '../src/core/clock.js';
-import { ensureSubscription, listPrice, payMonth, planFor, planOut, PLANS, plansOf } from '../src/accounts/subscriptions.js';
-import { entitlement } from '../src/accounts/entitlement.js';
+import { ensureSubscription, listPrice, payMonth, planFor, planOut, PLANS, plansOf, setSubscription } from '../src/accounts/subscriptions.js';
+import { entitlement, monthlyIls, setComp } from '../src/accounts/entitlement.js';
 import { setSuperadmin } from '../src/accounts/superadmin.js';
 import { newTotpSecret, stepAt, totpCode } from '../src/auth/totp.js';
 import { startProduct } from './setup-fake.js';
@@ -52,6 +52,47 @@ test('the plans: what each gives and costs, the default when none is named (Tede
   assert.deepEqual(planOut('teder', 'small'), { name: 'small', slideshows: 15, redos: 4 });
   assert.deepEqual(listPrice('teder', 'small'), { monthly: 490, setup: 990, vat: 'excluded' });
   assert.deepEqual(listPrice('toran'), { monthly: 590, setup: 990, vat: 'excluded' });
+});
+
+test("monthlyIls: what a month costs the workspace before VAT, the price recorded or the plan's list price, to the agora", () => {
+  // The price as recorded, VAT excluded: as it is, a hand-agreed one too; a VAT left unsaid is excluded, as withVat reads it.
+  assert.equal(monthlyIls('teder', { plan: 'full', monthly: 790, vat: 'excluded' }, 'paid'), 790);
+  assert.equal(monthlyIls('teder', { plan: 'small', monthly: 490, vat: 'excluded' }, 'due'), 490);
+  assert.equal(monthlyIls('teder', { plan: 'full', monthly: 650, vat: null }, 'paid'), 650);
+  assert.equal(monthlyIls('toran', { plan: 'big', monthly: 1190, vat: 'excluded' }, 'cancelled'), 1190);
+  // Recorded with VAT included (18%): the VAT comes out, rounded to the agora.
+  assert.equal(monthlyIls('teder', { plan: 'small', monthly: 590, vat: 'included' }, 'paid'), 500);
+  assert.equal(monthlyIls('teder', { plan: 'full', monthly: 932.2, vat: 'included' }, 'paid'), 790);
+  assert.equal(monthlyIls('teder', { plan: 'full', monthly: 1000, vat: 'included' }, 'paid'), 847.46);
+  // Complimentary: its plan's list price, whatever price is recorded.
+  assert.equal(monthlyIls('teder', { plan: 'small', monthly: 300, vat: 'excluded' }, 'comp'), 490);
+  // No price above 0: no subscription (the default plan's), none recorded, or a month of 0 ₪ (a gift, as comp is).
+  assert.equal(monthlyIls('teder', null, 'off'), 790);
+  assert.equal(monthlyIls('toran', null, 'off'), 590);
+  assert.equal(monthlyIls('toran', { plan: 'big', monthly: null, vat: 'excluded' }, 'unpaid'), 1190);
+  assert.equal(monthlyIls('teder', { plan: 'small', monthly: 0, vat: 'excluded' }, 'paid'), 490);
+});
+
+test('GET /internal/entitlement gives monthlyIls for each state: a price agreed with VAT, without it, complimentary, 0 ₪', async () => {
+  const t = await setup();
+  try {
+    const ent = async () => (await t.owners('GET', `/internal/entitlement?workspace=${t.ws.id}&product=teder`)).json;
+    assert.equal((await ent()).monthlyIls, 790, 'a new subscription at the full plan list price');
+    const by = { by: null };
+    setSubscription(t.db, t.ws.id, 'teder', { plan: 'small', monthly: '578.20', setup: '990', vat: 'included', started_on: '2026-10-22' }, by);
+    payMonth(t.db, t.ws.id, 'teder', by);
+    assert.deepEqual([(await ent()).access, (await ent()).monthlyIls], ['paid', 490]);
+    setSubscription(t.db, t.ws.id, 'teder', { plan: 'small', monthly: '450', setup: '990', vat: 'excluded', started_on: '2026-10-22', paid_until: '2026-11-21' }, by);
+    assert.equal((await ent()).monthlyIls, 450, 'a hand-agreed price, VAT excluded');
+    setSubscription(t.db, t.ws.id, 'teder', { plan: 'small', monthly: '0', setup: '0', vat: 'excluded', started_on: '2026-10-22', paid_until: '2026-11-21' }, by);
+    assert.equal((await ent()).monthlyIls, 490, 'a month of 0 ₪: the plan list price');
+    setSubscription(t.db, t.ws.id, 'teder', { plan: 'small', monthly: '450', setup: '990', vat: 'excluded', started_on: '2026-10-22', paid_until: '2026-11-21' }, by);
+    setComp(t.db, t.ws.id, 'teder', true, by);
+    assert.deepEqual([(await ent()).access, (await ent()).monthlyIls], ['comp', 490], 'complimentary: the plan list price');
+    assert.equal(entitlement(t.db, t.ws.id, 'teder').monthlyIls, 490, 'the route gives what entitlement() gives');
+  } finally {
+    await t.done();
+  }
 });
 
 test('a sign-up for the small plan: its price and setup fee, 15 slideshows and 4 redos to Teder, and the plan on every page and email', async () => {

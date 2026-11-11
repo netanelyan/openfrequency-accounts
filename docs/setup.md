@@ -258,7 +258,7 @@ Authorization: Bearer <OF_INTERNAL_TOKEN>
 ```json
 { "workspace": 7, "product": "teder", "enabled": true, "access": "paid", "allowed": true,
   "paidThrough": "2026-11-21T21:59:59.999Z", "cancelAt": null, "graceUntil": null,
-  "plan": { "name": "small", "slideshows": 15, "redos": 4 } }
+  "plan": { "name": "small", "slideshows": 15, "redos": 4 }, "monthlyIls": 490 }
 ```
 
 The same, field by field, with an example for every status, is `docs/contracts/entitlement.json`.
@@ -271,6 +271,7 @@ The same, field by field, with an example for every status, is `docs/contracts/e
 | `cancelAt` | Set only while `access` is `cancelled`: the end of the last day it works, the same way. Otherwise `null`. |
 | `graceUntil` | Set only while `access` is `due`: the end of the grace's last day, the same way, 72 hours after `paidThrough` (paid until 21.11.2026: `2026-11-24T21:59:59.999Z`), or more in the week of a clock change, never less (paid until 24.3.2027: `2027-03-28T20:59:59.999Z`, 95 hours); for a workspace still on the terms from before 2026-11-03, the end of the 15th day after it (paid until 21.11.2026: `2026-12-06T21:59:59.999Z`). Otherwise `null`. |
 | `plan` | Its plan, the month the product counts for the whole workspace. Teder: `{ name: "full" \| "small", slideshows, redos }` (40 and 10, or 15 and 4), full when none is recorded. Toran (since 2026-11-08): `{ name: "store" \| "big", conversations }` (300 or 1,500), store when none is recorded. |
+| `monthlyIls` | Since 2026-11-11: what a month of the product costs this workspace before VAT, in shekels to the agora (`monthlyIls()` in `src/accounts/entitlement.js`). The subscription's price, with the 18% VAT taken out when it was recorded with VAT included (590 ₪ with VAT: `500`); its plan's list price (790, 490, 590 or 1,190) when the product is complimentary, or when no price above 0 is recorded (no subscription yet, or a month of 0 ₪, a gift recorded as a price). It is the base a product weighs what it spends on the workspace against: Teder alerts the operator when its AI cost this month reaches 30% of it, and stops the AI for the workspace at 50% until the next month (the owner, 2026-11-11: "just make sure there is a cap where if ai costs of an account reach 30% of the payment of the customer, we get alerted. them on 50% it stops"). A product must accept an answer without it, from an accounts deployed before it, and take the plan's list price then. |
 
 `400 {"error":"bad_workspace"}` for a workspace that is not a positive integer, `400
 {"error":"bad_product"}` for a missing or unknown product, `404 {"error":"no_workspace"}` for an

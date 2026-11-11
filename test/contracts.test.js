@@ -169,6 +169,14 @@ const RUN = {
     setComp(w.db, ws.id, 'teder', true, { by: w.admin });
     return ent(w, ws.id);
   },
+  'entitlement /internal/entitlement :: paid, a price agreed with VAT included: monthlyIls is the price before VAT (590 ₪ with VAT, 500 before it)': async (w) => {
+    const ws = fresh(w, 'vat-shop');
+    setSubscription(w.db, ws.id, 'teder', { plan: 'small', monthly: '590', setup: '990', vat: 'included', started_on: '2026-10-22' }, { by: w.admin });
+    payMonth(w.db, ws.id, 'teder', { by: w.admin });
+    const r = await ent(w, ws.id);
+    assert.equal(r.json.monthlyIls, 500);
+    return r;
+  },
   'entitlement /internal/entitlement :: paid (Toran, the big plan)': (w) => {
     const ws = fresh(w, 'toran-big', ['toran']);
     setSubscription(w.db, ws.id, 'toran', { plan: 'big', monthly: '1190', setup: '990', vat: 'excluded', started_on: '2026-10-22' }, { by: w.admin });
