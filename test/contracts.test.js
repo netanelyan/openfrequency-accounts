@@ -117,7 +117,7 @@ const RUN = {
     startViewAs(w.db, s.row, w.dana.id, { by: w.admin });
     return w.site.internal(s.id, 'teder');
   },
-  'session /internal/session :: the superadmin outside view-as, in the workspace OF_OPERATOR_WORKSPACE names (docs/admin-split.md): as its owner sees it; without the setting, or for a product it lacks, the operator\'s answer with a null workspace and every product': async (w) => {
+  'session /internal/session :: the superadmin outside view-as, in the workspace OF_OPERATOR_WORKSPACE names (docs/admin-split.md): as its owner sees it, with the product asked about even when its switch is off; without the setting, or when the workspace is closed, the operator\'s answer with a null workspace and every product': async (w) => {
     const s = await startSite(w.db, { env: { OF_OPERATOR_WORKSPACE: String(w.dana.id) } });
     try {
       const r = await s.internal(createSession(w.db, w.admin).id, 'teder');

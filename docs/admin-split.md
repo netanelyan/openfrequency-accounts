@@ -35,7 +35,7 @@ funnels and the money; a tools row links to Teder's leads, demos and all account
    workspace id (on the live server it should be 1, the company's own workspace, the one Teder's `OF_OWN_WORKSPACES`
    names). For the superadmin outside view-as, `/internal/session` answers that workspace as an owner of it would see
    it: `workspace` set, `role: client_owner`, the workspace's `products`, `readOnly: false`, `viewAs: null`, and
-   `user.superadmin: true`. When it is unset, closed, missing, or lacks the product asked about, the answer stays the
+   `user.superadmin: true`. When it is unset, closed or missing, the answer stays the
    operator's (`workspace: null`), and the product shows a short page pointing to `/admin`. A new case in
    `docs/contracts/session.json`.
 2. **Both products then show that workspace exactly as a customer sees it**, because both already key every operator

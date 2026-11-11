@@ -168,8 +168,10 @@ export function describeSession(db, cookieValue) {
  * operator pages are reached through /admin (admin-toran.js), where the products are told who they are another way.
  *
  * `body` is describeSession()'s 200. Unchanged (the operator's, workspace null) when the setting is unset or not a
- * whole number, when the workspace is gone or closed, or when `product` is named and the workspace does not have it:
- * the product then shows its short page pointing to /admin.
+ * whole number, or when the workspace is gone or closed: the product then shows its short page pointing to /admin.
+ * The product named is in the answer even when the workspace's switch for it is off: the switches are a customer's
+ * plan, and the company's workspace has every product (the owner, 2026-11-11, on the phone: Teder's short page instead
+ * of their own Teder, "Make it work").
  */
 export function operatorHome(db, body, { env = process.env, product = null } = {}) {
   if (!body || body.role !== 'superadmin' || body.viewAs || body.workspace) return body;
@@ -177,8 +179,7 @@ export function operatorHome(db, body, { env = process.env, product = null } = {
   if (!/^[1-9]\d{0,8}$/.test(id)) return body;
   const w = db.get('SELECT * FROM workspaces WHERE id = ?', Number(id));
   if (!w || w.disabled_at) return body;
-  const products = enabledProducts(db, w.id);
-  if (product && !products.includes(product)) return body;
+  const products = [...new Set([...enabledProducts(db, w.id), ...(product ? [product] : [])])].sort();
   return { ...body, workspace: workspaceOut(w), role: 'client_owner', products, readOnly: false, viewAs: null };
 }
 

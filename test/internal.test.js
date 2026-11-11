@@ -174,7 +174,7 @@ test('the superadmin is answered as the operator', async () => {
 
 // The operator's own workspace on the products' sites (docs/admin-split.md; the owner, 2026-11-10: "Make teder and toran
 // of natikyan153@gmail.com regular, just like a customer's"): OF_OPERATOR_WORKSPACE, answered as its owner sees it.
-test('the superadmin is in OF_OPERATOR_WORKSPACE as its owner, and the operator again without it, for a product it lacks, or when it is closed', async () => {
+test('the superadmin is in OF_OPERATOR_WORKSPACE as its owner, with every product asked about, and the operator again without it or when it is closed', async () => {
   const base = await setup();
   const ws = base.db.get("SELECT * FROM workspaces WHERE slug = 'dana-shop'");
   await base.done();
@@ -186,9 +186,13 @@ test('the superadmin is in OF_OPERATOR_WORKSPACE as its owner, and the operator 
     assert.equal(r.status, 200);
     assert.deepEqual([r.body.workspace.id, r.body.role, r.body.readOnly, r.body.viewAs, r.body.user.superadmin], [ws.id, 'client_owner', false, null, true]);
     assert.deepEqual(r.body.products, ['teder']);
-    // Toran is not in that workspace: the operator's answer, every product, no workspace (the product's short page).
+    // Toran's switch is off in that workspace: the company's workspace has it anyway (the owner, 2026-11-11, "Make it
+    // work": Teder's short page instead of their own Teder). A customer of it still does not.
     const toran = await t.ask(id, { product: 'toran' });
-    assert.deepEqual([toran.status, toran.body.workspace, toran.body.role], [200, null, 'superadmin']);
+    assert.deepEqual([toran.status, toran.body.workspace?.id, toran.body.role, toran.body.products], [200, ws.id, 'client_owner', ['teder', 'toran']]);
+    const dana = t.db.get('SELECT u.* FROM users u JOIN memberships m ON m.user_id = u.id WHERE m.workspace_id = ? LIMIT 1', ws.id);
+    assert.ok(dana, 'the workspace has a customer');
+    assert.equal((await t.ask(createSession(t.db, dana).id, { product: 'toran' })).status, 403);
     // Closed: the operator's answer too.
     t.db.run('UPDATE workspaces SET disabled_at = ? WHERE id = ?', '2026-11-10T10:00:00.000Z', ws.id);
     const closed = await t.ask(id, { product: 'teder' });
