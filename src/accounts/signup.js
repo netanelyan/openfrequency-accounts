@@ -90,9 +90,10 @@ export function startProducts(want, open = PRODUCTS) {
 
 /**
  * The form, checked. Returns { name, business, email, products, plan, plan_toran } or throws SignupError: bad_name,
- * bad_business, no_products, product_closed (one chosen that is not in `open`), bad_plan (a Teder or Toran plan that
- * does not exist), no_terms, bad_email (only when `needEmail`: Google brings its own). `plan` is Teder's, the full one
- * when none is given, and null without Teder; `plan_toran` is Toran's, store when none is given, null without Toran.
+ * bad_business, no_products, product_closed (one chosen that is not in `open`), bad_plan (a Teder plan that does not
+ * exist), bad_plan_toran (a Toran one), no_terms, bad_email (only when `needEmail`: Google brings its own). `plan` is
+ * Teder's, the full one when none is given, and null without Teder; `plan_toran` is Toran's, store when none is given,
+ * null without Toran.
  */
 export function checkSignup({ name, business, email, products = [], terms, plan = '', plan_toran = '' }, { needEmail = true, open = PRODUCTS } = {}) {
   const n = clean(name);
@@ -103,7 +104,8 @@ export function checkSignup({ name, business, email, products = [], terms, plan 
   if (!chosen.length) throw new SignupError('no_products');
   if (chosen.some((p) => !open.includes(p))) throw new SignupError('product_closed');
   if (plan && !Object.hasOwn(PLANS.teder, plan)) throw new SignupError('bad_plan');
-  if (plan_toran && !Object.hasOwn(PLANS.toran, plan_toran)) throw new SignupError('bad_plan');
+  // Its own error: "צריך לבחור אחת מהחבילות של תדר" for a Toran plan was the wrong product (the audit of 2026-11-11).
+  if (plan_toran && !Object.hasOwn(PLANS.toran, plan_toran)) throw new SignupError('bad_plan_toran');
   if (!terms) throw new SignupError('no_terms');
   const e = normEmail(email);
   if (needEmail && !validEmail(e)) throw new SignupError('bad_email');

@@ -704,7 +704,16 @@ fieldset.plans-pick > small { margin: 0; }
    some). A browser without :has() shows them all along. */
 @supports selector(:has(*)) {
   label.product-pick:not(:has(input:checked)) + fieldset.plans-pick { display: none; }
+  /* The box names the contract of what is being bought: once a product is ticked, the one of a product not ticked steps
+     aside (html.js termsBox; with none ticked yet, both show). */
+  form:has(input[type='checkbox'][name='products']:checked):has(input[type='checkbox'][name='products'][value='teder']:not(:checked)) .c-teder,
+  form:has(input[type='checkbox'][name='products']:checked):has(input[type='checkbox'][name='products'][value='toran']:not(:checked)) .c-toran { display: none; }
 }
+/* "אפשר לבחור את שניהם" under the question, before the products (html.js signupPage). */
+fieldset.products-pick > small.pick-hint { margin: -4px 0 2px; }
+/* The products a confirmation opens, one a line with its plan (html.js signupConfirmPage). */
+.card p.picked-h { margin: 0 0 4px; }
+.card ul.picked { margin: 0 0 14px; }
 label.check.terms { display: flex; align-items: flex-start; gap: 10px; margin: 20px 0 0; padding-top: 10px; line-height: 1.45; font-size: 15px; }
 label.check.terms input { flex: none; margin: 1px 0 0; }
 .card form > button.google { margin-top: 0; }
@@ -771,6 +780,14 @@ ul.prices { list-style: none; padding: 0; margin: 12px 0 0; display: grid; gap: 
 .card.pay-wa p.pay-go { margin: 24px 0 0; }
 .card.pay-wa p.pay-go a.button { width: auto; min-width: 280px; min-height: 52px; margin: 0; padding: 0 28px; font-size: 17px; font-weight: 600; }
 @media (max-width: 560px) { .card.pay-wa p.pay-go a.button { width: 100%; min-width: 0; } }
+/* Under that button, one tap away: the owner's details for a transfer without WhatsApp (html.js payWaCard), as quiet as
+   the team's invite form behind its summary, with the room of a tap between it and the button. */
+details.pay-direct { margin-top: 14px; }
+details.pay-direct summary { display: inline-flex; align-items: center; min-height: 44px; cursor: pointer; list-style: none; color: var(--accent); font-weight: 600; }
+details.pay-direct summary::-webkit-details-marker { display: none; }
+details.pay-direct summary::after { content: '+'; margin-inline-start: 8px; font-weight: 400; font-size: 20px; line-height: 1; }
+details.pay-direct[open] summary::after { content: '−'; }
+details.pay-direct p { margin: 8px 0 0; max-width: 62ch; overflow-wrap: anywhere; }
 label.product-pick small.price { color: var(--ink-2); }
 /* A transfer's receipt from Toran (/admin/receipts/<id>): the picture at the width of the card, never past the screen's
    height, then its facts, what was owed and the two buttons (.row keeps them apart). */

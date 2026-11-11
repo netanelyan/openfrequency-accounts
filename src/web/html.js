@@ -438,65 +438,93 @@ ${owner ? `<p class="links"><a href="/account/delete">${esc(T.dashDelete)}</a></
  * (the owner, 2026-11-02): that product goes in a hidden field, the heading names it, and its plans (or its price) and
  * how paying works stand where the question was; the products not open yet are left out.
  */
-export function signupPage({ csrf, form = {}, error = '', google = false, open = ['teder', 'toran'], payment = 'manual', founders = null }) {
+/**
+ * A product's plans to pick from (a radio each: its name, what a month gives and its price), for /signup and for adding
+ * a product (addProductPage). Each product's plans have their own field: Teder's `plan` (full, small), Toran's
+ * `plan_toran` (store, big); `form` starts one chosen, else the product's default. `free`: the founders' offer waives
+ * the setup fee, so the price is the month alone (the owner, 2026-11-11: no setup-fee line at all then).
+ */
+export const PLAN_FIELD = { teder: 'plan', toran: 'plan_toran' };
+function planRows(p, form = {}, { free = false } = {}) {
+  const field = PLAN_FIELD[p];
+  const picked = Object.hasOwn(PLANS[p], form[field] ?? '') ? form[field] : plansOf(p)[0];
+  return plansOf(p)
+    .map(
+      (k) =>
+        `<label class="plan-pick"><input type="radio" name="${field}" value="${k}"${k === picked ? ' checked' : ''}><span><b>${esc(PLAN_NAMES[k])}</b><small>${esc(planWhat(PLANS[p][k]))}</small><small class="price">${esc(SIGNUP.price(ils(PLANS[p][k].monthly), free ? '' : ils(PLANS[p][k].setup)))}</small></span></label>`
+    )
+    .join('');
+}
+const planLegend = (p) => (p === 'toran' ? SIGNUP.planLegendToran : SIGNUP.planLegend);
+const planHint = (p, free = false) => (p === 'toran' ? (free ? SIGNUP.planHintToranFree : SIGNUP.planHintToran) : free ? SIGNUP.planHintFree : SIGNUP.planHint);
+
+// The box every sign-up and every product added ticks: each product's short contract, then the terms and the privacy
+// policy, each in a new tab. Each contract is in its own span (c-<product>), so on /signup the one of a product not
+// ticked steps aside once another is (site.css), and the box names what is being bought.
+const newTab = (href, words) => `<a href="${esc(href)}" target="_blank" rel="noopener">${esc(words)}</a>`;
+const termsBox = (products, checked) =>
+  `<label class="check terms"><input type="checkbox" name="terms" value="1" required${checked ? ' checked' : ''}> <span>${esc(SIGNUP.termsPre)}${products
+    .map((p) => `<span class="c-${p}">${newTab(CONTRACT_URLS[p], SIGNUP.contractLink(PRODUCT_NAMES[p]))}${esc(SIGNUP.contractSep)}</span>`)
+    .join('')}${newTab(TERMS_URL, SIGNUP.termsLink)}${esc(SIGNUP.termsMid)}${newTab(PRIVACY_URL, SIGNUP.privacyLink)}</span></label>`;
+
+export function signupPage({ csrf, form = {}, error = '', errorAt = '', google = false, open = ['teder', 'toran'], payment = 'manual', founders = null }) {
   const chosen = [].concat(form.products || []);
   const only = open.length === 1 ? open[0] : null;
+  // While the founders' offer has a spot, the plans show their month alone, and its note says once that there is no
+  // setup fee.
+  const free = Boolean(founders?.left);
   // A product sign-up does not offer yet (OF_SIGNUP_PRODUCTS): shown after the open ones, its box disabled and outside
   // the form's data, with a "בקרוב" tag and one line on why.
-  // A product with plans (Teder) shows each plan, with what a month gives and its price, to choose under its box, once
-  // the box is ticked (site.css), or from the start when it is the only product.
-  // Each product's plans have their own field: Teder's `plan` (full, small), Toran's `plan_toran` (store, big). ?plan=
-  // (the website's buttons, mapped in app.js) starts that one chosen; anything else, or none, the product's default.
-  const field = { teder: 'plan', toran: 'plan_toran' };
-  const picked = (p) => (Object.hasOwn(PLANS[p], form[field[p]] ?? '') ? form[field[p]] : plansOf(p)[0]);
-  const planRows = (p) =>
-    plansOf(p)
-      .map(
-        (k) =>
-          `<label class="plan-pick"><input type="radio" name="${field[p]}" value="${k}"${k === picked(p) ? ' checked' : ''}><span><b>${esc(PLAN_NAMES[k])}</b><small>${esc(planWhat(PLANS[p][k]))}</small><small class="price">${esc(SIGNUP.price(ils(PLANS[p][k].monthly), ils(PLANS[p][k].setup)))}</small></span></label>`
-      )
-      .join('');
-  const legend = (p) => (p === 'toran' ? SIGNUP.planLegendToran : SIGNUP.planLegend);
-  const hint = (p) => (p === 'toran' ? SIGNUP.planHintToran : SIGNUP.planHint);
-  const plans = (p) => (PLANS[p] ? `<fieldset class="plans-pick"><legend>${esc(legend(p))}</legend>${planRows(p)}<small>${esc(hint(p))}</small></fieldset>` : '');
-  const listPrice = (p) => `<small class="price">${esc(SIGNUP.price(ils(LIST_PRICES[p].monthly), ils(LIST_PRICES[p].setup)))}</small>`;
+  // A product with plans shows each plan, with what a month gives and its price, to choose under its box, once the box
+  // is ticked (site.css), or from the start when it is the only product. ?plan= (the website's buttons, mapped in
+  // app.js) starts that one chosen; anything else, or none, the product's default.
+  const plans = (p) => (PLANS[p] ? `<fieldset class="plans-pick"><legend>${esc(planLegend(p))}</legend>${planRows(p, form, { free })}<small>${esc(planHint(p, free))}</small></fieldset>` : '');
+  const listPrice = (p) => `<small class="price">${esc(SIGNUP.price(ils(LIST_PRICES[p].monthly), free ? '' : ils(LIST_PRICES[p].setup)))}</small>`;
   const product = (p) =>
     open.includes(p)
       ? `<label class="product-pick"><input type="checkbox" name="products" value="${p}"${chosen.includes(p) ? ' checked' : ''}>${productMark(p)}<span><b>${esc(PRODUCT_NAMES[p])}</b><small>${esc(SIGNUP.productWhat[p])}</small>${PLANS[p] ? '' : listPrice(p)}</span></label>${plans(p)}`
       : `<label class="product-pick soon"><input type="checkbox" disabled aria-describedby="su-soon-${p}">${productMark(p)}<span><b>${esc(PRODUCT_NAMES[p])}</b><small id="su-soon-${p}">${esc(SIGNUP.productSoon)}</small></span><span class="tag off">${esc(SIGNUP.soon)}</span></label>`;
   const order = ['toran', 'teder'].sort((a, b) => Number(!open.includes(a)) - Number(!open.includes(b)));
-  // The question, or with one product its plans in the question's place and look (fieldset.products-pick).
+  // The error beside the field it is about, not at the foot by the button (the audit of 2026-11-11); one about the whole
+  // form (too many, the day's ceiling) stays by the button.
+  const err = (at) => (error && errorAt === at ? `<p class="error" id="su-err" role="alert">${esc(error)}</p>` : '');
+  const invalid = (at) => (error && errorAt === at ? ' aria-invalid="true" aria-describedby="su-err"' : '');
+  // The question, or with one product its plans in the question's place and look (fieldset.products-pick). "אפשר לבחור
+  // את שניהם" goes with the question, before the products, not after the last one's plans.
   const pick = only
     ? `<input type="hidden" name="products" value="${only}">
-<fieldset class="products-pick">${PLANS[only] ? `<legend>${esc(legend(only))}</legend>${planRows(only)}<small>${esc(hint(only))}</small>` : listPrice(only)}
+<fieldset class="products-pick">${PLANS[only] ? `<legend>${esc(planLegend(only))}</legend>${planRows(only, form, { free })}<small>${esc(planHint(only, free))}</small>` : listPrice(only)}
 <small>${esc(SIGNUP.pricesNote(payment, PRODUCT_NAMES[only]))}</small>
 </fieldset>`
     : `<fieldset class="products-pick"><legend>${esc(SIGNUP.productsLegend)}</legend>
+${open.length > 1 ? `<small class="pick-hint">${esc(SIGNUP.productsHint)}</small>` : ''}
 ${order.map(product).join('\n')}
-${open.length > 1 ? `<small>${esc(SIGNUP.productsHint)}</small>` : ''}
 <small>${esc(SIGNUP.pricesNote(payment))}</small>
 </fieldset>`;
-  // The box: the short contract of each product the form sells, then the terms and the privacy policy, each in a tab.
-  const newTab = (href, words) => `<a href="${esc(href)}" target="_blank" rel="noopener">${esc(words)}</a>`;
-  const contracts = order.filter((p) => open.includes(p)).map((p) => newTab(CONTRACT_URLS[p], SIGNUP.contractLink(PRODUCT_NAMES[p])));
+  const errField = errorAt === 'name' || errorAt === 'business' || errorAt === 'email' || errorAt === 'products' || errorAt === 'terms';
   return `
 <section class="card signup">
 <h1>${esc(only ? SIGNUP.headingFor(PRODUCT_NAMES[only]) : SIGNUP.heading)}</h1>
 <p class="lead">${esc(SIGNUP.lead)}</p>
-${founders?.left ? `<p class="founders-note">${esc(SIGNUP.founders(founders.spots, founders.left))}</p>` : ''}
+${free ? `<p class="founders-note">${esc(SIGNUP.founders(founders.spots, founders.left))}</p>` : ''}
 <form method="post" action="/signup">
 ${csrfField(csrf)}
 <label for="su-name">${esc(SIGNUP.nameLabel)}</label>
-<input id="su-name" name="name" autocomplete="name" required minlength="2" maxlength="80" value="${esc(form.name || '')}">
+<input id="su-name" name="name" autocomplete="name" required minlength="2" maxlength="80" value="${esc(form.name || '')}"${invalid('name')}>
+${err('name')}
 <label for="su-business">${esc(SIGNUP.businessLabel)}</label>
-<input id="su-business" name="business" autocomplete="organization" required minlength="2" maxlength="80" value="${esc(form.business || '')}" aria-describedby="su-business-hint">
+<input id="su-business" name="business" autocomplete="organization" required minlength="2" maxlength="80" value="${esc(form.business || '')}" aria-describedby="su-business-hint${error && errorAt === 'business' ? ' su-err' : ''}"${error && errorAt === 'business' ? ' aria-invalid="true"' : ''}>
 <small id="su-business-hint">${esc(SIGNUP.businessHint)}</small>
-${pick}
-<label class="check terms"><input type="checkbox" name="terms" value="1" required${form.terms ? ' checked' : ''}> <span>${esc(SIGNUP.termsPre)}${contracts.map((c) => `${c}${esc(SIGNUP.contractSep)}`).join('')}${newTab(TERMS_URL, SIGNUP.termsLink)}${esc(SIGNUP.termsMid)}${newTab(PRIVACY_URL, SIGNUP.privacyLink)}</span></label>
-<div class="hp" aria-hidden="true"><label for="su-website">${esc(SIGNUP.honeypot)}</label><input id="su-website" name="website" tabindex="-1" autocomplete="off"></div>
+${err('business')}
 <label for="su-email">${esc(SIGNUP.emailLabel)}</label>
-<input id="su-email" name="email" type="email" inputmode="email" autocomplete="email" dir="ltr" required maxlength="254" placeholder="name@example.com" value="${esc(form.email || '')}">
-${error ? `<p class="error" id="su-err" role="alert">${esc(error)}</p>` : ''}
+<input id="su-email" name="email" type="email" inputmode="email" autocomplete="email" dir="ltr" required maxlength="254" placeholder="name@example.com" value="${esc(form.email || '')}"${invalid('email')}>
+${err('email')}
+${pick}
+${err('products')}
+${termsBox(order.filter((p) => open.includes(p)), form.terms)}
+${err('terms')}
+<div class="hp" aria-hidden="true"><label for="su-website">${esc(SIGNUP.honeypot)}</label><input id="su-website" name="website" tabindex="-1" autocomplete="off"></div>
+${error && !errField ? `<p class="error" id="su-err" role="alert">${esc(error)}</p>` : ''}
 <button class="primary" name="via" value="email">${esc(SIGNUP.submit)}</button>
 ${google ? `<p class="or" role="separator"><span>${esc(SIGNUP.or)}</span></p>
 <button class="google" name="via" value="google" formnovalidate>${GOOGLE_G}<span>${esc(SIGNUP.googleButton)}</span></button>
@@ -518,11 +546,15 @@ ${links([['/signup', SIGNUP.again]])}`;
  * The page the email's link opens: what is about to be opened, how paying works next (`payment`, OF_PAYMENT), and the
  * button (mail scanners open links).
  */
+// Each product a line with its plan: Teder's is `plan`, Toran's `plan_toran` (the audit of 2026-11-11: Toran's plan was
+// left out).
+const signupPlan = (row, p) => (p === 'toran' ? row.plan_toran : p === 'teder' ? row.plan : null);
 export const signupConfirmPage = ({ csrf, token, row, payment = 'manual' }) => `
 <section class="card">
 <h1>${esc(SIGNUP.confirmTitle)}</h1>
 <p class="lead">${esc(SIGNUP.confirmLead(row.business, row.email))}</p>
-<p class="muted">${esc(SIGNUP.confirmProducts(row.products.map((p) => productLabel(p, p === 'teder' ? row.plan : null)).join(SIGNUP.and)))}</p>
+<p class="muted picked-h">${esc(SIGNUP.confirmProducts)}</p>
+<ul class="prices picked">${row.products.map((p) => `<li>${esc(productLabel(p, signupPlan(row, p)))}</li>`).join('')}</ul>
 <p class="muted">${esc(SIGNUP.confirmPay(payment, opensAfter(payment, row.products.map((p) => PRODUCT_NAMES[p]).join(SIGNUP.and), row.products.length > 1)))}</p>
 <form method="post" action="/signup/confirm">${csrfField(csrf)}<input type="hidden" name="t" value="${esc(token)}"><button class="primary">${esc(SIGNUP.confirmButton)}</button></form>
 </section>`;
@@ -579,7 +611,7 @@ function billingCard(b, { readOnly, first, products, access, prices, payHow = ''
   const label = checkout ? SETUP.billingPay : wa ? (payHow ? SETUP.billingSendReceipt : SETUP.billingWrite) : SETUP.billingContact;
   // A founder's first payment has no setup fee (src/accounts/founders.js): one line says why it is not there.
   const founderNote = founder && due.lines.some((l) => l.kind === 'owed') ? `<p class="founders-note">${esc(SETUP.founders)}</p>` : '';
-  if (overWa) return payWaCard({ done, due, readOnly, first, payWa, founderNote });
+  if (overWa) return payWaCard({ done, due, readOnly, first, payWa, founderNote, payHow });
   const btn =
     open && href && !readOnly
       ? `<a class="button ${checkout && first() ? 'primary' : 'quiet'}" href="${esc(href)}">${esc(label)}</a>`
@@ -614,10 +646,12 @@ ${open && !checkout ? `<p class="muted">${esc(SETUP.billingAsk(wa))}</p>` : ''}
  * information should be there. No unnecessary info on the page"): the amount with VAT, large; one line, what each
  * product's payment is for (its plan, and the month: the first with the setup fee, the new one, or the one that starts
  * on a day) and then, in the 72 hours, the day it works until, or that it is stopped, or that it opens once paid; and
- * "לתשלום אוטומטי בוואטסאפ". The transfer's details, the receipt (אסמכתא) and the breakdown of the VAT are Toran's
- * answer there (GET /internal/pay). `due` is dueOf() with something owed; no button read-only, or without a code.
+ * "לתשלום אוטומטי בוואטסאפ". The breakdown of the VAT is Toran's answer there (GET /internal/pay). Under the button,
+ * one tap away, the owner's details (`payHow`, OF_PAYMENT_METHOD) for a transfer without WhatsApp, with the receipt by
+ * a reply (the owner, 2026-11-11: the bank details visible or one tap away, never missing). `due` is dueOf() with
+ * something owed; no button read-only, or without a code.
  */
-function payWaCard({ done, due, readOnly, first, payWa, founderNote = '' }) {
+function payWaCard({ done, due, readOnly, first, payWa, founderNote = '', payHow = '' }) {
   const owed = due.lines.filter((l) => l.item);
   const what = owed.map((l) =>
     SETUP.payFor(productLabel(l.product, l.plan), { from: l.kind === 'ahead' && l.paidUntil ? dayHe(addDays(l.paidUntil, 1)) : '', first: l.kind === 'owed' && l.item.firstMonth, setup: l.item.setup > 0 })
@@ -632,11 +666,13 @@ function payWaCard({ done, due, readOnly, first, payWa, founderNote = '' }) {
     fresh.length ? opensAfter('manual', names(fresh), fresh.length > 1) : '',
   ].filter(Boolean);
   const btn = payWa.href && !readOnly ? `<p class="pay-go"><a class="button ${first() ? 'primary' : 'quiet'}" href="${esc(payWa.href)}">${esc(PAY.button)}</a></p>` : '';
+  const direct = payHow ? `<details class="pay-direct"><summary>${esc(SETUP.payDirect)}</summary><p>${esc(SETUP.billingHow(payHow))}</p><p class="muted">${esc(SETUP.billingReceipt(false))}</p></details>` : '';
   return `<section class="card setup-p pay-wa" id="setup-billing"><header><div><h2>${esc(SETUP.billingTitle)}</h2></div><span class="tag${done ? '' : ' off'}">${esc(done ? SETUP.ready : SETUP.notReady)}</span></header>
 <p class="pay-amount"><b>${esc(ils(due.total))}</b> <span>${esc(T.vatIncluded)}</span></p>
 <p class="pay-for">${esc([...what, ...when].join(' '))}</p>
 ${founderNote}
 ${btn}
+${direct}
 </section>`;
 }
 

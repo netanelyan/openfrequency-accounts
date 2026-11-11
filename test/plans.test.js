@@ -62,7 +62,7 @@ test('a sign-up for the small plan: its price and setup fee, 15 slideshows and 4
     const r = await b.post('/signup', { name: 'Noa Levi', business: 'Noa Ceramics', email: 'noa@example.com', products: ['teder'], plan: 'small', terms: '1', website: '', via: 'email' });
     assert.equal(r.status, 200);
     const confirm = await b.get(pathOf(t.mails[0].link));
-    assert.match(confirm.body, /המוצרים שבחרתם: תדר, החבילה הקטנה\./);
+    assert.match(confirm.body, /<ul class="prices picked"><li>תדר, החבילה הקטנה<\/li><\/ul>/);
     await b.post('/signup/confirm', { t: tokenOf(t.mails[0].link) });
     const ws = t.db.get('SELECT * FROM workspaces');
     const s = sub(t.db, ws.id);
@@ -120,6 +120,8 @@ test("a sign-up for Toran's big plan: the website's button chooses it, 1,190 ₪
     await c.get('/signup');
     const bad = await c.post('/signup', { name: 'Dan Cohen', business: 'Dan Shop', email: 'dan2@example.com', products: ['toran'], plan_toran: 'small', terms: '1', website: '', via: 'email' });
     assert.equal(bad.status, 400);
+    // In Toran's own words (the audit of 2026-11-11: it said "של תדר"), beside the products it is about.
+    assert.match(bad.body, /<\/fieldset>\n<p class="error" id="su-err" role="alert">צריך לבחור אחת מהחבילות של תורן\.<\/p>/);
   } finally {
     await t.done();
     await toran.close();

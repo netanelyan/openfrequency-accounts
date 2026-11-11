@@ -463,26 +463,44 @@ export const MAIL = {
   ],
   signupButton: 'לאישור החשבון',
 
-  // To the owner (OF_SIGNUP_NOTIFY), on each confirmed sign-up.
+  // To the owner (OF_SIGNUP_NOTIFY), on each confirmed sign-up, and when a customer adds a product to their account
+  // (`added`: the same notice, about that product; app.js /subscription/<product>/add).
   noticeSubject: (business) => `הרשמה חדשה: ${business}`,
-  noticeLines: (name, email, business, products, at, method, link, prices = [], pay = '') => [
-    'נפתח חשבון חדש מההרשמה באתר.',
+  noticeAddedSubject: (business, product) => `מוצר נוסף: ${business}, ${product}`,
+  noticeLines: (name, email, business, products, at, method, link, prices = [], pay = '', { added = false, founders = '' } = {}) => [
+    added ? 'לקוח קיים הוסיף מוצר לחשבון שלו, מהדף הראשי.' : 'נפתח חשבון חדש מההרשמה באתר.',
     `שם: ${name}`,
     `מייל: ${email}`,
     `עסק: ${business}`,
-    `מוצרים: ${products}`,
+    `${added ? 'נוסף' : 'מוצרים'}: ${products}`,
     ...[].concat(prices),
+    ...(founders ? [founders] : []),
     `מתי: ${at}`,
-    `אישור: ${method === 'google' ? 'Google' : 'קישור במייל'}`,
+    ...(added ? [] : [`אישור: ${method === 'google' ? 'Google' : 'קישור במייל'}`]),
     ...(pay ? [pay] : []),
     { link },
   ],
   /** A product's plan and price, as its subscription has them: "תדר, החבילה הקטנה: 490 ₪ לחודש + 990 ₪ דמי הקמה, לא כולל מע״מ". */
   noticePrice: (product, monthly, setup, vat) => `${product}: ${monthly} לחודש${setup ? ` + ${setup} דמי הקמה` : ''}, ${vat}`,
+  // The founders' spot (src/accounts/founders.js) a sign-up took, or (`already`) the one the workspace took at its
+  // sign-up, which waives the setup fee of a product it adds too.
+  // `spots` 0: the offer was turned off since (OF_FOUNDERS_SPOTS=0), and the spot is said alone.
+  noticeFounders: (spot, spots, already = false) => {
+    const at = spots ? `מקום ${spot} מתוך ${spots}` : `מקום ${spot}`;
+    return already ? `מבצע המייסדים: הם ב${at} מההרשמה, אז גם המוצר הזה בלי דמי הקמה.` : `מבצע המייסדים: ${at}, בלי דמי הקמה.`;
+  },
   /** What the owner does next, by the payment mode: in manual, email the customer the payment details; either way, record the payment. */
-  // `sent`: the payment details went out in the customer's welcome email (OF_PAYMENT_METHOD), so there is nothing to send.
-  noticePay: (mode, email, names, many, sent = false) =>
-    `${mode === 'provider' ? 'הלקוח משלם בכרטיס אשראי בדף התשלום. כשהתשלום עובר' : sent ? `פרטי התשלום כבר אצל ${email}, במייל הפתיחה. כשהתשלום מגיע` : `צריך לשלוח ל-${email} במייל את פרטי התשלום. כשהתשלום מגיע`}, רושמים אותו בקונסולה ("התקבל תשלום לחודש"), ורק אז ${names} ${many ? 'נפתחים' : 'נפתח'} ללקוח.`,
+  // `sent`: the payment details went out in the customer's email (OF_PAYMENT_METHOD), so there is nothing to send;
+  // `wa`: beside the button to pay over WhatsApp (src/web/pay.js), whose receipts wait on /admin. `added`: the email
+  // about the product added, not the welcome email.
+  noticePay: (mode, email, names, many, { sent = false, wa = false, added = false } = {}) => {
+    const opens = `${names} ${many ? 'נפתחים' : 'נפתח'} ללקוח`;
+    const where = added ? 'במייל על ההוספה' : 'במייל הפתיחה';
+    if (mode === 'provider') return `הלקוח משלם בכרטיס אשראי בדף התשלום. כשהתשלום עובר, רושמים אותו בקונסולה ("התקבל תשלום לחודש"), ורק אז ${opens}.`;
+    if (sent && wa)
+      return `פרטי התשלום כבר אצל ${email}, ${where}, לצד הכפתור "${PAY.button}". ${opens} כשהתשלום נרשם: אישור העברה שמגיע לתורן בוואטסאפ מחכה לכם בלוח, ותשלום שמגיע בדרך אחרת רושמים בקונסולה ("התקבל תשלום לחודש").`;
+    return `${sent ? `פרטי התשלום כבר אצל ${email}, ${where}. כשהתשלום מגיע` : `צריך לשלוח ל-${email} במייל את פרטי התשלום. כשהתשלום מגיע`}, רושמים אותו בקונסולה ("התקבל תשלום לחודש"), ורק אז ${opens}.`;
+  },
   noticeButton: 'לחשבון בקונסולה',
 
   existingSubject: 'כבר יש לכם חשבון ב-OpenFrequency',
@@ -496,11 +514,16 @@ export const MAIL = {
   // Right after a sign-up is confirmed. `mode` is how payment works (OF_PAYMENT), `opens` when the products open
   // (opensAfter()), and `prices` the price lines, then (manual) how to pay and whom to ask.
   welcomeSubject: (business) => `החשבון של ${business} נפתח`,
+  // A product an owner added to their account (app.js /subscription/<product>/add): the same email, about it.
+  addedSubject: (product, business) => `${product} נוסף לחשבון של ${business}`,
   // `details`: the owner's payment details are in the email (OF_PAYMENT_METHOD), below the price, so it points to them
-  // instead of promising to send them; 'wa', paying over WhatsApp, where its button below gives them.
-  welcomeLines: (business, link, mode, opens, prices, details = false) => [
+  // instead of promising to send them; 'wa', paying over WhatsApp, where its button below leads (the details are under
+  // it too, quieter). `added`: the product added, by its name, for an account that was open already. `plainLink`: the
+  // setup page as a plain link, when the payment's button is the email's one button (the audit of 2026-11-11: two blue
+  // buttons, one action).
+  welcomeLines: (business, link, mode, opens, prices, details = false, { added = '', plainLink = false } = {}) => [
     'שלום,',
-    `החשבון של ${business} ב-OpenFrequency פתוח. נשארו שני דברים.`,
+    added ? `${added} נוסף לחשבון של ${business} ב-OpenFrequency. נשארו שני דברים.` : `החשבון של ${business} ב-OpenFrequency פתוח. נשארו שני דברים.`,
     mode === 'provider'
       ? `קודם התשלום על המנוי. משלמים בכרטיס אשראי בדף ההגדרה, בכפתור "לתשלום". ${opens}`
       : details === 'wa'
@@ -510,13 +533,24 @@ export const MAIL = {
           : `קודם התשלום על המנוי. את פרטי התשלום נשלח לכם במייל, לכתובת הזאת. ${opens}`,
     ...[].concat(prices),
     'אחר כך ההגדרה. בדף ההגדרה יש רשימה של מה שנשאר, וכל צעד מוביל למקום שבו עושים אותו.',
-    { link },
-    'אין סיסמה לזכור. נכנסים עם קישור שנשלח למייל, או עם Google.',
+    plainLink ? { link, label: MAIL.welcomeButton, plain: true } : { link },
+    ...(added ? [] : ['אין סיסמה לזכור. נכנסים עם קישור שנשלח למייל, או עם Google.']),
   ],
   welcomeButton: 'לדף ההגדרה',
-  // `noRefund`: Teder's setup fee, which its terms say is not refunded (Toran's terms say it otherwise).
-  welcomePrice: (product, monthly, setup, noRefund = false) => `${product}: ${monthly} לחודש ועוד מע״מ, ודמי הקמה של ${setup} פעם אחת.${noRefund ? ' דמי ההקמה לא מוחזרים.' : ''}`,
+  // `noRefund`: Teder's setup fee, which its terms say is not refunded (Toran's terms say it otherwise). No `setup`
+  // (the founders' offer made it 0): no word of a fee, and welcomeFounders says once why (the owner, 2026-11-11: no
+  // setup-fee line at all for a founder). `plusVat` false: a price recorded with VAT in it.
+  welcomePrice: (product, monthly, setup = '', noRefund = false, plusVat = true) =>
+    setup
+      ? `${product}: ${monthly} לחודש ${plusVat ? 'ועוד מע״מ' : 'כולל מע״מ'}, ודמי הקמה של ${setup} פעם אחת.${noRefund ? ' דמי ההקמה לא מוחזרים.' : ''}`
+      : `${product}: ${monthly} לחודש ${plusVat ? 'ועוד מע״מ' : 'כולל מע״מ'}.`,
+  // A product of the account already paid for once, owed again with the one added (in its grace, or stopped).
+  welcomeMonth: (product, monthly, plusVat = true) => `${product}: ${monthly} לחודש ${plusVat ? 'ועוד מע״מ' : 'כולל מע״מ'}, על החודש החדש.`,
+  welcomeFounders: 'אתם בין העסקים הראשונים שנרשמו במבצע המייסדים, אז אין דמי הקמה. משלמים רק את החודש.',
   welcomePayHow: (how) => `איך משלמים: ${how}`,
+  // Under the button to pay over WhatsApp, quieter: the owner's details for a transfer without it, and the receipt by a
+  // reply (the owner, 2026-11-11: the bank details always there, under the one main button).
+  payDirect: (how) => `אפשר גם להעביר בלי וואטסאפ. איך משלמים: ${how}`,
   /** The first payment with VAT (payTotal(): its total, and the part before VAT with the VAT on it), and the month after. */
   payNow: (total, net, vat) => payNowLine(total, net, vat),
   payThen: (monthly) => payThenLine(monthly),
@@ -546,38 +580,46 @@ export const MAIL = {
   paidButton: 'לדף הראשי',
   paidGo: (product) => `להיכנס ל${product}`,
 
-  // To each owner, before and after a payment falls due (src/web/daily.js). `pay` is how to pay (a line, or lines).
-  // soon: a week before and the day before. due: the first day after the paid month; `paid` is its last day and
-  // `until` the day the 72 hours end, with its weekday (weekdayHe()). last: that day.
-  soonSubject: (product, d) => `התשלום הבא על ${product}: ${d}`,
-  soonLines: (business, product, d, amount, pay, link) => [
+  // To each owner, before and after a payment falls due (src/web/daily.js). `pay` is how to pay (a line, or lines),
+  // before the button; `after`, lines under it (paying over WhatsApp: the details for a transfer without it, quieter).
+  // soon: a week before and the day before (`tomorrow`). due: the first day after the paid month; `paid` is its last
+  // day and `until` the day the 72 hours end, with its weekday (weekdayHe()). last: that day. stopped: after it.
+  soonSubject: (product, d) => `התשלום הבא על ${product}, ב-${d}`,
+  soonLines: (business, product, d, amount, pay, link, after = [], tomorrow = false) => [
     'שלום,',
-    `החודש הבא של ${product} בחשבון של ${business} מתחיל ב-${d}. הסכום: ${amount}.`,
+    tomorrow ? `מחר, ${d}, מתחיל החודש הבא של ${product} בחשבון של ${business}. הסכום: ${amount}.` : `החודש הבא של ${product} בחשבון של ${business} מתחיל ב-${d}. הסכום: ${amount}.`,
     ...[].concat(pay),
     { link },
+    ...[].concat(after),
     'כבר שילמתם? אפשר להתעלם מהמייל הזה. ביטלתם, או רוצים לבטל? אפשר לעשות את זה מהדף הראשי.',
   ],
   dueSubject: (product) => `התשלום על החודש החדש של ${product} עוד לא הגיע`,
-  dueLines: (business, product, paid, until, amount, pay, link) => [
+  dueLines: (business, product, paid, until, amount, pay, link, after = []) => [
     'שלום,',
     `המנוי ל${product} בחשבון של ${business} שולם עד ${paid}, והתשלום על החודש החדש (${amount}) עוד לא הגיע אלינו.`,
     `${product} ממשיך לעבוד עד סוף ${until}. אם התשלום לא יגיע עד אז, ${product} ייעצר עד שישולם.`,
     ...[].concat(pay),
     { link },
+    ...[].concat(after),
   ],
   lastSubject: (product) => `${product} ייעצר מחר אם התשלום לא יגיע היום`,
-  lastLines: (business, product, until, amount, pay, link) => [
+  lastLines: (business, product, until, amount, pay, link, after = []) => [
     'שלום,',
     `היום האחרון לשלם על החודש החדש של ${product} בחשבון של ${business} הוא היום, ${until}. הסכום: ${amount}.`,
     `אם התשלום לא יגיע עד סוף היום, ${product} ייעצר עד שישולם.`,
     ...[].concat(pay),
     { link },
+    ...[].concat(after),
   ],
   stoppedSubject: (product) => `${product} נעצר עד שהתשלום יגיע`,
-  stoppedLines: (business, product, link) => [
+  // With the amount and the way to pay, as the emails before it (the audit of 2026-11-11: it had no way to pay).
+  stoppedLines: (business, product, link, amount = '', pay = [], after = []) => [
     'שלום,',
     `התשלום על ${product} בחשבון של ${business} לא הגיע עד סוף תקופת החסד, אז ${product} נעצר. הנתונים נשמרים, ו${product} ייפתח שוב כשהתשלום יגיע.`,
+    ...(amount ? [`הסכום: ${amount}.`] : []),
+    ...[].concat(pay),
     { link },
+    ...[].concat(after),
   ],
   payButton: 'לחשבון',
   // To each owner of a workspace on the terms from before 2026-11-03, once: the change to the 72 hours, from `d` (the
@@ -675,19 +717,24 @@ export const SIGNUP = {
   productWhat: { toran: 'עונה ללקוחות שלכם בוואטסאפ', teder: 'מצגות בעברית לטיקטוק, לאינסטגרם ולפייסבוק' },
   soon: 'בקרוב',
   productSoon: 'ההרשמה אליו תיפתח בקרוב.',
-  price: (monthly, setup) => `${monthly} לחודש ועוד מע״מ, ודמי הקמה של ${setup} פעם אחת`,
-  // The founders' offer (src/accounts/founders.js), with the real count of spots left.
-  founders: (spots, left) => `מבצע מייסדים: ${spots} העסקים הראשונים שנרשמים לא משלמים דמי הקמה. נשארו ${left} מתוך ${spots} מקומות, ומי שנרשם עכשיו תופס אחד מהם.`,
+  // No `setup` while the founders' offer has spots (src/accounts/founders.js): the plan says its month only, and the
+  // offer's note says once that there is no setup fee (the owner, 2026-11-11: no setup-fee line at all when the offer
+  // makes it 0).
+  price: (monthly, setup = '') => (setup ? `${monthly} לחודש ועוד מע״מ, ודמי הקמה של ${setup} פעם אחת` : `${monthly} לחודש ועוד מע״מ`),
+  // The founders' offer, with the real count of spots left.
+  founders: (spots, left) => `במבצע המייסדים, ${spots} העסקים הראשונים שנרשמים לא משלמים דמי הקמה. נשארו ${left} מקומות, ומי שנרשם עכשיו מקבל אחד מהם.`,
   planLegend: 'איזו חבילה של תדר',
   planLegendToran: 'איזו חבילה של תורן',
   // Teder's setup fee is not refunded (its terms: "דמי ההקמה לא מוחזרים"). Toran's terms say it otherwise, and this note
   // is Teder's only. The plans show only once Teder is ticked (site.css), or with Teder the only product open, so the
-  // note need not say it applies to Teder.
+  // note need not say it applies to Teder. `Free`: while the founders' offer waives the fee, nothing about it.
   planHint: 'אפשר לעבור חבילה אחר כך, בכתיבה אלינו. דמי ההקמה לא מוחזרים, ומשלמים אותם פעם אחת, עם החודש הראשון.',
+  planHintFree: 'אפשר לעבור חבילה אחר כך, בכתיבה אלינו.',
   // Toran's contract (openfrequency-web legal.mjs, c-setup): the fee pays for connecting Toran to the store and its
   // channels, and is not refunded once that work has started. A month above the plan's conversations costs nothing
   // more; two in a row move the store to the big plan, told a week ahead (src/plans.ts in openfrequency-toran).
   planHintToran: 'דמי ההקמה משולמים פעם אחת, עם החודש הראשון, ומכסים את החיבור של תורן לחנות ולערוצים שלכם. אחרי שהתחלנו לחבר, הם לא מוחזרים. חודש מעל מספר השיחות לא עולה לכם יותר.',
+  planHintToranFree: 'חודש מעל מספר השיחות לא עולה לכם יותר.',
   /** How paying works, by the payment mode (OF_PAYMENT), and cancelling. `product`: the only one open, by its name. */
   pricesNote: (mode, product = '') =>
     `${mode === 'provider' ? 'אחרי שהחשבון נפתח, משלמים בו בכרטיס אשראי' : 'אחרי שהחשבון נפתח, נשלח לכם במייל את פרטי התשלום'}, ו${opensAfter(mode, product || 'המוצרים', !product)} אפשר לבטל את המנוי מהדף הראשי, והוא עובד עד סוף התקופה ששולמה.`,
@@ -714,6 +761,7 @@ export const SIGNUP = {
     product_closed: 'ההרשמה לאחד המוצרים שבחרתם עוד לא נפתחה. אפשר להירשם עכשיו למוצרים שפתוחים.',
     no_terms: 'כדי לפתוח חשבון צריך להסכים להסכם של המוצר, לתנאי השימוש ולמדיניות הפרטיות.',
     bad_plan: 'צריך לבחור אחת מהחבילות של תדר.',
+    bad_plan_toran: 'צריך לבחור אחת מהחבילות של תורן.',
   },
   busy: 'היום נשלחו מכאן הרבה מיילים של הרשמה, אז עצרנו אותם עד מחר. אפשר לנסות שוב מחר, או לכתוב לנו.',
   tooMany: (seconds) => `נשלחו מכאן הרבה בקשות בזמן קצר. נסו שוב בעוד ${minutes(seconds)} דקות.`,
@@ -728,7 +776,8 @@ export const SIGNUP = {
 
   confirmTitle: 'אישור החשבון',
   confirmLead: (business, email) => `לחצו כדי לפתוח את החשבון של ${business}, עם הכתובת ${email}.`,
-  confirmProducts: (names) => `המוצרים שבחרתם: ${names}.`,
+  // Then one product a line, each with its plan (the audit of 2026-11-11: Toran's plan was left out).
+  confirmProducts: 'המוצרים שבחרתם:',
   /** What comes after the button, by the payment mode (OF_PAYMENT). `opens` is opensAfter(). */
   confirmPay: (mode, opens) => `${mode === 'provider' ? 'אחרי שהחשבון נפתח, משלמים בו בכרטיס אשראי.' : 'אחרי שהחשבון נפתח, נשלח לכם במייל את פרטי התשלום.'} ${opens}`,
   confirmButton: 'לפתוח את החשבון',
@@ -805,6 +854,9 @@ export const SETUP = {
   // our WhatsApp with the words written.
   billingReceipt: (wa) => `אחרי ההעברה, שלחו לנו את האסמכתא ${wa ? 'בוואטסאפ' : 'בתשובה לאחד המיילים שקיבלתם מאיתנו'}. ככה נמצא את ההעברה ונרשום את התשלום.`,
   billingSendReceipt: 'לשלוח אסמכתא בוואטסאפ',
+  // Under the button to pay over WhatsApp, one tap away: the owner's details for a transfer without it, and the receipt
+  // by a reply (the owner, 2026-11-11: the bank details visible or one tap away, never missing).
+  payDirect: 'להעביר בלי וואטסאפ',
   // Paying over WhatsApp (src/web/pay.js payOverWa()): the card is the amount, one line and PAY.button. The line is
   // what each product's payment is for (payFor), then when it stops or opens (payDue, payStopped, opensAfter()).
   // `from` is the day a month paid ahead starts; `first` a product never paid, `setup` with its setup fee.

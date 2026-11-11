@@ -16,8 +16,8 @@ import { acceptInvite, consumeMagicLink, createInvite, InviteError, normEmail, p
 import { verifySuperadmin } from '../accounts/superadmin.js';
 import { createWorkspace, getWorkspace, listWorkspaces, recentAudit, setDisabled, setProduct, startViewAs, stopViewAs, WorkspaceError } from '../accounts/workspaces.js';
 import { checkSignup, completeSignup, CONTACT_URL, dropSignup, peekSignup, requestSignup, SignupError, signupNotify, signupOpen, signupProducts, startProducts } from '../accounts/signup.js';
-import { foundersState, giveBackSpot, isFounder } from '../accounts/founders.js';
-import { assistantWa, billingReady, checkoutUrl, payHow, paymentMode, supportWa } from '../accounts/billing.js';
+import { foundersSpots, foundersState, giveBackSpot, isFounder } from '../accounts/founders.js';
+import { amountDue, assistantWa, billingReady, checkoutUrl, payHow, paymentMode, supportWa } from '../accounts/billing.js';
 import { accessAll, accessFor, BillingError, cancelSubscription, resumeSubscription, setComp } from '../accounts/entitlement.js';
 import { eraseWorkspace, productsEver, sameName } from '../accounts/erase.js';
 import { prefsOf, savePrefs } from '../accounts/notify.js';
@@ -240,14 +240,17 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
   };
   // The owner hears of each confirmed sign-up (OF_SIGNUP_NOTIFY). Called once its transaction has committed; the
   // mailer queues and never waits, and a failure here is logged and never stands in the customer's way. It has each
-  // product's plan and price as its subscription has them, and what to do next: in manual mode, email the customer
-  // the payment details.
+  // product's plan and price as its subscription has them, the founders' spot when it took one, and what to do next:
+  // in manual mode, email the customer the payment details unless their email has them. `added`: a product a customer
+  // added to their account (/subscription/<product>/add), the same notice about that product alone.
   const notifyTo = signupNotify(env);
-  const noticeSignup = ({ user, workspace }, method, base) => {
+  const noticeSignup = ({ user, workspace, founder = null }, method, base, { added = null } = {}) => {
     if (!notifyTo.length) return;
     try {
-      const products = enabledProducts(db, workspace.id);
+      const products = added ? [added] : enabledProducts(db, workspace.id);
       const subs = subscriptionsOf(db, workspace.id);
+      // Sign-up's founder is its spot's number; an added product's, { spot, spots, already } (signup.js addProduct).
+      const spot = founder == null ? null : typeof founder === 'object' ? founder : { spot: founder, spots: foundersSpots(env), already: false };
       const fields = {
         name: user.name,
         email: user.email,
@@ -259,12 +262,16 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
           const setupFee = s.setup ?? list.setup;
           return MAIL.noticePrice(P.productLabel(p, s.plan), ils(s.monthly ?? list.monthly), setupFee ? ils(setupFee) : '', (s.vat ?? list.vat) === 'included' ? T.vatIncluded : T.vatExcluded);
         }),
+        founders: spot ? MAIL.noticeFounders(spot.spot, spot.spots, spot.already) : '',
         payment,
-        // The welcome email carries the payment details when the owner wrote them (OF_PAYMENT_METHOD).
+        // The customer's email carries the payment details when the owner wrote them (OF_PAYMENT_METHOD), under the
+        // button to pay over WhatsApp too (with OF_ASSISTANT_WA) since 2026-11-11.
         detailsSent: Boolean(payHow(env)),
+        wa: Boolean(payHow(env) && assistantWa(env)),
+        added: Boolean(added),
         names: products.map((p) => PRODUCT_NAMES[p]).join(SIGNUP.and),
         many: products.length > 1,
-        at: workspace.created_at,
+        at: added ? new Date(now()).toISOString() : workspace.created_at,
         method,
         link: `${base}/admin/accounts#ws-${workspace.id}`,
       };
@@ -285,29 +292,29 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
   // Right after a sign-up is confirmed: the welcome email, what happens next (pay, then set up), with each product's
   // plan and price (Teder's setup fee not refunded, as its terms say), and how paying works in this mode (OF_PAYMENT):
   // manual, we email the details, with how they pay (OF_PAYMENT_METHOD) when the owner has said, and questions come
-  // to us; provider, they pay on the setup page.
-  const welcome = ({ user, workspace }, base) => {
+  // to us; provider, they pay on the setup page. What is to pay is what /setup and Toran say (billing.js amountDue):
+  // after a sign-up, each product's first month and setup fee. `added` (a product added to an open account): the same
+  // email about it, and the payment is everything owed now (the other product's month too, when it is owed). A
+  // founder's setup fee is 0, so no word of one, and one line says why (the owner, 2026-11-11).
+  const welcome = ({ user, workspace, founder = null }, base, { added = null } = {}) => {
     try {
-      const subs = subscriptionsOf(db, workspace.id);
-      const products = enabledProducts(db, workspace.id);
-      // The first payment: each product's month and setup fee, with VAT (payTotal), and the months after it.
-      const owed = [];
-      const months = [];
-      const prices = products.map((p) => {
-        const list = listPrice(p, subs[p]?.plan);
-        const setupFee = subs[p]?.setup ?? list.setup;
-        const monthly = subs[p]?.monthly ?? list.monthly;
-        const vat = subs[p]?.vat ?? list.vat;
-        owed.push({ sum: monthly, vat }, ...(setupFee ? [{ sum: setupFee, vat }] : []));
-        months.push({ sum: monthly, vat });
-        return MAIL.welcomePrice(P.productLabel(p, subs[p]?.plan), ils(monthly), ils(setupFee), p === 'teder' && setupFee > 0);
+      const due = amountDue(db, workspace.id);
+      const owed = due.lines.filter((l) => l.item);
+      const prices = owed.map((l) => {
+        const label = P.productLabel(l.product, l.plan);
+        const plusVat = l.vat !== 'included';
+        return l.kind === 'owed' && l.item.firstMonth
+          ? MAIL.welcomePrice(label, ils(l.item.monthly), l.item.setup ? ils(l.item.setup) : '', l.product === 'teder' && l.item.setup > 0, plusVat)
+          : MAIL.welcomeMonth(label, ils(l.item.monthly), plusVat);
       });
-      const now = payTotal(owed);
-      const total = owed.length ? [MAIL.payNow(ils(now.total), ils(now.net), now.vat ? ils(now.vat) : ''), ...(owed.length > months.length ? [MAIL.payThen(ils(payTotal(months).total))] : [])] : [];
-      const opens = opensAfter(payment, products.map((p) => PRODUCT_NAMES[p]).join(SIGNUP.and), products.length > 1);
+      const total = owed.length ? [MAIL.payNow(ils(due.total), ils(due.net), due.vat ? ils(due.vat) : ''), ...(due.monthsAfter != null ? [MAIL.payThen(ils(due.monthsAfter))] : [])] : [];
+      // What opens once paid: the products owed that are closed now (one in its 72 hours still works).
+      const closed = owed.filter((l) => l.kind === 'owed').map((l) => PRODUCT_NAMES[l.product]);
+      const opens = closed.length ? opensAfter(payment, closed.join(SIGNUP.and), closed.length > 1) : '';
+      const founders = Boolean(founder) && owed.some((l) => l.kind === 'owed' && l.item.firstMonth && !l.item.setup);
       // Paying over WhatsApp (src/web/pay.js): with OF_PAYMENT_METHOD and OF_ASSISTANT_WA, the payment's own button.
       const wa = payOverWa(db, { env, workspaceId: workspace.id, business: workspace.name });
-      mailer.send(welcomeMail(user.email, { business: workspace.name, link: `${base}/setup`, payment, opens, prices, total, payHow: payHow(env), wa: supportWa(env), payLink: wa?.href || null, payButton: PAY.button }));
+      mailer.send(welcomeMail(user.email, { business: workspace.name, link: `${base}/setup`, payment, opens, prices, total, payHow: payHow(env), wa: supportWa(env), payLink: wa?.href || null, payButton: PAY.button, founders, added: added ? PRODUCT_NAMES[added] : '' }));
     } catch (e) {
       log(`[accounts] the welcome email for workspace ${workspace.id} failed: ${e.message}`);
     }
@@ -732,7 +739,9 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
 
         const via = f('via') === 'google' && google ? 'google' : 'email';
         const raw = { name: f('name').slice(0, 200), business: f('business').slice(0, 200), email: f('email').slice(0, 254), products: form.getAll('products'), plan: f('plan').slice(0, 20), plan_toran: f('plan_toran').slice(0, 20), terms: f('terms') === '1' };
-        const again = (status, error, extra) => send(status, layout({ title: SIGNUP.title, body: P.signupPage({ csrf, form: raw, error, google: Boolean(google), open: openProducts, payment, founders: foundersState(db, env) }) }), extra);
+        // `errorAt`: the field an error is about, where the page says it (html.js signupPage); none for the whole form.
+        const again = (status, error, extra, errorAt = '') => send(status, layout({ title: SIGNUP.title, body: P.signupPage({ csrf, form: raw, error, errorAt, google: Boolean(google), open: openProducts, payment, founders: foundersState(db, env) }) }), extra);
+        const FIELD_OF = { bad_name: 'name', bad_business: 'business', bad_email: 'email', no_products: 'products', product_closed: 'products', bad_plan: 'products', bad_plan_toran: 'products', no_terms: 'terms' };
         const sent = (email) => page(200, SIGNUP.sentTitle, P.signupSentPage({ email }));
         // The honeypot: a field people never see. Filled, it was not a person: the same page as a real sign-up, and
         // nothing kept or sent.
@@ -745,7 +754,7 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
           ok = checkSignup(raw, { needEmail: via === 'email', open: openProducts });
         } catch (e) {
           if (!(e instanceof SignupError)) throw e;
-          return again(400, SIGNUP.errors[e.code]);
+          return again(400, SIGNUP.errors[e.code], undefined, FIELD_OF[e.code] || '');
         }
         const wait = Math.max(limiters.signupIp.check(ipKey(ip)) || 0, via === 'email' ? limiters.signupEmail.check(ok.email) || 0 : 0);
         if (wait) return again(429, SIGNUP.tooMany(wait), { 'retry-after': String(wait) });

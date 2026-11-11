@@ -30,11 +30,13 @@ const WA_TEXT = /^https:\/\/wa\.me\/\d+\?text=/;
 
 // `footer`, when there is one: { text, href, label }, a small line under the card (where to turn the email off).
 // `brand`: openfrequency, teder or toran. A line { link } is a button labelled `button`; { link, label } has its own,
-// for an email with two (the welcome email's payment and setup).
+// for an email with two (the welcome email's payment and setup); { link, label, plain: true } is a plain link, not a
+// button, so an email keeps one main action (the audit of 2026-11-11); { small } is a quieter line, under a button
+// (the details for paying without WhatsApp).
 function build(subject, lines, button, footer = null, brand = 'openfrequency') {
   const b = BRAND[brand] || BRAND.openfrequency;
-  const link = lines.find((l) => typeof l === 'object')?.link;
-  const text = [...lines.map((l) => (typeof l === 'object' ? l.link : l)), '', MAIL.signature, ...(footer ? [`${footer.text}\n${footer.href}`] : [])]
+  const link = lines.find((l) => typeof l === 'object' && l.link)?.link;
+  const text = [...lines.map((l) => (typeof l !== 'object' ? l : l.small != null ? l.small : l.plain ? `${l.label}:\n${l.link}` : l.link)), '', MAIL.signature, ...(footer ? [`${footer.text}\n${footer.href}`] : [])]
     .join('\n\n')
     .replace(/\n\n\n\n/g, '\n\n');
   // The line an inbox shows beside the subject: the first one that says something, not the greeting, and not the
@@ -42,10 +44,14 @@ function build(subject, lines, button, footer = null, brand = 'openfrequency') {
   const preview = lines.find((l) => typeof l === 'string' && l !== 'שלום,' && l !== `${subject}.`) || '';
   const body = lines
     .map((l) =>
-      typeof l === 'object'
-        ? `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:26px 0 12px"><tr><td bgcolor="${b.button}" style="background:${b.button};border-radius:12px"><a href="${esc(l.link)}" style="display:inline-block;padding:13px 30px;font:600 16px/1.25 ${FONT};color:#ffffff;text-decoration:none;border-radius:12px">${esc(l.label || button)}</a></td></tr></table>
+      typeof l !== 'object'
+        ? `<p class="of-ink" style="margin:0 0 16px;color:#1d1d1f">${ltrNumbers(esc(l)).replace(/\n/g, '<br>')}</p>`
+        : l.small != null
+          ? `<p class="of-muted" style="margin:0 0 14px;font-size:14px;line-height:1.6;color:#636368">${ltrNumbers(esc(l.small)).replace(/\n/g, '<br>')}</p>`
+          : l.plain
+            ? `<p style="margin:0 0 16px"><a class="of-link" href="${esc(l.link)}" style="color:${b.button};font-weight:600;text-decoration:underline">${esc(l.label)}</a></p>`
+            : `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:26px 0 12px"><tr><td bgcolor="${b.button}" style="background:${b.button};border-radius:12px"><a href="${esc(l.link)}" style="display:inline-block;padding:13px 30px;font:600 16px/1.25 ${FONT};color:#ffffff;text-decoration:none;border-radius:12px">${esc(l.label || button)}</a></td></tr></table>
 ${WA_TEXT.test(l.link) ? '' : `<p class="of-muted" style="margin:0 0 22px;font-size:13px;line-height:1.5;color:#636368;direction:ltr;text-align:right;word-break:break-all">${esc(l.link)}</p>`}`
-        : `<p class="of-ink" style="margin:0 0 16px;color:#1d1d1f">${ltrNumbers(esc(l)).replace(/\n/g, '<br>')}</p>`
     )
     .join('\n');
   const html = `<!doctype html>
@@ -56,7 +62,7 @@ ${WA_TEXT.test(l.link) ? '' : `<p class="of-muted" style="margin:0 0 22px;font-s
   .of-card { background:#1c1c1e !important; border-color:#2c2c2e !important; }
   .of-ink { color:#f5f5f7 !important; }
   .of-muted, .of-muted a { color:#a1a1a6 !important; }
-  .of-name { color:${b.dark} !important; }
+  .of-name, .of-link { color:${b.dark} !important; }
   .of-rule { border-color:#2c2c2e !important; }
 }
 @media (max-width: 600px) { .of-pad { padding:26px 20px !important; } }
@@ -118,16 +124,19 @@ const plain = (v, max = 120) =>
  * To the owner (OF_SIGNUP_NOTIFY), once a sign-up is confirmed: who, which business, which products, each one's plan and
  * price (`prices`, lines already written), when, what to do next by the payment mode (`payment`: in manual, email the
  * customer the payment details), and a link to the workspace on /admin. `products` and `names` are names already
- * (תורן, תדר); `many` when there is more than one.
+ * (תורן, תדר); `many` when there is more than one. `founders`, the line of the founders' spot when it took or holds one
+ * (MAIL.noticeFounders). `added`: a customer added this product to an account it had (the same notice, about it).
+ * `detailsSent`: the customer's email has the payment details (OF_PAYMENT_METHOD); `wa`, beside the button to pay
+ * over WhatsApp.
  */
-export const signupNoticeMail = (to, { name, email, business, products, prices = [], payment = 'manual', names = products, many = false, at, method, link, detailsSent = false }) => {
+export const signupNoticeMail = (to, { name, email, business, products, prices = [], payment = 'manual', names = products, many = false, at, method, link, detailsSent = false, wa = false, founders = '', added = false }) => {
   const b = plain(business, 80);
   const address = plain(email, 254);
   return {
     to,
     ...build(
-      MAIL.noticeSubject(b),
-      MAIL.noticeLines(plain(name, 80), address, b, plain(products), when(at), method, link, prices, MAIL.noticePay(payment, address, plain(names), many, detailsSent)),
+      added ? MAIL.noticeAddedSubject(b, plain(products)) : MAIL.noticeSubject(b),
+      MAIL.noticeLines(plain(name, 80), address, b, plain(products), when(at), method, link, prices, MAIL.noticePay(payment, address, plain(names), many, { sent: detailsSent, wa, added }), { added, founders }),
       MAIL.noticeButton
     ),
   };
@@ -140,16 +149,20 @@ export const signupNoticeMail = (to, { name, email, business, products, prices =
  */
 // What the first payment comes to (`total`, its lines), in either mode; in manual mode then how to pay, the receipt
 // (אסמכתא) to us once the owner's payment details are in it, and whom to ask. With `payLink` (paying over WhatsApp,
-// src/web/pay.js), the details and the receipt's line are not in it (Toran's answer on WhatsApp gives them): the
-// button `payButton` to that link, before the setup's, and whom to ask.
-export const welcomeMail = (to, { business, link, payment = 'manual', opens = '', prices = [], total = [], payHow = '', wa = null, payLink = null, payButton = PAY.button }) => {
+// src/web/pay.js), its button `payButton` is the email's one: under it, quieter, the details for a transfer without
+// WhatsApp and the receipt by a reply (the owner, 2026-11-11: the bank details always there, never only on WhatsApp),
+// and the setup page is a plain link. `founders`: the founders' offer waived the setup fee, said once after the prices
+// (MAIL.welcomeFounders). `added`: a product added to an account that was open already, by its name: the same email,
+// about it (app.js /subscription/<product>/add).
+export const welcomeMail = (to, { business, link, payment = 'manual', opens = '', prices = [], total = [], payHow = '', wa = null, payLink = null, payButton = PAY.button, founders = false, added = '' }) => {
   const b = plain(business, 80);
   const how = plain(payHow, 200);
   const overWa = Boolean(payment !== 'provider' && how && payLink);
-  const pay = overWa ? [{ link: payLink, label: payButton }] : how ? [MAIL.welcomePayHow(how), MAIL.receipt(wa)] : [];
+  const pay = overWa ? [{ link: payLink, label: payButton }, { small: MAIL.payDirect(how) }, { small: MAIL.receipt(null) }] : how ? [MAIL.welcomePayHow(how), MAIL.receipt(wa)] : [];
   const manual = [...[].concat(total), ...(payment !== 'provider' ? [...pay, MAIL.payAsk(wa)] : [])];
   const details = payment === 'provider' ? false : overWa ? 'wa' : Boolean(how);
-  return { to, ...build(MAIL.welcomeSubject(b), MAIL.welcomeLines(b, link, payment, opens, [...[].concat(prices), ...manual], details), MAIL.welcomeButton) };
+  const lines = [...[].concat(prices), ...(founders ? [MAIL.welcomeFounders] : []), ...manual];
+  return { to, ...build(added ? MAIL.addedSubject(added, b) : MAIL.welcomeSubject(b), MAIL.welcomeLines(b, link, payment, opens, lines, details, { added, plainLink: overWa }), MAIL.welcomeButton) };
 };
 
 /**
@@ -180,19 +193,21 @@ export const paidMail = (to, { business, product, until, link, productLink = nul
 /**
  * The billing emails to each owner (src/web/daily.js): `kind` soon7 or soon1 (before the payment falls due), due (the
  * first day after the paid month, `paidUntil`, which starts the 72 hours), last (`graceUntil`, the last of them),
- * stopped (the grace is over). `pay` says how to pay (a line, or lines); `amount` is said as written. due and last name
- * the day it stops with its weekday ("יום שלישי, 24.11.2026"). The button of soon, due and last goes to `payLink` with
- * `payButton` when there is one (the provider's payment page, "לתשלום"); else, like stopped's, to `link`, the account.
+ * stopped (the grace is over). `pay` says how to pay (a line, or lines), before the button; `after`, lines under it
+ * (paying over WhatsApp: { small } lines with the details for a transfer without it); `amount` is said as written. due
+ * and last name the day it stops with its weekday ("יום שלישי, 24.11.2026"). The button goes to `payLink` with
+ * `payButton` when there is one (the provider's payment page, "לתשלום", or our WhatsApp); else to `link`, the account,
+ * "לחשבון", and stopped's "לתשלום" (the audit of 2026-11-11: it had no way to pay).
  */
-export const billingMail = (to, { kind, business, product, paidUntil = null, dueOn, graceUntil = null, amount, pay, link, payLink = null, payButton = MAIL.payButton }) => {
+export const billingMail = (to, { kind, business, product, paidUntil = null, dueOn, graceUntil = null, amount, pay, after = [], link, payLink = null, payButton = MAIL.payButton }) => {
   const b = plain(business, 80);
   const p = PRODUCT_NAMES[product];
   const go = payLink || link;
   const label = payLink ? payButton : MAIL.payButton;
-  if (kind === 'due') return { to, ...build(MAIL.dueSubject(p), MAIL.dueLines(b, p, dayHe(paidUntil), weekdayHe(graceUntil), amount, pay, go), label) };
-  if (kind === 'last') return { to, ...build(MAIL.lastSubject(p), MAIL.lastLines(b, p, weekdayHe(graceUntil), amount, pay, go), label) };
-  if (kind === 'stopped') return { to, ...build(MAIL.stoppedSubject(p), MAIL.stoppedLines(b, p, link), MAIL.payButton) };
-  return { to, ...build(MAIL.soonSubject(p, dayHe(dueOn)), MAIL.soonLines(b, p, dayHe(dueOn), amount, pay, go), label) };
+  if (kind === 'due') return { to, ...build(MAIL.dueSubject(p), MAIL.dueLines(b, p, dayHe(paidUntil), weekdayHe(graceUntil), amount, pay, go, after), label) };
+  if (kind === 'last') return { to, ...build(MAIL.lastSubject(p), MAIL.lastLines(b, p, weekdayHe(graceUntil), amount, pay, go, after), label) };
+  if (kind === 'stopped') return { to, ...build(MAIL.stoppedSubject(p), MAIL.stoppedLines(b, p, go, amount, pay, after), payLink ? payButton : MAIL.payOnlineButton) };
+  return { to, ...build(MAIL.soonSubject(p, dayHe(dueOn)), MAIL.soonLines(b, p, dayHe(dueOn), amount, pay, go, after, kind === 'soon1'), label) };
 };
 
 /**

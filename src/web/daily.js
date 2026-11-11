@@ -33,11 +33,12 @@ import { remindClient, REMIND_KINDS } from './remind.js';
 //    counted on the calendar, addDays()), so none is skipped and none goes with another. The operator
 //    (OF_SIGNUP_NOTIFY) hears of each due and stopped. A recorded payment moves paid_until on, and the
 //    next period's emails follow it. How to pay follows the payment mode (OF_PAYMENT, src/accounts/billing.js): with a
-//    provider, soon, due and last lead to its payment page ("לתשלום"); in manual mode, they say to pay by the details
-//    we emailed (and how, OF_PAYMENT_METHOD, when set) and whom to ask, and lead to the account. In manual mode with
-//    OF_PAYMENT_METHOD and OF_ASSISTANT_WA both set, they lead instead to "לתשלום אוטומטי בוואטסאפ" (src/web/pay.js):
-//    our owner line, with the message and the workspace's payment code written, where Toran gives the amount and the
-//    transfer's details; the email itself then says only whom to ask, not the details.
+//    provider, every kind leads to its payment page ("לתשלום"); in manual mode, they say to pay by the details
+//    we emailed (and how, OF_PAYMENT_METHOD, when set) and whom to ask, and lead to the account (stopped's button says
+//    "לתשלום"). In manual mode with OF_PAYMENT_METHOD and OF_ASSISTANT_WA both set, they lead instead to "לתשלום
+//    אוטומטי בוואטסאפ" (src/web/pay.js): our owner line, with the message and the workspace's payment code written,
+//    where Toran gives the amount and the transfer's details; under that button, quieter, the email gives the details
+//    too, for a transfer without WhatsApp, with the receipt by a reply (the owner, 2026-11-11).
 //    A workspace on the terms from before 2026-11-03 keeps their 14 days for a payment that falls due before its
 //    change date (subscriptions.js graceChange()), and its emails say so: due on the first of them, last on the 14th.
 //
@@ -119,9 +120,10 @@ function billing(db, { mailer, env, base, notifyTo, today }) {
   const provider = paymentMode(env) === 'provider';
   // With the owner's details (OF_PAYMENT_METHOD) the email gives them; without, it points to the ones we emailed.
   const pay = provider ? MAIL.payByProvider : [...(payHow(env) ? [MAIL.welcomePayHow(payHow(env)), MAIL.receipt(supportWa(env))] : [MAIL.payByUs]), MAIL.payAsk(supportWa(env))];
-  // Paying over WhatsApp (src/web/pay.js): only whom to ask, and the button to our owner line with the message written;
-  // the details and the receipt are in Toran's answer there, as on /setup (the owner, 2026-11-05).
-  const payWa = [MAIL.payAsk(supportWa(env))];
+  // Paying over WhatsApp (src/web/pay.js): the button to our owner line with the message written is the email's one
+  // action (the owner, 2026-11-05), and under it, quieter, the details for a transfer without WhatsApp, the receipt by a
+  // reply, and whom to ask (the owner, 2026-11-11: the bank details always there, under the main button).
+  const afterWa = [{ small: MAIL.payDirect(payHow(env)) }, { small: MAIL.receipt(null) }, MAIL.payAsk(supportWa(env))];
   const sent = { soon7: 0, soon1: 0, due: 0, last: 0, stopped: 0 };
   // What goes on WhatsApp too, once its emails went (whatsappReminders).
   const owed = [];
@@ -133,8 +135,9 @@ function billing(db, { mailer, env, base, notifyTo, today }) {
     const fresh = db.run('INSERT INTO billing_notices (workspace_id, product, kind, due_on, sent_at, recipients) VALUES (?, ?, ?, ?, ?, 0) ON CONFLICT DO NOTHING', s.workspace_id, s.product, kind, dueOn, nowIso());
     if (Number(fresh.changes) !== 1) continue;
     const to = ownersOf(db, s.workspace_id);
-    const wa = !provider && kind !== 'stopped' ? payOverWa(db, { env, workspaceId: s.workspace_id, business: s.business, today }) : null;
-    const fields = { kind, business: s.business, product: s.product, paidUntil: s.paid_until, dueOn, graceUntil: graceLast(s.paid_until, change), amount: MAIL.amount(ils(s.monthly ?? 0), s.vat !== 'included', ils(withVat(s.monthly ?? 0, s.vat))), pay: wa?.href ? payWa : pay, link: `${base}/setup` };
+    // Stopped too: its email leads to the payment like the others (the audit of 2026-11-11).
+    const wa = !provider ? payOverWa(db, { env, workspaceId: s.workspace_id, business: s.business, today }) : null;
+    const fields = { kind, business: s.business, product: s.product, paidUntil: s.paid_until, dueOn, graceUntil: graceLast(s.paid_until, change), amount: MAIL.amount(ils(s.monthly ?? 0), s.vat !== 'included', ils(withVat(s.monthly ?? 0, s.vat))), pay: wa?.href ? [] : pay, after: wa?.href ? afterWa : [], link: `${base}/setup` };
     const online = provider ? { payLink: checkoutUrl(s.workspace_id, env), payButton: MAIL.payOnlineButton } : wa?.href ? { payLink: wa.href, payButton: PAY.button } : {};
     for (const email of to) mailer.send(billingMail(email, { ...fields, ...online }));
     db.run('UPDATE billing_notices SET recipients = ? WHERE workspace_id = ? AND product = ? AND kind = ? AND due_on = ?', to.length, s.workspace_id, s.product, kind, dueOn);

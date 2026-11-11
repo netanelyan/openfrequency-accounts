@@ -83,7 +83,9 @@ test('open: the form asks for the name, the business, the products with a line e
     assert.match(page.body, /href="https:\/\/openfrequency\.co\.il\/terms"/);
     assert.match(page.body, /href="https:\/\/openfrequency\.co\.il\/privacy"/);
     // The box names each product's short contract first, in the words the contracts use (קראתי והסכמתי).
-    assert.match(page.body, /<span>קראתי והסכמתי ל<a href="https:\/\/openfrequency\.co\.il\/toran\/contract" target="_blank" rel="noopener">הסכם של תורן<\/a>, ל<a href="https:\/\/openfrequency\.co\.il\/teder\/contract" target="_blank" rel="noopener">הסכם של תדר<\/a>, ל<a href="https:\/\/openfrequency\.co\.il\/terms"/);
+    // Each contract in its own span, so the one of a product not ticked steps aside once another is (site.css; the
+    // audit of 2026-11-11: both contracts were in the box with one product ticked).
+    assert.match(page.body, /<span>קראתי והסכמתי ל<span class="c-toran"><a href="https:\/\/openfrequency\.co\.il\/toran\/contract" target="_blank" rel="noopener">הסכם של תורן<\/a>, ל<\/span><span class="c-teder"><a href="https:\/\/openfrequency\.co\.il\/teder\/contract" target="_blank" rel="noopener">הסכם של תדר<\/a>, ל<\/span><a href="https:\/\/openfrequency\.co\.il\/terms"/);
     // No Google button while Google is not set up, and no script on the page.
     assert.doesNotMatch(page.body, /value="google"/);
     assert.doesNotMatch(withoutLoadJs(page.body), /<script/);
@@ -100,7 +102,7 @@ test('open: the form asks for the name, the business, the products with a line e
       assert.deepEqual([...body.matchAll(/name="products" value="(\w+)" checked/g)].map((m) => m[1]), ticked ? [ticked] : [], p);
       assert.ok(body.includes('type="checkbox" name="products" value="toran"') && body.includes('type="checkbox" name="products" value="teder"'), p);
       assert.match(body, /<h1>פותחים חשבון<\/h1>/);
-      assert.match(body, /ל<a href="https:\/\/openfrequency\.co\.il\/toran\/contract"[^>]*>הסכם של תורן<\/a>, ל<a href="https:\/\/openfrequency\.co\.il\/teder\/contract"/);
+      assert.match(body, /ל<span class="c-toran"><a href="https:\/\/openfrequency\.co\.il\/toran\/contract"[^>]*>הסכם של תורן<\/a>, ל<\/span><span class="c-teder"><a href="https:\/\/openfrequency\.co\.il\/teder\/contract"/);
     }
   } finally {
     await t.done();
@@ -153,6 +155,7 @@ test('checkSignup trims, keeps only known products, and refuses control characte
   assert.equal(checkSignup({ ...ok, plan: 'small', terms: true }).plan, 'small');
   assert.equal(checkSignup({ ...ok, products: ['toran'], plan: 'small', terms: true }).plan, null);
   assert.throws(() => checkSignup({ ...ok, plan: 'huge', terms: true }), (e) => e instanceof SignupError && e.code === 'bad_plan');
+  assert.throws(() => checkSignup({ ...ok, plan_toran: 'full', terms: true }), (e) => e instanceof SignupError && e.code === 'bad_plan_toran');
   assert.equal(checkSignup({ ...ok, email: '', terms: true }, { needEmail: false }).email, null);
   assert.throws(() => checkSignup({ ...ok, terms: false }), (e) => e instanceof SignupError && e.code === 'no_terms');
 });
@@ -218,7 +221,7 @@ test('the link opens exactly one user and one workspace, with only the products 
       const page = await b.get(pathOf(mail.link));
       assert.equal(page.status, 200);
       assert.match(page.body, /לחצו כדי לפתוח את החשבון של Noa Ceramics, עם הכתובת noa@example\.com\./);
-      assert.match(page.body, /המוצרים שבחרתם: תדר, החבילה המלאה\./);
+      assert.match(page.body, /<p class="muted picked-h">המוצרים שבחרתם:<\/p>\n<ul class="prices picked"><li>תדר, החבילה המלאה<\/li><\/ul>/);
     }
     assert.equal(count(t.db, 'workspaces'), 0);
 
@@ -279,7 +282,8 @@ test('both products, a Hebrew name gets a made-up slug, and the link works for 1
     await signUp(t.browser(), { email: 'late@example.com' });
     advance(15 * MINUTE - 1000);
     const page = await b.get(pathOf(t.mails[0].link));
-    assert.match(page.body, /המוצרים שבחרתם: תדר, החבילה המלאה ותורן\./);
+    // One product a line, each with its plan: Toran's too (the audit of 2026-11-11: it was left out).
+    assert.match(page.body, /<ul class="prices picked"><li>תדר, החבילה המלאה<\/li><li>תורן, חנות<\/li><\/ul>/);
     assert.equal((await b.post('/signup/confirm', { t: tokenOf(t.mails[0].link) })).status, 303);
     const ws = t.db.get('SELECT * FROM workspaces');
     assert.match(ws.slug, /^ws-[0-9a-f]{6}$/);
@@ -576,7 +580,7 @@ test('with OF_SIGNUP_PRODUCTS=teder: Teder, the only one open, is ticked and not
       assert.match(page, /<input type="hidden" name="products" value="teder">\n<fieldset class="products-pick"><legend>איזו חבילה של תדר<\/legend><label class="plan-pick"><input type="radio" name="plan" value="full" checked>/, path);
       assert.match(page, /<small>אחרי שהחשבון נפתח, נשלח לכם במייל את פרטי התשלום, ותדר נפתח אחרי שהתשלום מגיע אלינו\. אפשר לבטל את המנוי מהדף הראשי, והוא עובד עד סוף התקופה ששולמה\.<\/small>\n<\/fieldset>/, path);
       // The box names Teder's contract and no other.
-      assert.match(page, /<span>קראתי והסכמתי ל<a href="https:\/\/openfrequency\.co\.il\/teder\/contract" target="_blank" rel="noopener">הסכם של תדר<\/a>, ל<a href="https:\/\/openfrequency\.co\.il\/terms"/, path);
+      assert.match(page, /<span>קראתי והסכמתי ל<span class="c-teder"><a href="https:\/\/openfrequency\.co\.il\/teder\/contract" target="_blank" rel="noopener">הסכם של תדר<\/a>, ל<\/span><a href="https:\/\/openfrequency\.co\.il\/terms"/, path);
     }
     // ?plan= still starts that plan chosen.
     const small = (await b.get('/signup?p=teder&plan=small')).body;
@@ -625,7 +629,7 @@ test('with OF_SIGNUP_PRODUCTS=toran, the same: Toran ticked and not asked, its p
     // Toran's two plans in the question's place, store chosen, then how paying works.
     assert.match(page, /<fieldset class="products-pick"><legend>איזו חבילה של תורן<\/legend><label class="plan-pick"><input type="radio" name="plan_toran" value="store" checked>/);
     assert.match(page, /<small>[^<]*ותורן נפתח אחרי שהתשלום מגיע אלינו\./);
-    assert.match(page, /קראתי והסכמתי ל<a href="https:\/\/openfrequency\.co\.il\/toran\/contract" target="_blank" rel="noopener">הסכם של תורן<\/a>, ל<a href="https:\/\/openfrequency\.co\.il\/terms"/);
+    assert.match(page, /קראתי והסכמתי ל<span class="c-toran"><a href="https:\/\/openfrequency\.co\.il\/toran\/contract" target="_blank" rel="noopener">הסכם של תורן<\/a>, ל<\/span><a href="https:\/\/openfrequency\.co\.il\/terms"/);
     const b = t.browser();
     await b.get('/signup');
     assert.equal((await b.post('/signup', { ...FORM, products: ['toran'] })).status, 200);
