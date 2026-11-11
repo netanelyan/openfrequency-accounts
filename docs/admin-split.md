@@ -62,6 +62,18 @@ funnels and the money; a tools row links to Teder's leads, demos and all account
    הגדרות השרת: מתי נכתבים, עצירת חירום, עלויות במצב מפתח). Teder's links from Toran's ops data (`TEDER_URL/demos/<id>`)
    keep working through the redirect in point 2.
 
+## 2026-11-11: the same data, on a customer's screens
+
+The owner, on the products' short page: "why isnt it set up? it was before we moved to regular toran and teder. i
+wanted to have the same data but just see it like a customer". Point 1's workspace gave the owner a different set of
+data (the company's workspace held Teder's three accounts and no Toran store), and on the live server it was closed or
+gone, so both products showed their short page. So `OF_OPERATOR_WORKSPACE` is unset on the live server, the superadmin
+there is the operator again (`workspace: null`), and each product, on its own name, shows the operator what they had
+(Toran: every customer's store and every chat; Teder: every account) on a customer's screens: the customer's nav,
+Today and Settings, nothing of the operator's. What they may do stays the operator's. The operator's pages still go to
+/admin/toran and /admin/teder. The short page is gone. `OF_OPERATOR_WORKSPACE` still works where it is set, and /admin
+says when the workspace it names is closed or gone.
+
 ## Where each operator feature lives now
 
 | Feature | Before | Now |
