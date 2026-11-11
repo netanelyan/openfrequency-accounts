@@ -1022,13 +1022,17 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
       // ---------------------------------------------------------------- superadmin
 
       if (p === '/admin/login') {
-        // ?next= back to the /admin page that sent here (Toran's pages under /admin/toran), and only to one of those.
+        // ?next= back to the /admin page that sent here (Toran's pages under /admin/toran), or to the product's page the
+        // customer sign-in was sent from (its "כניסה עם סיסמה" link): the owner, 2026-11-11, "I cant login on my phone
+        // app because the login page isnt the same". The product's address passes the same check as /login's next.
         const adminNext = (raw) => {
-          const to = safeNext(raw);
-          return to && /^\/admin(?:[/?#]|$)/.test(to) && !to.startsWith('/admin/login') ? to : '';
+          const to = safeNext(raw, { allowLocal: dev });
+          if (!to) return '';
+          if (!to.startsWith('/')) return to;
+          return /^\/admin(?:[/?#]|$)/.test(to) && !to.startsWith('/admin/login') ? to : '';
         };
         if (req.method !== 'POST') {
-          if (found?.user.is_superadmin) return redirect('/admin');
+          if (found?.user.is_superadmin) return redirect(adminNext(url.searchParams.get('next')) || '/admin');
           return page(200, T.adminLoginTitle, P.adminLoginPage({ csrf, next: adminNext(url.searchParams.get('next')) }));
         }
         const back = adminNext(f('next'));

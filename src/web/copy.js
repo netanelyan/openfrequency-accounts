@@ -41,6 +41,9 @@ export const T = {
   loginNoAccount: 'עוד אין לכם חשבון? אנחנו פותחים אותו ושולחים לכם הזמנה במייל.',
   loginNoAccountOpen: 'עוד אין לכם חשבון?',
   loginSignup: 'להרשמה',
+  // The owner's way in from the customer sign-in, the one Toran and Teder send to (the phone app has no other).
+  loginStaff: 'צוות OpenFrequency?',
+  loginStaffLink: 'כניסה עם סיסמה',
   badEmail: 'הכתובת הזאת לא נראית כמו כתובת מייל. בדקו אותה ונסו שוב.',
   tooMany: (seconds) => `ביקשתם הרבה קישורים בזמן קצר. נסו שוב בעוד ${minutes(seconds)} דקות.`,
   signedOut: 'יצאתם. כדי לחזור, בקשו קישור כניסה חדש.',

@@ -58,7 +58,7 @@ Every answer is JSON with `Cache-Control: no-store`.
 | `products` | The products this workspace may open, sorted. For the superadmin outside view-as, every product. |
 | `readOnly` | When true the product must refuse every change: hide the buttons and reject every POST, PUT, PATCH and DELETE on the server. |
 | `viewAs` | `null`, or `{ "by": { "id", "email" }, "since": iso }` when the superadmin is viewing this workspace as its customer would. The product must show a banner saying so, on every page. `readOnly` is always true here. |
-| `expiresAt` | The session's absolute end. Idleness can end it sooner (14 days for a customer, 12 hours for the superadmin). |
+| `expiresAt` | The session's absolute end. Idleness can end it sooner (14 days without a visit, for a customer and the superadmin alike; the end is 30 days after the sign-in). |
 
 The four shapes a 200 takes:
 

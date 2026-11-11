@@ -113,18 +113,41 @@ const signIn = async (b, fields) => {
   return b.post('/admin/login', fields);
 };
 
-test('the superadmin signs in at /admin/login and gets a 12-hour session', async () => {
+test('the superadmin signs in at /admin/login and gets a 30-day session', async () => {
   const t = await site();
   try {
     const b = t.browser();
     const r = await signIn(b, { email: EMAIL, password: PASSWORD, code: t.code() });
     assert.equal(r.status, 303);
     assert.equal(r.headers.location, '/admin');
-    assert.match(r.setCookies.find((c) => c.startsWith('__Secure-of_session=')), /Max-Age=43200/);
+    assert.match(r.setCookies.find((c) => c.startsWith('__Secure-of_session=')), /Max-Age=2592000/);
     const who = await t.internal(b.cookie('__Secure-of_session'));
     assert.equal(who.json.role, 'superadmin');
     assert.equal((await b.get('/admin')).status, 200);
     assert.equal((await b.get('/admin/login')).headers.location, '/admin');
+  } finally {
+    await t.done();
+  }
+});
+
+test("from a product's sign-in (the phone app's), the owner signs in with the password and goes back to that page", async () => {
+  const t = await site();
+  try {
+    const b = t.browser();
+    const back = 'https://toran.openfrequency.co.il/inbox';
+    const login = await b.get(`/login?next=${encodeURIComponent(back)}`);
+    assert.equal(login.status, 200);
+    const link = `/admin/login?next=${encodeURIComponent(back)}`;
+    assert.ok(login.body.includes(`href="${link}"`), 'the customer sign-in links to the password one, with the way back');
+    assert.match((await b.get(link)).body, new RegExp(`name="next" value="${back.replace(/[/.]/g, '\$&')}"`));
+    const r = await b.post('/admin/login', { email: EMAIL, password: PASSWORD, code: t.code(), next: back });
+    assert.equal(r.status, 303);
+    assert.equal(r.headers.location, back);
+    assert.equal((await b.get(link)).headers.location, back, 'signed in already: straight back');
+    // Anywhere else is not a way back.
+    for (const bad of ['https://evil.example/x', '//evil.example', 'https://a.b.openfrequency.co.il/']) {
+      assert.equal((await b.get(`/admin/login?next=${encodeURIComponent(bad)}`)).headers.location, '/admin', bad);
+    }
   } finally {
     await t.done();
   }

@@ -162,7 +162,8 @@ ${error ? `<p class="error" id="err" role="alert">${esc(error)}</p>` : ''}
 <button class="primary">${esc(T.loginButton)}</button>
 </form>
 </section>
-${signup ? `<p class="muted center">${esc(T.loginNoAccountOpen)} <a href="/signup">${esc(T.loginSignup)}</a></p>` : `<p class="muted center">${esc(T.loginNoAccount)}</p>`}`;
+${signup ? `<p class="muted center">${esc(T.loginNoAccountOpen)} <a href="/signup">${esc(T.loginSignup)}</a></p>` : `<p class="muted center">${esc(T.loginNoAccount)}</p>`}
+<p class="muted center"><small>${esc(T.loginStaff)} <a href="/admin/login${next ? `?next=${encodeURIComponent(next)}` : ''}">${esc(T.loginStaffLink)}</a></small></p>`;
 
 export const sentPage = ({ email, next = '' }) => `
 <section class="card">

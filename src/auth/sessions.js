@@ -1,4 +1,4 @@
-import { now, nowIso, MINUTE, HOUR, DAY } from '../core/clock.js';
+import { now, nowIso, MINUTE, DAY } from '../core/clock.js';
 import { audit } from '../core/audit.js';
 import { PRODUCTS } from '../db/schema.js';
 import { hashToken, looksLikeToken, newToken } from './tokens.js';
@@ -13,10 +13,13 @@ import { PARENT } from './next.js';
 // idleness. Who someone is (their role, their workspace's products, whether the
 // workspace is disabled) is read fresh on every lookup, never copied into the
 // session, so a change by the superadmin applies on the next request.
-
+//
+// The owner, 2026-11-11: "Make owner 30 days too". The superadmin's session lasts as a customer's does, 30 days, and 14
+// days without a visit end it sooner (it was 12 hours: a sign-in with the password and the code twice a day). Signing
+// out, "sign out everywhere" and a disabled user still end a session at once.
 export const LIFETIME = {
   client: { idleMs: 14 * DAY, maxMs: 30 * DAY },
-  superadmin: { idleMs: 12 * HOUR, maxMs: 12 * HOUR },
+  superadmin: { idleMs: 14 * DAY, maxMs: 30 * DAY },
 };
 // last_seen_at is written at most this often, not on every request.
 const TOUCH_MS = MINUTE;

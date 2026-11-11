@@ -123,18 +123,23 @@ test('a customer session ends after 14 idle days, and use keeps it alive up to 3
   }
 });
 
-test("the superadmin's session lasts 12 hours, used or not", () => {
+test("the superadmin's session lasts as a customer's: 30 days, and 14 idle days end it", () => {
   const h = setup();
   try {
     const me = makeUser(h.db, 'admin@example.com', { superadmin: true });
     const { id } = createSession(h.db, me);
-    for (let i = 0; i < 11; i++) {
-      advance(HOUR);
-      assert.equal(describeSession(h.db, id).status, 200);
+    for (let d = 1; d < 30; d++) {
+      advance(DAY);
+      assert.equal(describeSession(h.db, id).status, 200, `day ${d}`);
     }
-    advance(HOUR);
-    assert.equal(describeSession(h.db, id).status, 401);
-    assert.equal(LIFETIME.superadmin.maxMs, 12 * HOUR);
+    advance(DAY);
+    assert.equal(describeSession(h.db, id).status, 401, 'past the absolute end');
+    const idle = createSession(h.db, me).id;
+    advance(14 * DAY - MINUTE);
+    assert.ok(findSession(h.db, idle, { touch: false }), 'idle just under 14 days');
+    advance(MINUTE);
+    assert.equal(describeSession(h.db, idle).status, 401, 'idle 14 days');
+    assert.deepEqual(LIFETIME.superadmin, LIFETIME.client);
   } finally {
     h.cleanup();
   }
