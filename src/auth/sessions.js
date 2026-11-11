@@ -175,12 +175,23 @@ export function describeSession(db, cookieValue) {
  */
 export function operatorHome(db, body, { env = process.env, product = null } = {}) {
   if (!body || body.role !== 'superadmin' || body.viewAs || body.workspace) return body;
-  const id = String(env.OF_OPERATOR_WORKSPACE || '').trim();
-  if (!/^[1-9]\d{0,8}$/.test(id)) return body;
-  const w = db.get('SELECT * FROM workspaces WHERE id = ?', Number(id));
-  if (!w || w.disabled_at) return body;
+  const { state, workspace: w } = operatorWorkspace(db, env);
+  if (state !== 'open') return body;
   const products = [...new Set([...enabledProducts(db, w.id), ...(product ? [product] : [])])].sort();
   return { ...body, workspace: workspaceOut(w), role: 'client_owner', products, readOnly: false, viewAs: null };
+}
+
+/**
+ * What OF_OPERATOR_WORKSPACE names: { state, id, workspace }, the state one of 'unset' (no whole number), 'missing',
+ * 'deleted', 'closed' or 'open'. /admin says so when it is not open, since the products then show their short page
+ * (the owner, 2026-11-11, on that page: "i dont understand what you did").
+ */
+export function operatorWorkspace(db, env = process.env) {
+  const id = String(env.OF_OPERATOR_WORKSPACE || '').trim();
+  if (!/^[1-9]\d{0,8}$/.test(id)) return { state: 'unset', id: null, workspace: null };
+  const w = db.get('SELECT * FROM workspaces WHERE id = ?', Number(id));
+  const state = !w ? 'missing' : w.deleted_at ? 'deleted' : w.disabled_at ? 'closed' : 'open';
+  return { state, id: Number(id), workspace: w || null };
 }
 
 // ---- the cookie

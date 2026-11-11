@@ -209,6 +209,17 @@ ${waitlist}
 
 const down = (toran) =>
   `<div class="card empty" role="note"><b>${esc(OPS.toranDown)}</b><p>${esc(toran.why === 'not_configured' ? OPS.toranNotConfigured : OPS.toranDownLead(toran.base))}</p></div>`;
+/**
+ * The company's workspace (sessions.js operatorWorkspace) when the products cannot open it: the admin's תורן and תדר
+ * tabs then show a page pointing back here, so this says why, and when it is only closed, one button opens it.
+ */
+function companyNote(csrf, company) {
+  if (!company || !['closed', 'deleted', 'missing'].includes(company.state)) return '';
+  const closed = company.state === 'closed';
+  const button = `<form method="post" action="/admin/workspaces/${esc(company.id)}/enable">${csrfField(csrf)}<input type="hidden" name="back" value="today"><button class="primary">${esc(OPS.company.open)}</button></form>`;
+  return `<div class="card company-note" role="alert"><b>${esc(OPS.company.title)}</b><p>${esc(closed ? OPS.company.closed(company.workspace.name) : OPS.company.gone)}</p>${closed ? button : ''}</div>`;
+}
+
 const empty = (title, lead) => `<div class="card empty"><b>${esc(title)}</b><p>${esc(lead)}</p></div>`;
 const wsLink = (w) => `<a href="/admin/accounts#ws-${esc(w.id)}">${esc(w.name)}</a>`;
 
@@ -248,7 +259,7 @@ function receiptsSection(list, at) {
  * The page. `toran` is toranClient().ops() with its base: { ok, data } or { ok: false, why, base }. `customers` is
  * opsCustomers(db). `at` is now, in ms. `receipts`, the transfers waiting for a decision, show near the top.
  */
-export function dashboardPage({ csrf, flash = '', flashBad = false, toran, customers, at, viewAs = false, receipts = [], founders = null }) {
+export function dashboardPage({ csrf, flash = '', flashBad = false, toran, customers, at, viewAs = false, receipts = [], founders = null, company = null }) {
   const top = `${adminTop({ csrf, tab: 'today' })}
 ${flash ? `<p class="flash${flashBad ? ' bad' : ''}" role="${flashBad ? 'alert' : 'status'}">${esc(flash)}</p>` : ''}
 <p class="toast" id="toast" role="status" aria-live="polite" data-offline="${esc(OPS.offline)}" data-unexpected="${esc(OPS.unexpected)}"></p>`;
@@ -289,6 +300,7 @@ ${d.noContact.length ? `<details class="card no-contact"><summary>${esc(OPS.noCo
   const funnel = funnels ? `<div class="funnels">${funnelTable('toran', funnels.toran)}${funnelTable('teder', funnels.teder)}</div><p class="muted">${esc(OPS.funnelNote)}</p>` : down(toran);
 
   return `${top}
+${companyNote(csrf, company)}
 ${d ? numberLine(d.demoLine) : ''}
 ${receiptsSection(receipts, at)}
 ${kpis}

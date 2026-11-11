@@ -11,7 +11,7 @@ import { createLimiter, ipKey, LIMITS, signupMailDaily } from '../auth/limiter.j
 import { safeNext } from '../auth/next.js';
 import { finishGoogle, GOOGLE, GoogleError, googleConfig, openFlow, sameState, sealFlow, startGoogle, FLOW_TTL } from '../auth/google.js';
 import { bindGoogle, googleMatch, mailbox, userForGoogle } from '../accounts/google.js';
-import { chooseWorkspace, createSession, describeSession, enabledProducts, findSession, LIFETIME, memberships, revokeAllSessions, revokeSession, sessionCookie, sessionFromJar } from '../auth/sessions.js';
+import { chooseWorkspace, createSession, describeSession, enabledProducts, findSession, LIFETIME, memberships, operatorWorkspace, revokeAllSessions, revokeSession, sessionCookie, sessionFromJar } from '../auth/sessions.js';
 import { acceptInvite, consumeMagicLink, createInvite, InviteError, normEmail, peekInvite, peekMagicLink, requestMagicLink, revokeInvite, validEmail } from '../accounts/links.js';
 import { verifySuperadmin } from '../accounts/superadmin.js';
 import { createWorkspace, getWorkspace, listWorkspaces, recentAudit, setDisabled, setProduct, startViewAs, stopViewAs, WorkspaceError } from '../accounts/workspaces.js';
@@ -1090,7 +1090,7 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
         if (p === '/admin' && req.method === 'GET') {
           const viewAs = Boolean(session.view_as_workspace_id);
           const t = viewAs ? null : { ...(await toran.ops()), base: toran.base };
-          const body = dashboardPage({ csrf, flash, flashBad, toran: t, customers: viewAs ? null : opsCustomers(db), at: now(), viewAs, receipts: viewAs ? [] : receiptsWaiting(db), founders: viewAs ? null : foundersState(db, env) });
+          const body = dashboardPage({ csrf, flash, flashBad, toran: t, customers: viewAs ? null : opsCustomers(db), at: now(), viewAs, receipts: viewAs ? [] : receiptsWaiting(db), founders: viewAs ? null : foundersState(db, env), company: viewAs ? null : operatorWorkspace(db, env) });
           return send(200, layout({ title: OPS.title, body, wide: true, banner, script: true }), { 'content-security-policy': CSP_SCRIPT });
         }
         if (p === '/admin/accounts' && req.method === 'GET') return console_(200);
@@ -1409,6 +1409,8 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
               setDisabled(db, w.id, action === 'disable', by);
               accessChanged(w.id, enabledProducts(db, w.id), 'workspace');
               setFlash((action === 'disable' ? T.flashDisabled : T.flashEnabled)(w.name));
+              // The company's workspace opened from /admin's note goes back there (dashboard.js companyNote).
+              if (f('back') === 'today') return redirect('/admin');
             } else if (action === 'founders') {
               // A test account's spot given back (src/accounts/founders.js): the website's counter counts it again.
               giveBackSpot(db, w.id, by);

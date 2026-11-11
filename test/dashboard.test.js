@@ -443,3 +443,37 @@ test("the funnels' customers stage is ours: paid or ending subscriptions, and th
     h.cleanup();
   }
 });
+
+// The owner, 2026-11-11, on Toran's short page after the admin's תורן tab: "i dont understand what you did". The
+// company's workspace (OF_OPERATOR_WORKSPACE) closed or gone is said at the top of /admin, with a button when closed.
+test("the company's workspace closed: /admin says why the תורן and תדר tabs come back here, and its button opens it and comes back; deleted: said, no button; open or unset: nothing", async () => {
+  // customers() makes six workspaces in a fresh database; the sixth, closed-shop, is closed.
+  const t = await setup({ env: { OF_OPERATOR_WORKSPACE: '6' } });
+  try {
+    assert.equal(t.ws.off.id, 6);
+    let b = (await t.op.get('/admin')).body;
+    assert.match(b, /<div class="card company-note" role="alert"><b>תורן ותדר לא נפתחים בחשבון של החברה<\/b><p>החשבון חנות סגורה סגור, ולכן הלשוניות תורן ותדר מראות דף שמחזיר לכאן\. אחרי שפותחים אותו, הן יפתחו את תורן ותדר כמו אצל לקוח\.<\/p><form method="post" action="\/admin\/workspaces\/6\/enable">/);
+    assert.match(b, /<input type="hidden" name="back" value="today"><button class="primary">לפתוח את החשבון<\/button>/);
+    const r = await t.op.post('/admin/workspaces/6/enable', { back: 'today' });
+    assert.equal(r.status, 303);
+    assert.equal(r.headers.location, '/admin');
+    assert.equal(t.db.get('SELECT disabled_at FROM workspaces WHERE id = 6').disabled_at, null);
+    b = (await t.op.get('/admin')).body;
+    assert.match(b, /חנות סגורה פעיל שוב\./);
+    assert.doesNotMatch(b, /company-note/);
+    // From the console, the same button still goes back there.
+    assert.equal((await t.op.post('/admin/workspaces/6/disable', {})).headers.location, '/admin/accounts');
+    t.db.update('workspaces', 6, { deleted_at: '2026-11-02T09:00:00.000Z' });
+    b = (await t.op.get('/admin')).body;
+    assert.match(b, /<p>החשבון של החברה נמחק, ולכן הלשוניות תורן ותדר מראות דף שמחזיר לכאן\. כדי לתקן צריך חשבון חדש, מחובר בהגדרות השרת\.<\/p><\/div>/);
+    assert.doesNotMatch(b, /\/enable"/);
+  } finally {
+    await t.done();
+  }
+  const u = await setup({ env: { OF_OPERATOR_WORKSPACE: '' } });
+  try {
+    assert.doesNotMatch((await u.op.get('/admin')).body, /company-note/);
+  } finally {
+    await u.done();
+  }
+});

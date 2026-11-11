@@ -1073,6 +1073,13 @@ export const OPS = {
   tabTeder: 'תדר',
   // The operator's pages inside each product (html.js PRODUCT_TOOLS), two groups under the cards at the top.
   tools: 'הדפים של תורן ותדר',
+  // The company's workspace, when the products cannot open it (dashboard.js companyNote).
+  company: {
+    title: 'תורן ותדר לא נפתחים בחשבון של החברה',
+    closed: (name) => `החשבון ${name || 'של החברה'} סגור, ולכן הלשוניות תורן ותדר מראות דף שמחזיר לכאן. אחרי שפותחים אותו, הן יפתחו את תורן ותדר כמו אצל לקוח.`,
+    gone: 'החשבון של החברה נמחק, ולכן הלשוניות תורן ותדר מראות דף שמחזיר לכאן. כדי לתקן צריך חשבון חדש, מחובר בהגדרות השרת.',
+    open: 'לפתוח את החשבון',
+  },
   toolsAll: 'לכל הדפים',
   tool: {
     toranReview: 'לבדיקה',
