@@ -287,7 +287,7 @@ test("the customer's dashboard: each product's subscription, recorded on the con
     // Nothing paid yet: said in plain words (not "active"), with the setup fee, and the button leads to the payment.
     assert.match(home, /<span class="tag">עוד לא שולם<\/span>/);
     assert.match(home, /תדר נפתח אחרי התשלום על המנוי\./);
-    assert.match(home, /דמי הקמה: 1,490 ₪, פעם אחת/);
+    assert.match(home, /דמי הקמה: 1,490 ₪ ועוד מע״מ, פעם אחת/);
     assert.match(home, /href="\/setup#setup-billing">להסדיר תשלום</);
     assert.match(home, /מנוי מאז 22\.10\.2026/);
     assert.match(home, /עוד מאיתנו[^]*openfrequency\.co\.il\/toran/, 'Toran, which they do not have, is offered');

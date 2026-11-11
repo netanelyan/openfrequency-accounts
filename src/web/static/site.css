@@ -128,6 +128,10 @@ body::before { content: ''; position: fixed; inset: 0; z-index: -1; pointer-even
 a { color: var(--accent); text-underline-offset: 3px; }
 :focus-visible { outline: 3px solid color-mix(in srgb, var(--accent-fill) 60%, transparent); outline-offset: 2px; border-radius: 8px; }
 .ltr { direction: ltr; unicode-bidi: isolate; }
+/* An email address in a Hebrew line (html.js homePage): whole and left to right, on the next line as one when it does
+   not fit after the words before it, and broken only when it is wider than the line (the audit of 2026-11-11: at 360px
+   it broke at its hyphen and the pieces swapped sides). Room for the comma after it, so it never starts a line. */
+bdi.addr { display: inline-block; max-width: calc(100% - 1em); direction: ltr; unicode-bidi: isolate; overflow-wrap: anywhere; }
 .muted { color: var(--ink-3); font-size: 14px; }
 
 /* ------------------------------------------------------------ the marks (assets/brand), never recoloured */
@@ -323,7 +327,7 @@ article.ws { padding: 20px 22px; margin-bottom: 16px; }
 article.ws.disabled { opacity: 0.72; }
 article.ws > header { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
 article.ws > header .slug { color: var(--ink-3); font: 400 14px/1 var(--text); margin-inline-start: 8px; }
-.tag { font-size: 13px; font-weight: 600; padding: 4px 12px; border-radius: 999px; background: var(--ok-bg); color: var(--ok); }
+.tag { font-size: 13px; font-weight: 600; padding: 4px 12px; border-radius: 999px; background: var(--ok-bg); color: var(--ok); white-space: nowrap; flex: none; }
 article.ws.disabled .tag { background: var(--bad-bg); color: var(--bad); }
 
 .section-l { font-size: 13px; font-weight: 600; color: var(--ink-3); margin: 18px 0 8px; }
@@ -389,6 +393,8 @@ main.wide .card.sub { margin: 0; display: flex; flex-direction: column; gap: 6px
 .card.sub .go { margin-top: auto; padding-top: 16px; }
 .card.sub .go .button { width: 100%; min-height: 48px; }
 .s-due .tag, .s-ending .tag { background: var(--warn-bg); color: var(--warn); }
+/* Stopped: its 72 hours are over and the paywall keeps it closed (html.js subCard). */
+.s-stopped .tag { background: var(--bad-bg); color: var(--bad); }
 .s-ended .tag { background: var(--fill); color: var(--ink-3); }
 .s-ended { opacity: 0.8; }
 /* The month paid for: the words above, the bar under them. A <progress> fills from the inline start, the right
@@ -765,6 +771,12 @@ ol.steps .button { min-height: 40px; padding: 0 18px; font-size: 15px; }
 .st-locked .what b { color: var(--ink-2); font-weight: 500; }
 .card.setup-p.locked > header .mark { filter: grayscale(1); opacity: 0.6; }
 .card.setup-p.locked > .muted { margin: 0 0 12px; }
+/* A product closed until the payment: its steps behind one line (html.js setupPage). */
+details.steps-later summary { display: inline-flex; align-items: center; min-height: 44px; cursor: pointer; list-style: none; color: var(--ink-2); font-weight: 600; }
+details.steps-later summary::-webkit-details-marker { display: none; }
+details.steps-later summary::after { content: '+'; margin-inline-start: 8px; font-weight: 400; font-size: 20px; line-height: 1; }
+details.steps-later[open] summary::after { content: '−'; }
+details.steps-later[open] > .section-l, details.steps-later[open] > ol.steps { margin-top: 8px; }
 ul.prices { list-style: none; padding: 0; margin: 12px 0 0; display: grid; gap: 4px; font-weight: 500; }
 /* What the payment comes to, with VAT, and the receipt (אסמכתא) to send after a transfer: both read before the rest. */
 .setup-p p.pay-total { margin: 10px 0 0; }

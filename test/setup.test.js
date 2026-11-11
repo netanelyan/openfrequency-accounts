@@ -181,7 +181,10 @@ test('a customer lands on /setup after signing in while a required step is left;
     home = await b.get('/');
     assert.doesNotMatch(home.body, /setup-card|href="\/setup"/);
     const page = await b.get('/setup');
-    assert.match(page.body, /כל הצעדים הושלמו\./);
+    // The meter counts the optional step too, so it says that only it is left, not "כל הצעדים הושלמו" beside "3 מתוך 4"
+    // (the audit of 2026-11-11).
+    assert.match(page.body, /כל צעדי החובה הושלמו\. נשאר צעד אחד שלא חובה\./);
+    assert.doesNotMatch(page.body, /כל הצעדים הושלמו/);
     assert.match(page.body, /<span class="tag">מוכן<\/span>/);
 
     // Required steps done but the product says it is not ready yet: still setup.

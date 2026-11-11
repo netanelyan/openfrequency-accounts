@@ -305,8 +305,10 @@ run('the switch on the main pages, phone and desk: one tap away beside the acces
             const corner = [...document.querySelectorAll('.a11y-btn, [data-theme-toggle]')].map((e) => e.getBoundingClientRect());
             const over = (a, b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
             const said = (e) => [...e.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim()) || e.matches('a, button, input, select, textarea, progress, img, svg');
+            // Only what is shown: the steps folded in a closed <details> (a product closed until the payment, on /setup)
+            // still get a box from Chromium, under its summary, though nothing of them is drawn.
             return [...document.querySelectorAll('main *')]
-              .filter((e) => e.getClientRects().length && said(e) && corner.some((b) => over(e.getBoundingClientRect(), b)))
+              .filter((e) => e.getClientRects().length && e.checkVisibility() && said(e) && corner.some((b) => over(e.getBoundingClientRect(), b)))
               .map((e) => `${e.tagName.toLowerCase()}: ${e.textContent.trim().slice(0, 40)}`);
           });
           assert.deepEqual(under, [], `${where}: the page's last content clear of the corner`);

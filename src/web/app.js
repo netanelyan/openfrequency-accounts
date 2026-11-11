@@ -387,11 +387,14 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
       res.writeHead(303, headers({ location: to }));
       res.end();
     };
+    // A request the pages never send, or one too large, answered with a page in Hebrew, not the code's English ("too
+    // large", "method not allowed"; the audit of 2026-11-11). The status stays what it is.
+    const refused = (status, title = status === 413 ? T.tooLarge : status === 421 ? T.notFound : T.badRequest) => send(status, layout({ title, body: P.messagePage({ title, lead: '' }) }));
 
     try {
       const host = String(req.headers.host || '').toLowerCase();
       const port = req.socket.localPort;
-      if (![publicHost, `127.0.0.1:${port}`, `localhost:${port}`].includes(host)) return text(421, 'unknown host');
+      if (![publicHost, `127.0.0.1:${port}`, `localhost:${port}`].includes(host)) return refused(421);
       const secure = isHttps(req);
       if (publicHost && host === publicHost && !secure) return text(403, T.httpsOnly);
 
@@ -452,7 +455,7 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
           log,
           failed: (status) =>
             status === 413
-              ? text(413, 'too large')
+              ? refused(413)
               : teder_
                 ? page_(502, OPS.tederNoAnswerTitle, P.messagePage({ title: OPS.tederNoAnswerTitle, lead: OPS.tederNoAnswerLead, links: [['/admin', OPS.toranNoAnswerBack]] }))
                 : page_(502, OPS.toranNoAnswerTitle, P.messagePage({ title: OPS.toranNoAnswerTitle, lead: OPS.toranNoAnswerLead, links: [['/admin', OPS.toranNoAnswerBack]] })),
@@ -503,7 +506,7 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
         }
         if (!csrfOk(form.get('_csrf'), nonce, secret)) return send(403, layout({ title: T.loginTitle, body: P.messagePage({ title: T.staleForm, lead: '', links: [[p.startsWith('/admin') ? '/admin' : '/login', T.notFoundBack]] }) }));
       } else if (req.method !== 'GET' && req.method !== 'HEAD') {
-        return text(405, 'method not allowed');
+        return refused(405);
       }
       const f = (k) => String(form?.get(k) ?? '');
       const page = (status, title, body, opts = {}) => send(status, layout({ title, body, flash, ...opts }));
@@ -529,6 +532,7 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
         // 2026-11-06: "if an option isnt relevant dont show it"). While sign-up is open, its owner adds it here
         // (/subscription/<product>/add; the owner, 2026-11-11); otherwise it leads to its page on the website.
         const others = PRODUCTS.filter((prod) => !d.body.products.includes(prod) && openProducts.includes(prod));
+        const access = accessAll(db, wsId);
         const body = P.homePage({
           csrf,
           user: found.user,
@@ -537,7 +541,7 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
           productUrls: urls,
           canSwitch: mine.length > 1,
           subscriptions,
-          access: accessAll(db, wsId),
+          access,
           providerReady: billingReady(env),
           others,
           addable: signupOn ? others : [],
@@ -545,17 +549,25 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
           invoices: d.body.role === 'client_owner' ? invoicesOf(db, wsId) : null,
           team: teamOf(db, wsId),
           // A linked number is for Toran's assistant only (Teder is managed on its dashboard): the card's form shows only
-          // with Toran (html.js whatsappCard).
-          whatsapp: { phones: phonesFor(db, { userId: found.user.id, workspaceId: wsId, role: d.body.role }), code: openLinkCode(db, found.user.id, wsId), waNumber, toran: d.body.products.includes('toran') },
+          // with Toran (html.js whatsappCard), and only once Toran is open to them (paid, comp, or in its 72 hours):
+          // before that, asking it about the store answers nothing (the audit of 2026-11-11). A number linked already
+          // keeps the card, to remove it.
+          whatsapp: { phones: phonesFor(db, { userId: found.user.id, workspaceId: wsId, role: d.body.role }), code: openLinkCode(db, found.user.id, wsId), waNumber, toran: d.body.products.includes('toran') && Boolean(access.toran?.allowed) },
           role: d.body.role,
           readOnly: d.body.readOnly,
           support,
           supportTeam: supportUrl(env, T.supportTeamText(d.body.workspace.name, TEAM_LIMIT)),
           flash,
-          setup: st.complete ? null : { done: st.done, total: st.total, incomplete: st.incomplete },
+          setup: st.complete ? null : { done: st.done, total: st.total, incomplete: st.incomplete, onlyPay: st.onlyPay, renewal: st.renewal },
           ...extra,
         });
         return page(status, T.homeHello(found.user.name || found.user.email), body, { wide: true });
+      };
+      // A closed workspace (disabled on /admin): its name, and whom to tell when it is a mistake, our WhatsApp with the
+      // words written (OF_SUPPORT_WA) when it is set (the audit of 2026-11-11); then another workspace of theirs, and out.
+      const closedPage = (name, canSwitch) => {
+        const wa = supportUrl(env, T.homeClosedText(name));
+        return P.messagePage({ title: T.homeClosed(name), lead: wa ? T.homeClosedWa : T.homeClosedMail, links: [...(wa ? [[wa, T.supportWrite]] : []), ...(canSwitch ? [['/workspace', T.homeSwitch]] : []), ['/logout', T.homeSignOut]] });
       };
       const clearSession = () => out.cookies.push(sessionCookie('', { secure, clear: true }));
       // Where a sign-in lands: ?next= first; then, for a customer whose workspace is not set up yet (a product that
@@ -584,8 +596,7 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
         const mine = memberships(db, found.user.id).filter((m) => !m.disabled_at);
         if (d.status === 403) {
           const ws = db.get('SELECT name FROM workspaces WHERE id = ?', found.session.workspace_id);
-          const links = [...(mine.length ? [['/workspace', T.homeSwitch]] : []), ['/logout', T.homeSignOut]];
-          return page(403, T.loginTitle, P.messagePage({ title: T.homeClosed(ws?.name || ''), lead: '', links }));
+          return page(403, T.loginTitle, closedPage(ws?.name || '', mine.length > 0));
         }
         return await dashboard(d);
       }
@@ -686,7 +697,9 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
         const [, product, action] = subMatch;
         const ws = d.body.workspace;
         const name = PRODUCT_NAMES[product];
-        const refuse = (code, status = 400) => page(status, CANCEL.title, P.messagePage({ title: CANCEL.errors[code] || code, lead: '', links: [['/', CANCEL.back]] }));
+        // A refusal has nothing to say no to: its link is "חזרה לדף הראשי", not the confirmation page's "לא, ..." (the
+        // audit of 2026-11-11).
+        const refuse = (code, status = 400) => page(status, CANCEL.title, P.messagePage({ title: CANCEL.errors[code] || code, lead: '', links: [['/', T.logoutBack]] }));
         if (d.body.role !== 'client_owner') return refuse('not_owner', 403);
         if (action === 'cancel' && req.method !== 'POST') {
           const a = accessFor(db, ws.id, product);
@@ -722,7 +735,7 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
         if (found.user.is_superadmin) return page(403, ERASE.title, P.messagePage({ title: ERASE.readOnly, lead: '', links: [['/admin/accounts', T.adminTitle]] }));
         const { d, go } = customerIn(p);
         if (go) return redirect(go);
-        if (d.body.role !== 'client_owner') return page(403, ERASE.title, P.messagePage({ title: ERASE.ownersOnly, lead: '', links: [['/', ERASE.back]] }));
+        if (d.body.role !== 'client_owner') return page(403, ERASE.title, P.messagePage({ title: ERASE.ownersOnly, lead: '', links: [['/', T.logoutBack]] }));
         const ws = getWorkspace(db, d.body.workspace.id);
         const canCancel = enabledProducts(db, ws.id).some((pr) => ['paid', 'due', 'unpaid'].includes(accessFor(db, ws.id, pr).access));
         const again = (status, error = '', typed = '') => page(status, ERASE.title, P.deletePage({ csrf, workspace: ws, error, typed, canCancel }));
@@ -1093,7 +1106,13 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
           return redirect(next(f('next')) || '/');
         }
         const to = next(url.searchParams.get('next'));
-        if (!mine.length) return page(200, T.loginTitle, P.messagePage({ title: T.homeNoWorkspace, lead: '', links: [['/logout', T.homeSignOut]] }));
+        if (!mine.length) {
+          // In a workspace that is closed, and no other: that it is closed, not "we have not connected you yet" (the
+          // audit of 2026-11-11).
+          const shut = memberships(db, found.user.id).find((m) => m.disabled_at);
+          if (shut) return page(403, T.loginTitle, closedPage(shut.name, false));
+          return page(200, T.loginTitle, P.messagePage({ title: T.homeNoWorkspace, lead: '', links: [['/logout', T.homeSignOut]] }));
+        }
         if (mine.length === 1) {
           chooseWorkspace(db, found.session, mine[0].id);
           return redirect(to || '/');
@@ -1181,9 +1200,12 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
           return res.end(Buffer.from(r.file));
         };
         const by = { by: me, ip };
-        const problem = (e, form_) => {
-          if (e instanceof WorkspaceError || e instanceof InviteError) return console_(400, { error: T.errors[e.code] || e.code, form: form_ });
-          throw e;
+        // A refusal is said where its form is: a workspace's (`wsId`: its invoice, subscription, invite...) at that
+        // workspace, and only "פתיחת חשבון"'s in that form (the audit of 2026-11-11: an invoice's error showed there).
+        const problem = (e, form_, wsId = null) => {
+          if (!(e instanceof WorkspaceError || e instanceof InviteError)) throw e;
+          const error = T.errors[e.code] || e.code;
+          return wsId ? console_(400, { errorWs: { id: Number(wsId), text: error } }) : console_(400, { error, form: form_ });
         };
 
         // The operator's home: the dashboard, read from Toran and from our own subscriptions at each load.
@@ -1376,7 +1398,7 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
             setFlash(T.flashInvoiceAdded(fields.number.trim(), w.name));
             return toConsole();
           } catch (e) {
-            return problem(e, {});
+            return problem(e, {}, m[1]);
           }
         }
 
@@ -1406,7 +1428,7 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
             else if (inv.state === 'failed' || inv.state === 'blocked') setFlash(MORNING.flashFailed, true);
             return redirect(`/admin/receipts/${rid}`);
           } catch (e) {
-            return problem(e, {});
+            return problem(e, {}, m[1]);
           }
         }
 
@@ -1455,7 +1477,7 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
             }
             return toConsole();
           } catch (e) {
-            return problem(e, {});
+            return problem(e, {}, m[1]);
           }
         }
 
@@ -1470,7 +1492,7 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
             setFlash((on ? T.flashCompOn : T.flashCompOff)(PRODUCT_NAMES[f('product')], w.name));
             return toConsole();
           } catch (e) {
-            return problem(e, {});
+            return problem(e, {}, m[1]);
           }
         }
 
@@ -1480,13 +1502,13 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
           try {
             const w = getWorkspace(db, m[1]);
             if (w.deleted_at) throw new WorkspaceError('no_workspace');
-            if (!sameName(f('name'), w.name)) return console_(400, { error: T.errors.name_mismatch });
+            if (!sameName(f('name'), w.name)) return console_(400, { errorWs: { id: w.id, text: T.errors.name_mismatch } });
             const r = await eraseAll(w, { by: me, ip, source: 'admin' });
-            if (!r.ok) return console_(502, { error: r.error });
+            if (!r.ok) return console_(502, { errorWs: { id: w.id, text: r.error } });
             setFlash(T.flashDeleted(r.name));
             return toConsole();
           } catch (e) {
-            return problem(e, {});
+            return problem(e, {}, m[1]);
           }
         }
 
@@ -1522,7 +1544,7 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
             }
             return toConsole();
           } catch (e) {
-            return problem(e, {});
+            return problem(e, {}, m[1]);
           }
         }
 
@@ -1541,7 +1563,7 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
 
       return page(404, T.notFound, P.messagePage({ title: T.notFound, lead: '', links: [['/login', T.notFoundBack]] }));
     } catch (e) {
-      if (e instanceof Refused) return text(e.status, e.message);
+      if (e instanceof Refused) return res.headersSent ? res.end() : refused(e.status);
       log(`[accounts] ${req.method} ${req.url?.split('?')[0]}: ${e.stack || e.message}`);
       if (!res.headersSent) {
         out.cookies = [];

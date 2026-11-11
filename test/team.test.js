@@ -135,11 +135,14 @@ test('three people at most, the owner and the invites still waiting included; th
     assert.match(card, /<div class="team-full" role="note"><p>בחשבון יש כבר 3 אנשים, כולל הזמנות שעוד לא התקבלו\. כדי להוסיף עוד, דברו איתנו\.<\/p><p><a class="button quiet" href="https:\/\/wa\.me\/972500000000\?text=([^"]+)">כתבו לנו בוואטסאפ<\/a><\/p><\/div>/);
     assert.equal(decodeURIComponent(/wa\.me\/972500000000\?text=([^"]+)/.exec(card)[1]), 'היי, כותבים מ״החנות של דנה״. רוצים להוסיף לחשבון יותר מ-3 אנשים.', 'the message to us is already written');
 
-    // The form skipped: refused, nothing sent, nothing stored.
+    // The form skipped: refused, nothing sent, nothing stored. The full box says why, once (the audit of 2026-11-11:
+    // the same sentence was said twice, as the error and in the box).
     const mails = t.mails.length;
     const r = await dana.post('/team/invite', { email: 'gal@example.com', role: 'client_member' });
     assert.equal(r.status, 400);
-    assert.match(r.body, /<p class="error" id="team-err" role="alert">בחשבון יש כבר 3 אנשים, כולל הזמנות שעוד לא התקבלו\. כדי להוסיף עוד, דברו איתנו\.<\/p>/);
+    assert.doesNotMatch(r.body, /id="team-err"/);
+    assert.equal(r.body.split('בחשבון יש כבר 3 אנשים, כולל הזמנות שעוד לא התקבלו.').length - 1, 1);
+    assert.match(r.body, /<div class="team-full" role="note">/);
     assert.equal(t.mails.length, mails);
     assert.equal(t.db.get("SELECT COUNT(*) AS n FROM tokens WHERE email = 'gal@example.com'").n, 0);
     // Someone already in is refused for what it is, not as a fourth.

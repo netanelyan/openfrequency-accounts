@@ -150,7 +150,11 @@ export function setupClient({ env = process.env, fetchImpl = globalThis.fetch, l
  *               that is not allowed yet is locked: its steps are shown, closed, until the payment is in
  *   done/total  the steps done, out of every step there is now (a "soon" step is not counted)
  *   incomplete  payment is not in, or a product that answered is not finished
- *   unknown     a product did not answer
+ *   onlyPay     incomplete, and the payment is all that is left: every product still running answered, and each has
+ *               its required steps done (closed or not), so the home page's card is about the payment (html.js
+ *               homePage; the audit of 2026-11-11: in the 72 hours its button said "להמשך ההגדרה")
+ *   renewal     a product owes a month after one paid before (in its grace, or stopped), not a first payment
+ *   unknown     a product still running did not answer (one whose subscription ended is not asked for anything)
  *   complete    neither
  */
 export function setupState(results, products, { billingReady = false, access = {}, checkout = null, contact = null } = {}) {
@@ -178,12 +182,14 @@ export function setupState(results, products, { billingReady = false, access = {
     const r = results[p];
     const locked = !allowed(p);
     if (!r?.ok) return { product: p, ok: false, locked, ended: ended(p) };
-    return { product: p, ok: true, locked, ended: ended(p), ready: r.ready, done: !locked && productDone(r), required: r.steps.filter((s) => s.required), optional: r.steps.filter((s) => !s.required) };
+    return { product: p, ok: true, locked, ended: ended(p), ready: r.ready, done: !locked && productDone(r), stepsDone: productDone(r), required: r.steps.filter((s) => s.required), optional: r.steps.filter((s) => !s.required) };
   });
   const live = sections.filter((s) => !s.ended);
   const counted = [...(billing ? [billing] : []), ...live.flatMap((s) => (s.ok ? [...s.required, ...s.optional] : []))].filter((s) => s.status !== 'soon');
   // With no product turned on, or only ended ones, there is nothing to set up, and nothing to pay for.
   const incomplete = payable.length > 0 && (!paidAll || live.some((s) => s.ok && !s.done));
-  const unknown = sections.some((s) => !s.ok);
-  return { billing, sections, paid: paidAll, done: counted.filter((s) => s.status === 'done').length, total: counted.length, incomplete, unknown, complete: !incomplete && !unknown };
+  const unknown = live.some((s) => !s.ok);
+  const onlyPay = incomplete && !paidAll && live.every((s) => s.ok && s.stepsDone);
+  const renewal = payable.some((p) => access[p]?.access === 'due' || (access[p]?.access === 'unpaid' && access[p]?.paidUntil));
+  return { billing, sections, paid: paidAll, done: counted.filter((s) => s.status === 'done').length, total: counted.length, incomplete, onlyPay, renewal, unknown, complete: !incomplete && !unknown };
 }

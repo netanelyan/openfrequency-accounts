@@ -258,8 +258,10 @@ test('the paywall on the pages: payment first and required, the steps locked, th
     assert.match(billing, /<p class="muted">יש שאלה על התשלום\? כתבו לנו בוואטסאפ, או ענו לאחד המיילים שקיבלתם מאיתנו\.<\/p>/);
     // Teder's steps are there, locked: no button into Teder, "אחרי התשלום", a done step still done.
     const teder = page.slice(page.indexOf('id="setup-teder"'));
-    assert.match(page, /<section class="card setup-p locked" id="setup-teder">[^]*<span class="tag off">נפתח אחרי התשלום<\/span>/);
+    assert.match(page, /<section class="card setup-p locked" id="setup-teder">[^]*<span class="tag off">אחרי התשלום<\/span>/);
     assert.match(teder, /הצעדים של תדר נפתחים אחרי התשלום\./);
+    // Folded behind one line, so the page's one action is the payment (the audit of 2026-11-11).
+    assert.match(teder, /<details class="steps-later"><summary>לראות את 3 הצעדים<\/summary><ol class="steps">/);
     assert.match(teder, /<li class="step st-locked"><span class="chip">אחרי התשלום<\/span><span class="what"><b>לבדוק את התשובה הראשונה<\/b>/);
     assert.match(teder, /<li class="step st-done"><span class="chip">✓ בוצע<\/span><span class="what"><b>לחבר את חשבון האינסטגרם<\/b>/);
     assert.doesNotMatch(teder, /href="https:\/\/teder\.openfrequency\.co\.il\/first"/);

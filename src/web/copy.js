@@ -111,7 +111,11 @@ export const T = {
   homeNoProducts: 'עוד לא הפעלנו מוצר בחשבון הזה. נעדכן אתכם במייל כשזה יקרה.',
   homeSwitch: 'החלפת חשבון',
   homeSignOut: 'יציאה',
-  homeClosed: (ws) => `החשבון של ${ws} סגור כרגע. אם זו טעות, ענו לאחד המיילים שקיבלתם מאיתנו.`,
+  // A closed workspace: who to tell when it is a mistake, our WhatsApp (OF_SUPPORT_WA) when it is set.
+  homeClosed: (ws) => `החשבון של ${ws} סגור כרגע.`,
+  homeClosedMail: 'אם זו טעות, ענו לאחד המיילים שקיבלתם מאיתנו.',
+  homeClosedWa: 'אם זו טעות, כתבו לנו בוואטסאפ.',
+  homeClosedText: (ws) => `היי, כותבים מ״${ws}״. החשבון שלנו סגור, ואנחנו לא יודעים למה.`,
   homeNoWorkspace: 'עוד לא חיברנו אתכם לאף עסק. ענו למייל ההזמנה ונבדוק מה קרה.',
 
   pickTitle: 'לאיזה חשבון נכנסים?',
@@ -119,7 +123,9 @@ export const T = {
 
   // ---- the customer's dashboard
   dashProducts: 'המוצרים שלכם',
-  subStatus: { active: 'פעיל', open: 'עוד לא שולם', due: 'מחכה לתשלום', ending: 'מסתיים', ended: 'הסתיים', comp: 'ללא תשלום', cancelled: 'בוטל' },
+  // `stopped`: due, and its 72 hours are over (the paywall keeps it closed), so not "waiting" any more (the audit of
+  // 2026-11-11 found the tag "מחכה לתשלום" over "...המנוי נעצר").
+  subStatus: { active: 'פעיל', open: 'עוד לא שולם', due: 'מחכה לתשלום', stopped: 'נעצר', ending: 'מסתיים', ended: 'הסתיים', comp: 'ללא תשלום', cancelled: 'בוטל' },
   subPrice: (amount, vat) => `${amount} לחודש, ${vat}`,
   vatIncluded: 'כולל מע״מ',
   vatExcluded: 'לא כולל מע״מ',
@@ -136,7 +142,8 @@ export const T = {
   subEnding: (d, n) => `המנוי מסתיים ב-${d}. ${n === 1 ? 'זה היום האחרון שלו.' : `נשארו ${n} ימים.`}`,
   subEnded: (d) => `המנוי הסתיים ב-${d}.`,
   subOpen: (product) => `${product} נפתח אחרי התשלום על המנוי.`,
-  subSetup: (amount) => `דמי הקמה: ${amount}, פעם אחת`,
+  // `included`: the subscription's price has VAT in it (recorded so on /admin); else VAT is added, as to the month.
+  subSetup: (amount, included = false) => `דמי הקמה: ${amount}${included ? ', כולל מע״מ' : ' ועוד מע״מ'}, פעם אחת`,
   subComp: 'המנוי הזה אצלנו ללא תשלום.',
   subCancelled: (d) => `ביטלתם את המנוי. הוא עובד עד ${d} ואז נעצר, ולא נחייב אתכם יותר.`,
   subCancelledNow: 'ביטלתם את המנוי, ולא נחייב אתכם עליו.',
@@ -218,6 +225,10 @@ export const T = {
   notFoundBack: 'לדף הכניסה',
   serverError: 'משהו אצלנו נשבר. נסו שוב בעוד רגע.',
   httpsOnly: 'האתר הזה עובד רק ב-HTTPS.',
+  // A request the pages never send (a method other than GET or POST, a file where no form takes one, a form that
+  // cannot be read), and one too large: said in Hebrew, never in the code's English (the audit of 2026-11-11).
+  badRequest: 'משהו בבקשה הזאת לא הסתדר. חזרו לדף הקודם ונסו שוב.',
+  tooLarge: 'מה ששלחתם גדול מדי, אז לא שמרנו כלום. נסו שוב עם פחות טקסט, או עם קובץ קטן יותר.',
 
   // ---- superadmin sign-in
   adminLoginTitle: 'כניסת מנהל',
@@ -228,6 +239,9 @@ export const T = {
   adminLoginButton: 'כניסה',
   adminLoginFailed: 'אחד הפרטים לא נכון. נסו שוב.',
   adminTooMany: (seconds) => `יותר מדי ניסיונות. נסו שוב בעוד ${minutes(seconds)} דקות.`,
+  // The way back for a customer who followed "צוות OpenFrequency? כניסה עם סיסמה" from the sign-in page.
+  adminNotStaff: 'לא מהצוות?',
+  adminToLogin: 'לכניסה הרגילה',
   adminRecoveryUsed: (left) => `נכנסתם עם קוד גיבוי. נשארו ${left} קודים. כדי ליצור חדשים, הריצו npm run admin:create.`,
 
   // ---- superadmin console
@@ -408,7 +422,15 @@ export const AUDIT_NAMES = {
   billing_soon7: 'תזכורת תשלום, שבוע לפני',
   billing_soon1: 'תזכורת תשלום, יום לפני',
   billing_due: 'תשלום לא הגיע, תקופת החסד התחילה',
+  billing_last: 'תזכורת תשלום, היום האחרון של תקופת החסד',
   billing_stopped: 'נעצר אחרי תקופת החסד',
+  billing_whatsapp: 'תזכורת תשלום בוואטסאפ',
+  terms_notice_sent: 'נשלחה הודעה על השינוי בהסכם',
+  founders_spot: 'מקום במבצע המייסדים',
+  founders_spot_back: 'מקום במבצע המייסדים הוחזר',
+  product_added: 'הלקוח הוסיף מוצר לחשבון',
+  pay_manual: 'תשלום נרשם בקונסולה',
+  lead_action: 'פעולה בליד',
   idle_warned: 'נשלחה הודעה על מחיקה של חשבון בלי שימוש',
   pay_receipt_received: 'אישור העברה הגיע בוואטסאפ',
   pay_receipt_paid: 'אישור העברה: התשלום הגיע',
@@ -850,6 +872,11 @@ export const SETUP = {
   progress: (done, total) => `${done} מתוך ${total} צעדים`,
   progressLabel: 'כמה צעדים כבר עשיתם',
   allDone: 'כל הצעדים הושלמו.',
+  // Every required step done, and `n` optional ones left: the meter counts them too, so "כל הצעדים הושלמו" beside "11
+  // מתוך 13" would not be true (the audit of 2026-11-11).
+  allRequired: (n) => `כל צעדי החובה הושלמו. ${n === 1 ? 'נשאר צעד אחד שלא חובה' : `נשארו ${n} צעדים שלא חובה`}.`,
+  // Every product's subscription ended: there is nothing to set up, and the page says why.
+  allEnded: (names) => (names.length > 1 ? `המנויים ל${[].concat(names).join(' ול')} הסתיימו, אז אין מה להגדיר.` : `המנוי ל${[].concat(names)[0]} הסתיים, אז אין מה להגדיר.`),
   unknown: 'חלק מהמוצרים לא ענו לנו עכשיו, אז ייתכן שחסרים כאן צעדים.',
   ready: 'מוכן',
   notReady: 'עוד לא מוכן',
@@ -907,9 +934,12 @@ export const SETUP = {
   and: ' ו',
   billingReceiptText: (business) => `היי, כותבים מ״${business}״. העברנו את התשלום, והאסמכתא מצורפת.`,
   billingSupportText: (business) => `היי, כותבים מ״${business}״. יש לנו שאלה על התשלום.`,
-  locked: 'נפתח אחרי התשלום',
+  // The chip of a step, and the tag of a product, that the payment keeps closed.
   lockedChip: 'אחרי התשלום',
   lockedLead: (product) => `הצעדים של ${product} נפתחים אחרי התשלום.`,
+  // A product the payment keeps closed shows its lead line, and its steps one tap away (Hick's law: the page's one
+  // action is the payment).
+  lockedMore: (n) => (n === 1 ? 'לראות את הצעד' : `לראות את ${n} הצעדים`),
   noProducts: 'עוד אין מוצר פעיל בחשבון הזה, אז אין מה להגדיר.',
   back: 'לדף הראשי',
 
@@ -917,6 +947,11 @@ export const SETUP = {
   cardTitle: 'הגדרת החשבון',
   cardLead: (done, total) => (total ? `${done} מתוך ${total} צעדים הושלמו.` : 'נשארו כמה צעדים עד שהכול יעבוד.'),
   cardButton: 'להמשך ההגדרה',
+  // The same card when the payment is all that is left (setup.js setupState onlyPay): about it, and its button the
+  // page's one blue (the audit of 2026-11-11: in the 72 hours, "להמשך ההגדרה" was blue and the payment grey).
+  // `renewal`: a month of a product paid for before.
+  payCardTitle: (renewal) => (renewal ? 'התשלום על החודש החדש עוד לא הגיע' : 'נשאר רק התשלום על המנוי'),
+  payCardButton: 'לתשלום',
   nav: 'הגדרה',
   navLabel: 'החשבון',
 };
@@ -1073,6 +1108,8 @@ export const CANCEL = {
   heading: (product) => `ביטול המנוי ל${product}`,
   leadPaid: (product, d) => `אם תבטלו, ${product} ימשיך לעבוד עד ${d}, היום האחרון ששילמתם עליו. אחרי זה הוא נעצר, ולא נחייב אתכם יותר.`,
   leadUnpaid: (product) => `עוד לא שילמתם על ${product}, אז הביטול חל מהיום, ולא נחייב אתכם עליו.`,
+  // In the 72 hours after a paid month: it was paid for before, the new month is not (entitlement.js cancels it today).
+  leadDue: (product) => `את החודש החדש של ${product} עוד לא שילמתם, אז הביטול חל מהיום, ולא נחייב אתכם עליו.`,
   undo: (d) => `עד ${d} אפשר לחזור בכם מהדף הראשי, בכפתור "להמשיך את המנוי".`,
   keepsData: 'הביטול לא מוחק נתונים. כדי למחוק את החשבון ואת כל מה שבו, יש לזה כפתור נפרד בדף הראשי.',
   confirm: 'לבטל את המנוי',

@@ -5,6 +5,7 @@ import { pathOf, startSite, tokenOf } from './site.js';
 import { now, setNow } from '../src/core/clock.js';
 import { setSuperadmin } from '../src/accounts/superadmin.js';
 import { invoicesOf } from '../src/accounts/invoices.js';
+import { payMonth } from '../src/accounts/subscriptions.js';
 import { parseMultipart } from '../src/web/app.js';
 import { newTotpSecret, stepAt, totpCode } from '../src/auth/totp.js';
 
@@ -50,6 +51,11 @@ test('the operator records an invoice with its PDF; the customer sees every one,
   try {
     const dana = await signIn(t, 'dana@example.com');
     let home = (await dana.get('/')).body;
+    // Nothing paid and no invoice: no card, an empty one would say nothing yet (the audit of 2026-11-11). Once a month
+    // is paid, its invoice is on the way, and the empty state says where it will be.
+    assert.doesNotMatch(home, /id="invoices"/, 'nothing paid: no card');
+    payMonth(t.db, t.dana.id, 'teder', { by: null });
+    home = (await dana.get('/')).body;
     assert.match(home, /<h2>חשבוניות<\/h2><p class="muted">עוד אין כאן חשבוניות\. כל חשבונית שנוציא לכם תופיע כאן, עם המסמך עצמו להורדה\.<\/p>/, 'the empty state');
 
     const r = await upload(t, t.dana, {});
@@ -101,7 +107,7 @@ test("an invoice is never reachable from another workspace, signed out, or throu
     assert.doesNotMatch(theirs.body, /%PDF/);
     assert.equal((await yossi.get(`/invoices/${id + 1}`)).status, 404);
     assert.doesNotMatch((await yossi.get('/')).body, /1042/, "not on another workspace's home");
-    assert.match((await yossi.get('/')).body, /עוד אין כאן חשבוניות/);
+    assert.doesNotMatch((await yossi.get('/')).body, /id="invoices"/, 'nothing paid there and none of its own: no card');
 
     assert.equal((await t.browser().get(`/invoices/${id}`)).headers.location, '/login');
     assert.equal((await yossi.get(`/admin/invoices/${id}`)).headers.location, '/admin/login', "the console's route is the superadmin's only");

@@ -56,7 +56,8 @@ test('a customer asks for a link, opens it, presses the button, and is signed in
     // And the accounts home page knows them too.
     const home = await b.get('/');
     assert.equal(home.status, 200);
-    assert.match(home.body, /אתם מחוברים בתור dana@example\.com, בחשבון של Dana Shop\./);
+    // The address whole and left to right, on its own line when it does not fit (the audit of 2026-11-11).
+    assert.match(home.body, /אתם מחוברים בתור <bdi class="addr">dana@example\.com<\/bdi>, בחשבון של Dana Shop\./);
     assert.match(home.body, /<a class="button primary" href="https:\/\/teder\.openfrequency\.co\.il\/">כניסה לתדר<\/a>/);
     assert.doesNotMatch(home.body, /כניסה לתורן/);
     // Toran is not theirs: it is offered under "עוד מאיתנו", with a link to its page, not to the product.
