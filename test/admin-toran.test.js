@@ -318,12 +318,12 @@ test('Toran down or slow: 502 with our page and a way back to /admin; a body ove
   }
 });
 
-test('the admin pages\' tabs: היום, לידים, then תורן and תדר under /admin, then חשבונות (docs/admin-split.md)', async () => {
+test('the admin pages\' tabs: היום, לידים, then תורן and תדר on their own sites (the company\'s workspace there), then חשבונות (docs/admin-split.md)', async () => {
   const t = await setup();
   try {
     for (const [p, re] of [
-      ['/admin', /<a href="\/admin" aria-current="page">היום<\/a><a href="\/admin\/leads">לידים<\/a><a href="\/admin\/toran\/">תורן<\/a><a href="\/admin\/teder\/">תדר<\/a><a href="\/admin\/accounts">חשבונות<\/a><\/nav>/],
-      ['/admin/accounts', /<a href="\/admin">היום<\/a><a href="\/admin\/leads">לידים<\/a><a href="\/admin\/toran\/">תורן<\/a><a href="\/admin\/teder\/">תדר<\/a><a href="\/admin\/accounts" aria-current="page">חשבונות<\/a><\/nav>/],
+      ['/admin', /<a href="\/admin" aria-current="page">היום<\/a><a href="\/admin\/leads">לידים<\/a><a href="https:\/\/toran\.openfrequency\.co\.il\/">תורן<\/a><a href="https:\/\/teder\.openfrequency\.co\.il\/">תדר<\/a><a href="\/admin\/accounts">חשבונות<\/a><\/nav>/],
+      ['/admin/accounts', /<a href="\/admin">היום<\/a><a href="\/admin\/leads">לידים<\/a><a href="https:\/\/toran\.openfrequency\.co\.il\/">תורן<\/a><a href="https:\/\/teder\.openfrequency\.co\.il\/">תדר<\/a><a href="\/admin\/accounts" aria-current="page">חשבונות<\/a><\/nav>/],
     ]) {
       assert.match((await t.op.get(p)).body, re, p);
     }

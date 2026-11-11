@@ -9,6 +9,7 @@ import { total } from '../accounts/invoices.js';
 import { MAIL_PRODUCTS, kindsOf } from '../accounts/notify.js';
 import { AUDIT_NAMES, CANCEL, ERASE, LEADS, MORNING, NOTIFY, OPS, PAY, PLAN_NAMES, PRODUCT_NAMES, ROLE_NAMES, SETUP, SIGNUP, T, dayHe, hourHe, ils, opensAfter, phoneHe, planWhat, weekdayHe, when } from './copy.js';
 import { CONTRACT_URLS, PRIVACY_URL, TERMS_URL } from '../accounts/signup.js';
+import { productUrls } from './products.js';
 
 // Server-rendered pages: Hebrew, right to left, one stylesheet. Our own script files only: static/a11y.js (the
 // accessibility panel and the light or dark switch) and static/load.js (the loading state) on every page, and on the
@@ -796,19 +797,23 @@ ${error ? `<p class="error" role="alert">${esc(error)}</p>` : ''}
 </section>`;
 
 /**
- * The top of both /admin pages: the mark, the page's name, the tabs (today, the accounts, and Toran's operator pages,
- * which Toran renders under /admin/toran/) and sign-out.
+ * The top of the /admin pages: the mark, the page's name, the tabs and sign-out. Toran and Teder open the products'
+ * own sites, where the owner is in the company's workspace as its owner (OF_OPERATOR_WORKSPACE, sessions.js
+ * operatorHome): the owner, 2026-11-11, "when i choose teder from the admin dashboard it redirects me to accounts… and
+ * not teder. Fix that, me as an admin i want a regular teder for the openfrequency accounts". The operator's pages
+ * inside each product are the links on /admin (PRODUCT_TOOLS).
  */
-export const adminTop = ({ csrf, tab }) => {
-  const a = (href, label, on) => `<a href="${href}"${on ? ' aria-current="page"' : ''}>${esc(label)}</a>`;
-  return `<header class="top admin-top"><div class="brand">${ofMark()}<h1>${esc(tab === 'today' ? OPS.pageTitle : tab === 'leads' ? LEADS.title : T.adminTitle)}</h1></div><nav class="tabs" aria-label="${esc(OPS.tabs)}">${a('/admin', OPS.tabToday, tab === 'today')}${a('/admin/leads', LEADS.tab, tab === 'leads')}${a('/admin/toran/', OPS.tabToran, false)}${a('/admin/teder/', OPS.tabTeder, false)}${a('/admin/accounts', OPS.tabAccounts, tab === 'accounts')}</nav>${button('/logout', T.adminSignOut, csrf, { kind: 'quiet' })}</header>`;
+export const adminTop = ({ csrf, tab, env = process.env }) => {
+  const a = (href, label, on) => `<a href="${esc(href)}"${on ? ' aria-current="page"' : ''}>${esc(label)}</a>`;
+  const urls = productUrls(env);
+  return `<header class="top admin-top"><div class="brand">${ofMark()}<h1>${esc(tab === 'today' ? OPS.pageTitle : tab === 'leads' ? LEADS.title : T.adminTitle)}</h1></div><nav class="tabs" aria-label="${esc(OPS.tabs)}">${a('/admin', OPS.tabToday, tab === 'today')}${a('/admin/leads', LEADS.tab, tab === 'leads')}${a(urls.toran, OPS.tabToran, false)}${a(urls.teder, OPS.tabTeder, false)}${a('/admin/accounts', OPS.tabAccounts, tab === 'accounts')}</nav>${button('/logout', T.adminSignOut, csrf, { kind: 'quiet' })}</header>`;
 };
 
 /**
  * The operator's pages inside each product, grouped under its name on /admin (docs/admin-split.md; the owner,
  * 2026-11-10: "Everything else, leads etc should be in other places. The admin dashboard is for that"). Each is a page
  * of the product, proxied under /admin/toran or /admin/teder (admin-toran.js, admin-teder.js), so it opens here, signed
- * in as the operator, and the product's own site shows the product only. The tabs above lead to each one's home.
+ * in as the operator, and the product's own site shows the product only. The tabs above open the products' own sites.
  */
 export const PRODUCT_TOOLS = {
   toran: [

@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { audit } from '../core/audit.js';
 import { ROOT } from '../core/paths.js';
 import { PRODUCTS } from '../db/schema.js';
+import { productUrls } from './products.js';
 import { clientIp, cookies, csrfFor, csrfOk, isHttps, sessionSecret } from '../auth/http.js';
 import { createLimiter, ipKey, LIMITS, signupMailDaily } from '../auth/limiter.js';
 import { safeNext } from '../auth/next.js';
@@ -85,9 +86,7 @@ export function defaultLimiters() {
   };
 }
 
-export function productUrls(env = process.env) {
-  return Object.fromEntries(PRODUCTS.map((p) => [p, String(env[`${p.toUpperCase()}_URL`] || '').trim() || `https://${p}.openfrequency.co.il/`]));
-}
+export { productUrls };
 
 /**
  * Where a customer reaches us: our WhatsApp (OF_SUPPORT_WA, international digits), as a wa.me link that opens with

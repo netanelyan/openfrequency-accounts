@@ -55,7 +55,9 @@ funnels and the money; a tools row links to Teder's leads, demos and all account
    Under the prefix: never `/internal`, the assistant's API, the signed slide links or the connect returns.
    On a laptop (127.0.0.1, no `PUBLIC_HOST`) both products keep showing the operator everything, for development and
    for the tests.
-4. **accounts' /admin groups it.** The tabs become היום, לידים, תורן, תדר, חשבונות. Today's tools row becomes two
+4. **accounts' /admin groups it.** The tabs become היום, לידים, תורן, תדר, חשבונות; תורן and תדר open the products'
+   own sites, the company's workspace there (2026-11-11: "me as an admin i want a regular teder for the openfrequency
+   accounts"), and each group's "לכל הדפים" opens its operator home under /admin. Today's tools row becomes two
    groups of links: תורן (לבדיקה, מעקב, החנויות והלידים, השירות שלנו בהגדרות) and תדר (דמואים, לידים, כל החשבונות,
    הגדרות השרת: מתי נכתבים, עצירת חירום, עלויות במצב מפתח). Teder's links from Toran's ops data (`TEDER_URL/demos/<id>`)
    keep working through the redirect in point 2.
