@@ -159,8 +159,8 @@ test('the list: a missing demo is red, one that is there has its colour; each ro
         row({ id: 21, name: 'אין לה כלום', toran: none, teder: none, build: { toran: true, teder: true, both: true, toranWhyNot: null, go: go(['toran', 'teder'], ['toran'], ['teder']) }, chosen: null }),
         row({ id: 22, name: 'תדר נכשל', toran: { ...LIST.leads[0].toran }, teder: { ...none, state: 'failed', error: 'לא נקרא' }, build: { toran: true, teder: true, both: false, toranWhyNot: null, go: go(['teder'], [], ['teder']) }, chosen: null }),
         row({ id: 23, name: 'הכול מוכן' }),
-        row({ id: 24, name: 'ויקס', toran: none, teder: { ...none, state: 'building' }, build: { toran: false, teder: false, both: false, toranWhyNot: 'תורן קורא כרגע רק חנויות Shopify.', go: go(null, null, []) }, chosen: null }),
-        row({ id: 25, name: 'הוסר', toran: { ...none, state: 'removed' }, teder: none, build: { toran: false, teder: false, both: false, toranWhyNot: null, go: go(null, null, null) }, chosen: null }),
+        row({ id: 24, name: 'ויקס', facts: { ...LIST.leads[0].facts, social: { instagram: null, tiktok: null, facebook: null }, socialRead: false }, toran: none, teder: { ...none, state: 'building' }, build: { toran: false, teder: false, both: false, toranWhyNot: 'תורן קורא כרגע רק חנויות Shopify.', go: go(null, null, []) }, chosen: null }),
+        row({ id: 25, name: 'הוסר', facts: { ...LIST.leads[0].facts, social: { instagram: null, tiktok: null, facebook: null }, socialRead: true }, toran: { ...none, state: 'removed' }, teder: none, build: { toran: false, teder: false, both: false, toranWhyNot: null, go: go(null, null, null) }, chosen: null }),
       ],
     };
     const b = (await t.op.get('/admin/leads')).body;
@@ -171,6 +171,9 @@ test('the list: a missing demo is red, one that is there has its colour; each ro
     assert.match(li(23), /<span class="tag p-toran">תורן: מוכן<\/span><span class="tag p-teder">תדר: מוכן<\/span>/);
     assert.match(li(24), /<span class="tag miss">תורן: אין<\/span><span class="tag wait">תדר: נבנה<\/span>/, 'being built is grey');
     assert.doesNotMatch(b, /class="tag p-(toran|teder)">[^<]*: (אין|נכשל|הוסר)</, 'no product colour on anything missing');
+    // No profiles is said only of a site read for them (one found before Toran read them may have some).
+    assert.doesNotMatch(li(24), /אינסטגרם/);
+    assert.match(li(25), /בלי אינסטגרם וטיקטוק באתר/);
     // One button a row, opening Toran, Teder and both, both first, whatever is built (the owner, 2026-11-12: "i dont see
     // a button for going on with teder/toran/both for each lead"); once chosen, the button says which.
     const choices = (id) => [...li(id).matchAll(/action="\/admin\/leads\/\d+\/(go-(?:both|toran|teder))"/g)].map((m) => m[1]);

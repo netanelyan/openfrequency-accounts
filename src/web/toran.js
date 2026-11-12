@@ -188,6 +188,7 @@ const aboutOf = (x) => {
         tiktok: profile(so.tiktok, /(^|\.)tiktok\.com$/),
         facebook: profile(so.facebook, /(^|\.)(facebook|fb)\.com$/),
       },
+      socialRead: f.socialRead === true,
     },
   };
 };

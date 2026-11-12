@@ -90,7 +90,9 @@ function factsLine(x) {
   if (f.priceMin != null && f.priceMax != null && f.currency === 'ILS') parts.push(`<span>${esc(LEADS.prices(f.priceMin, f.priceMax))}</span>`);
   if (f.kinds?.length) parts.push(`<span dir="auto">${esc(f.kinds.join(', '))}</span>`);
   const nets = ['instagram', 'tiktok', 'facebook'].filter((n) => f.social?.[n]);
-  parts.push(nets.length ? `<span class="nets">${nets.map((n) => ext(f.social[n], esc(LEADS.social[n]))).join(', ')}</span>` : `<span>${esc(LEADS.noSocial)}</span>`);
+  // None found is said only when its site was read for them: a store found before Toran read them may have some.
+  if (nets.length) parts.push(`<span class="nets">${nets.map((n) => ext(f.social[n], esc(LEADS.social[n]))).join(', ')}</span>`);
+  else if (f.socialRead) parts.push(`<span>${esc(LEADS.noSocial)}</span>`);
   const c = x.contact || {};
   parts.push(c.whatsapp ? `<span>${esc(LEADS.waOnSite)}</span>` : !c.email && !c.phone ? `<span class="bad">${esc(LEADS.noWay)}</span>` : '');
   return `<p class="facts">${parts.filter(Boolean).join('')}</p>`;
