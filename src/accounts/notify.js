@@ -5,7 +5,8 @@ import { enabledProducts } from '../auth/sessions.js';
 
 // Product emails: Teder and Toran ask us to email a workspace's people (POST /internal/notify, docs/setup.md), and
 // each person chooses which of them they get, per product and per kind, on /notifications. By default an owner gets
-// every kind and a member none; a choice saved on the page is kept as a row in notify_prefs and wins over that.
+// every kind and a member none; a choice saved on the page is kept as a row in notify_prefs and wins over that. A
+// notice about the account itself (NOTICES_OF below) is nobody's choice: it reaches every owner.
 //
 // What a product sends is checked and made plain here (checkNotify): one line for the subject, plain text for the
 // body, no control characters or bidi overrides, sizes capped, the link https on openfrequency.co.il only. At most
@@ -17,6 +18,14 @@ export const KINDS = ['posts_waiting', 'weekly', 'monthly', 'connect_needed', 'p
 // (src/owners/reports.ts). A product sends only its own kinds, and /notifications draws each product's own (kindsOf).
 export const KINDS_OF = { teder: KINDS, toran: ['conversation_waiting', 'monthly'] };
 export const kindsOf = (product) => KINDS_OF[product] || [];
+// Notices (2026-11-11): what a product has to tell a workspace's owners about their account, not one of their choices.
+// A notice goes to every owner (client_owner) whatever they ticked, is never offered on /notifications, and its footer
+// says why it came. `ai_paused`: very unusual use beyond the plan paused new work until the next month, which the
+// website's terms and FAQ promise to tell ("אנחנו מודיעים לכם"; Teder: src/billing/ai-share.js, its 50% line). Both
+// products may send it.
+export const NOTICES_OF = { teder: ['ai_paused'], toran: ['ai_paused'] };
+export const noticesOf = (product) => NOTICES_OF[product] || [];
+export const isNotice = (product, kind) => noticesOf(product).includes(kind);
 // The products whose boxes /notifications shows (the owner, 2026-11-06: "if an option isnt relevant dont show it"):
 // Teder's, and Toran's since 2026-11-08 (its two kinds, KINDS_OF; owners get them by default, byDefault below).
 export const MAIL_PRODUCTS = ['teder', 'toran'];
@@ -80,7 +89,7 @@ export function checkNotify(body) {
   if (!body || typeof body !== 'object' || Array.isArray(body)) throw new NotifyError('bad');
   if (!Number.isSafeInteger(body.workspace) || body.workspace < 1) throw new NotifyError('bad_workspace');
   if (!PRODUCTS.includes(body.product)) throw new NotifyError('bad_product');
-  if (!kindsOf(body.product).includes(body.kind)) throw new NotifyError('bad_kind');
+  if (!kindsOf(body.product).includes(body.kind) && !isNotice(body.product, body.kind)) throw new NotifyError('bad_kind');
   if (typeof body.subject !== 'string' || body.subject.length > LIMITS.subject) throw new NotifyError('bad_subject');
   const subject = oneLine(body.subject);
   if (!subject) throw new NotifyError('bad_subject');
@@ -126,8 +135,12 @@ export function savePrefs(db, { userId, workspaceId, on }, { by, ip = null } = {
   });
 }
 
-/** Who gets one kind of email from one product: the workspace's people (not disabled) who have it on. */
+/**
+ * Who gets one kind of email from one product: the workspace's people (not disabled) who have it on. A notice
+ * (NOTICES_OF): every owner, whatever they chose, and no member.
+ */
 export function recipients(db, workspaceId, product, kind) {
+  if (isNotice(product, kind)) return db.all("SELECT u.id, u.email, u.name, m.role FROM memberships m JOIN users u ON u.id = m.user_id WHERE m.workspace_id = ? AND m.role = 'client_owner' AND u.disabled_at IS NULL ORDER BY m.created_at, u.id", workspaceId);
   const people = db.all(
     `SELECT u.id, u.email, u.name, m.role, np.enabled AS chosen
        FROM memberships m JOIN users u ON u.id = m.user_id

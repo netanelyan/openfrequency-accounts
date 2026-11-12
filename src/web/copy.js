@@ -1026,6 +1026,8 @@ export const NOTIFY = {
   readOnly: 'בצפייה כלקוח אי אפשר לשנות כלום.',
   mailButton: (product) => `לפתוח את ${product}`,
   mailFooter: (kind, product) => `קיבלתם את המייל הזה כי ההתראות על ${kind} ב${product} פועלות אצלכם.`,
+  // A notice about the account (src/accounts/notify.js NOTICES_OF): nobody's choice, so it says why it came.
+  noticeFooter: (product) => `קיבלתם את המייל הזה כי אתם מבעלי החשבון ב${product}. הודעה כזו על החשבון מגיעה לבעלים תמיד, גם כשההתראות כבויות.`,
   mailFooterLink: 'לשנות את ההתראות',
 };
 

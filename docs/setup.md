@@ -547,7 +547,7 @@ Content-Type: application/json
 |---|---|
 | `workspace` | A positive integer (a JSON number, not a string). |
 | `product` | `teder` or `toran`, and on for the workspace. |
-| `kind` | `posts_waiting`, `weekly`, `monthly`, `connect_needed` or `publish_failed`. |
+| `kind` | Teder: `posts_waiting`, `weekly`, `monthly`, `connect_needed` or `publish_failed`; Toran: `conversation_waiting` or `monthly`. Either may also send the notice `ai_paused` (since 2026-11-11, below). |
 | `subject` | A string of at most 200 characters; made one line, without control characters or bidi overrides, and cut to 150. Not empty after that. |
 | `text` | A string of at most 5,000 characters; plain text, its line breaks kept (an empty line starts a paragraph), other control characters and bidi overrides removed. Not empty. |
 | `html` | Optional, a string of at most 50,000 characters. Checked and **not used**: the email's HTML is made here from `text`, escaped, so nothing a product sends reaches an inbox as markup. |
@@ -556,6 +556,14 @@ Content-Type: application/json
 Who gets it: the workspace's people (not disabled) who have that kind on for that product. With
 no choice saved, an owner (`client_owner`) gets every kind and a member none. Each email ends with
 a line to turn it off, linking to `https://<PUBLIC_HOST>/notifications?workspace=<id>`.
+
+A **notice** is not a choice (`NOTICES_OF` in `src/accounts/notify.js`): it goes to every owner of
+the workspace whatever they ticked, to no member, is never offered on `/notifications`, and its
+footer says why it came ("קיבלתם את המייל הזה כי אתם מבעלי החשבון בתדר. הודעה כזו על החשבון מגיעה
+לבעלים תמיד, גם כשההתראות כבויות."). There is one, `ai_paused`, for both products: very unusual
+use beyond the plan paused new work until the next month, which the website's terms and FAQ promise
+to tell (Teder sends it once, when its AI stops for the workspace at half of what it pays). It is
+counted for the limit like any kind.
 
 Answers: `202 {"ok": true, "sent": <how many emails>}` (also when nobody wants it: `sent` is 0);
 `400 {"error": "<bad_workspace|bad_product|bad_kind|bad_subject|bad_text|bad_html|bad_link|bad>"}`
