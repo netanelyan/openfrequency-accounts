@@ -169,6 +169,14 @@ const RUN = {
     setComp(w.db, ws.id, 'teder', true, { by: w.admin });
     return ent(w, ws.id);
   },
+  'entitlement /internal/entitlement :: paid, a price agreed with VAT included: monthlyIls is the price before VAT (590 ₪ with VAT, 500 before it)': async (w) => {
+    const ws = fresh(w, 'vat-shop');
+    setSubscription(w.db, ws.id, 'teder', { plan: 'small', monthly: '590', setup: '990', vat: 'included', started_on: '2026-10-22' }, { by: w.admin });
+    payMonth(w.db, ws.id, 'teder', { by: w.admin });
+    const r = await ent(w, ws.id);
+    assert.equal(r.json.monthlyIls, 500);
+    return r;
+  },
   'entitlement /internal/entitlement :: paid (Toran, the big plan)': (w) => {
     const ws = fresh(w, 'toran-big', ['toran']);
     setSubscription(w.db, ws.id, 'toran', { plan: 'big', monthly: '1190', setup: '990', vat: 'excluded', started_on: '2026-10-22' }, { by: w.admin });
@@ -182,6 +190,12 @@ const RUN = {
   'entitlement /internal/entitlement :: no token, or the wrong one': (w) => noToken(w, 'GET', `/internal/entitlement?workspace=${w.dana.id}&product=teder`),
 
   'notify /internal/notify :: sent (sent is 0 when nobody wants this kind)': (w) => w.call('POST', '/internal/notify', { workspace: w.dana.id, ...NOTIFY }),
+  'notify /internal/notify :: a notice (ai_paused): to every owner, whatever they chose, and to no member': async (w) => {
+    const ws = makeWorkspace(w.db, 'notice-shop', { products: ['teder'], members: { 'one@example.com': 'client_owner', 'two@example.com': 'client_owner', 'staff@example.com': 'client_member' } });
+    const r = await w.call('POST', '/internal/notify', { workspace: ws.id, ...NOTIFY, kind: 'ai_paused' });
+    assert.equal(r.json.sent, 2);
+    return r;
+  },
   'notify /internal/notify :: a field that breaks its rule': (w) => w.call('POST', '/internal/notify', { workspace: w.dana.id, ...NOTIFY, kind: 'nope' }),
   'notify /internal/notify :: a workspace we do not have, or a deleted one': (w) => w.call('POST', '/internal/notify', { workspace: 999, ...NOTIFY }),
   'notify /internal/notify :: the product is not on for it': (w) => w.call('POST', '/internal/notify', { workspace: fresh(w, 'teder-shop').id, ...NOTIFY, product: 'toran', kind: 'conversation_waiting' }),

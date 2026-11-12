@@ -86,7 +86,7 @@ test('the migration marks every workspace that exists before it complimentary, f
       const comp = db.all('SELECT workspace_id, product, comp FROM workspace_products ORDER BY workspace_id, product').map((r) => [r.workspace_id, r.product, r.comp]);
       assert.deepEqual(comp, [[1, 'teder', 1], [1, 'toran', 1], [2, 'teder', 1], [2, 'toran', 0]]);
       // Nothing that works today stops: unpaid, and still open.
-      assert.deepEqual(entitlement(db, 2, 'teder', '2026-10-22'), { workspace: 2, product: 'teder', enabled: true, access: 'comp', allowed: true, paidThrough: null, cancelAt: null, graceUntil: null, plan: { name: 'full', slideshows: 40, redos: 10 } });
+      assert.deepEqual(entitlement(db, 2, 'teder', '2026-10-22'), { workspace: 2, product: 'teder', enabled: true, access: 'comp', allowed: true, paidThrough: null, cancelAt: null, graceUntil: null, plan: { name: 'full', slideshows: 40, redos: 10 }, monthlyIls: 790 });
       assert.equal(entitlement(db, 1, 'toran', '2026-10-22').allowed, true);
       assert.equal(entitlement(db, 2, 'toran', '2026-10-22').access, 'off');
       // A product turned on later, and a workspace opened later, are not complimentary.
@@ -162,16 +162,16 @@ test('GET /internal/entitlement: the documented shape, each state as the console
     let r = await t.ent();
     assert.equal(r.status, 200);
     assert.equal(r.headers['cache-control'], 'no-store');
-    assert.deepEqual(r.json, { workspace: t.ws.id, product: 'teder', enabled: true, access: 'unpaid', allowed: false, paidThrough: null, cancelAt: null, graceUntil: null, plan: { name: 'full', slideshows: 40, redos: 10 } });
+    assert.deepEqual(r.json, { workspace: t.ws.id, product: 'teder', enabled: true, access: 'unpaid', allowed: false, paidThrough: null, cancelAt: null, graceUntil: null, plan: { name: 'full', slideshows: 40, redos: 10 }, monthlyIls: 790 });
     // Toran's answer carries its plan too (since 2026-11-08): store, the one a new subscription starts on.
-    assert.deepEqual((await t.ent('toran')).json, { workspace: t.ws.id, product: 'toran', enabled: false, access: 'off', allowed: false, paidThrough: null, cancelAt: null, graceUntil: null, plan: { name: 'store', conversations: 300 } });
+    assert.deepEqual((await t.ent('toran')).json, { workspace: t.ws.id, product: 'toran', enabled: false, access: 'off', allowed: false, paidThrough: null, cancelAt: null, graceUntil: null, plan: { name: 'store', conversations: 300 }, monthlyIls: 590 });
 
     // The console: each product's access, and a month's payment recorded.
     let page = (await t.admin.get('/admin/accounts')).body;
     assert.match(page, /גישה: לא שולם, סגור/);
     await t.admin.post(`/admin/workspaces/${t.ws.id}/subscription/pay`, { product: 'teder' });
     r = await t.ent();
-    assert.deepEqual(r.json, { workspace: t.ws.id, product: 'teder', enabled: true, access: 'paid', allowed: true, paidThrough: END_21_11, cancelAt: null, graceUntil: null, plan: { name: 'full', slideshows: 40, redos: 10 } });
+    assert.deepEqual(r.json, { workspace: t.ws.id, product: 'teder', enabled: true, access: 'paid', allowed: true, paidThrough: END_21_11, cancelAt: null, graceUntil: null, plan: { name: 'full', slideshows: 40, redos: 10 }, monthlyIls: 790 });
     page = (await t.admin.get('/admin/accounts')).body;
     assert.match(page, /גישה: שולם, פתוח, עד 21\.11\.2026/);
     // A second payment extends it by a month: sent with the day the console now shows, as its button sends it (without
@@ -367,7 +367,7 @@ test('cancelling online: owners only, a confirmation page, it works until the la
     assert.equal(done.headers.location, '/');
     const row = t.db.get("SELECT * FROM subscriptions WHERE workspace_id = ? AND product = 'teder'", t.ws.id);
     assert.deepEqual([row.cancelled_at, row.ends_on, row.paid_until], [T0, '2026-11-21', '2026-11-21']);
-    assert.deepEqual((await t.ent()).json, { workspace: t.ws.id, product: 'teder', enabled: true, access: 'cancelled', allowed: true, paidThrough: END_21_11, cancelAt: END_21_11, graceUntil: null, plan: { name: 'full', slideshows: 40, redos: 10 } });
+    assert.deepEqual((await t.ent()).json, { workspace: t.ws.id, product: 'teder', enabled: true, access: 'cancelled', allowed: true, paidThrough: END_21_11, cancelAt: END_21_11, graceUntil: null, plan: { name: 'full', slideshows: 40, redos: 10 }, monthlyIls: 790 });
     // A confirmation to each owner (not the member), and a notice to OF_SIGNUP_NOTIFY.
     const confirmations = t.mails.filter((m) => m.subject === 'ביטלתם את המנוי לתדר');
     assert.deepEqual(confirmations.map((m) => m.to).sort(), ['dana@example.com', 'noa@example.com']);

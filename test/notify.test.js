@@ -204,3 +204,33 @@ test("Toran sends its own two kinds, a customer waiting and the month's results,
     assert.equal(got.kind, kind);
   }
 });
+
+test('a notice (ai_paused) reaches every owner whatever they chose, never a member, is not offered on /notifications, and says why it came', async () => {
+  const t = await setup();
+  try {
+    // Noa turns every Teder email off; Ron, a member, turns every one on.
+    const noa = signedIn(t, t.db, t.user('noa@example.com'));
+    await noa.post('/notifications', { workspace: String(t.ws.id), on: [] });
+    const ron = signedIn(t, t.db, t.user('ron@example.com'));
+    await ron.post('/notifications', { workspace: String(t.ws.id), on: ['teder:posts_waiting', 'teder:weekly', 'teder:monthly', 'teder:connect_needed', 'teder:publish_failed'] });
+    const notice = BODY(t.ws, { kind: 'ai_paused', subject: 'מצגות חדשות לא נכתבות כרגע בתדר', text: 'מצגות חדשות לא נכתבות כרגע.\n\nמה שכבר אישרתם עולה בזמן, כרגיל.', link: 'https://teder.openfrequency.co.il/' });
+    const r = await t.notify(notice);
+    assert.deepEqual([r.status, r.json], [202, { ok: true, sent: 2 }]);
+    assert.deepEqual(t.mails.map((m) => m.to).sort(), ['dana@example.com', 'noa@example.com'], 'the owners, Noa too; never Ron');
+    const m = t.mails[0];
+    assert.match(m.text, /קיבלתם את המייל הזה כי אתם מבעלי החשבון בתדר\. הודעה כזו על החשבון מגיעה לבעלים תמיד, גם כשההתראות כבויות\./);
+    assert.doesNotMatch(m.text, /ההתראות על .* פועלות אצלכם/);
+    // Not a choice: /notifications still offers Teder's five kinds alone.
+    const page = (await noa.get('/notifications')).body;
+    assert.equal((page.match(/name="on" value="teder:[a-z_]+"/g) || []).length, 5);
+    assert.doesNotMatch(page, /ai_paused/);
+    // Counted like any kind: 3 a day at most.
+    for (let i = 0; i < 2; i++) assert.equal((await t.notify(notice)).status, 202);
+    assert.deepEqual([(await t.notify(notice)).status, (await t.notify(BODY(t.ws))).status], [429, 202], 'its own limit, not the others');
+    // Toran may send it too; an unknown kind is still refused.
+    assert.equal(checkNotify({ workspace: 7, product: 'toran', kind: 'ai_paused', subject: 'תורן', text: 'הודעה.', link: 'https://toran.openfrequency.co.il/' }).kind, 'ai_paused');
+    assert.throws(() => checkNotify({ ...notice, kind: 'ai_resumed' }), (e) => e instanceof NotifyError && e.code === 'bad_kind');
+  } finally {
+    await t.done();
+  }
+});

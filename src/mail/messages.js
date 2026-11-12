@@ -1,5 +1,6 @@
 import { MAIL, NOTIFY, PAY, PRODUCT_NAMES, dayHe, ils, phoneHe, weekdayHe, when } from '../web/copy.js';
 import { esc } from '../web/html.js';
+import { isNotice } from '../accounts/notify.js';
 
 // The emails (a sign-in link, an invite, a sign-up to confirm, billing, a product's notice), as plain text and as
 // right-to-left HTML in the website's look: the silver ground, one white card, the mark and the name above it, one
@@ -276,10 +277,12 @@ export const deleteNoticeMail = (to, { business, who, at, byAdmin = false, resul
 /**
  * A product's notification (POST /internal/notify), already checked and made plain (src/accounts/notify.js): its
  * subject, its text with a paragraph for each empty line, a button to its link, and a footer that leads to the page
- * where it is turned off.
+ * where it is turned off. A notice about the account (src/accounts/notify.js NOTICES_OF) is not turned off: its footer
+ * says it comes to the owners, and still leads to the page, for the others.
  */
 export const productNoticeMail = (to, { product, kind, subject, text, link, manage }) => {
   const name = PRODUCT_NAMES[product];
   const lines = [...text.split(/\n{2,}/), { link }];
-  return { to, ...build(subject, lines, NOTIFY.mailButton(name), { text: NOTIFY.mailFooter(NOTIFY.kindLabel(product, kind), name), href: manage, label: NOTIFY.mailFooterLink }, product) };
+  const why = isNotice(product, kind) ? NOTIFY.noticeFooter(name) : NOTIFY.mailFooter(NOTIFY.kindLabel(product, kind), name);
+  return { to, ...build(subject, lines, NOTIFY.mailButton(name), { text: why, href: manage, label: NOTIFY.mailFooterLink }, product) };
 };

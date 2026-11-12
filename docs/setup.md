@@ -258,7 +258,7 @@ Authorization: Bearer <OF_INTERNAL_TOKEN>
 ```json
 { "workspace": 7, "product": "teder", "enabled": true, "access": "paid", "allowed": true,
   "paidThrough": "2026-11-21T21:59:59.999Z", "cancelAt": null, "graceUntil": null,
-  "plan": { "name": "small", "slideshows": 15, "redos": 4 } }
+  "plan": { "name": "small", "slideshows": 15, "redos": 4 }, "monthlyIls": 490 }
 ```
 
 The same, field by field, with an example for every status, is `docs/contracts/entitlement.json`.
@@ -271,6 +271,7 @@ The same, field by field, with an example for every status, is `docs/contracts/e
 | `cancelAt` | Set only while `access` is `cancelled`: the end of the last day it works, the same way. Otherwise `null`. |
 | `graceUntil` | Set only while `access` is `due`: the end of the grace's last day, the same way, 72 hours after `paidThrough` (paid until 21.11.2026: `2026-11-24T21:59:59.999Z`), or more in the week of a clock change, never less (paid until 24.3.2027: `2027-03-28T20:59:59.999Z`, 95 hours); for a workspace still on the terms from before 2026-11-03, the end of the 15th day after it (paid until 21.11.2026: `2026-12-06T21:59:59.999Z`). Otherwise `null`. |
 | `plan` | Its plan, the month the product counts for the whole workspace. Teder: `{ name: "full" \| "small", slideshows, redos }` (40 and 10, or 15 and 4), full when none is recorded. Toran (since 2026-11-08): `{ name: "store" \| "big", conversations }` (300 or 1,500), store when none is recorded. |
+| `monthlyIls` | Since 2026-11-11: what a month of the product costs this workspace before VAT, in shekels to the agora (`monthlyIls()` in `src/accounts/entitlement.js`). The subscription's price, with the 18% VAT taken out when it was recorded with VAT included (590 ₪ with VAT: `500`); its plan's list price (790, 490, 590 or 1,190) when the product is complimentary, or when no price above 0 is recorded (no subscription yet, or a month of 0 ₪, a gift recorded as a price). It is the base a product weighs what it spends on the workspace against: Teder alerts the operator when its AI cost this month reaches 30% of it, and stops the AI for the workspace at 50% until the next month (the owner, 2026-11-11: "just make sure there is a cap where if ai costs of an account reach 30% of the payment of the customer, we get alerted. them on 50% it stops"). A product must accept an answer without it, from an accounts deployed before it, and take the plan's list price then. |
 
 `400 {"error":"bad_workspace"}` for a workspace that is not a positive integer, `400
 {"error":"bad_product"}` for a missing or unknown product, `404 {"error":"no_workspace"}` for an
@@ -546,7 +547,7 @@ Content-Type: application/json
 |---|---|
 | `workspace` | A positive integer (a JSON number, not a string). |
 | `product` | `teder` or `toran`, and on for the workspace. |
-| `kind` | `posts_waiting`, `weekly`, `monthly`, `connect_needed` or `publish_failed`. |
+| `kind` | Teder: `posts_waiting`, `weekly`, `monthly`, `connect_needed` or `publish_failed`; Toran: `conversation_waiting` or `monthly`. Either may also send the notice `ai_paused` (since 2026-11-11, below). |
 | `subject` | A string of at most 200 characters; made one line, without control characters or bidi overrides, and cut to 150. Not empty after that. |
 | `text` | A string of at most 5,000 characters; plain text, its line breaks kept (an empty line starts a paragraph), other control characters and bidi overrides removed. Not empty. |
 | `html` | Optional, a string of at most 50,000 characters. Checked and **not used**: the email's HTML is made here from `text`, escaped, so nothing a product sends reaches an inbox as markup. |
@@ -555,6 +556,14 @@ Content-Type: application/json
 Who gets it: the workspace's people (not disabled) who have that kind on for that product. With
 no choice saved, an owner (`client_owner`) gets every kind and a member none. Each email ends with
 a line to turn it off, linking to `https://<PUBLIC_HOST>/notifications?workspace=<id>`.
+
+A **notice** is not a choice (`NOTICES_OF` in `src/accounts/notify.js`): it goes to every owner of
+the workspace whatever they ticked, to no member, is never offered on `/notifications`, and its
+footer says why it came ("קיבלתם את המייל הזה כי אתם מבעלי החשבון בתדר. הודעה כזו על החשבון מגיעה
+לבעלים תמיד, גם כשההתראות כבויות."). There is one, `ai_paused`, for both products: very unusual
+use beyond the plan paused new work until the next month, which the website's terms and FAQ promise
+to tell (Teder sends it once, when its AI stops for the workspace at half of what it pays). It is
+counted for the limit like any kind.
 
 Answers: `202 {"ok": true, "sent": <how many emails>}` (also when nobody wants it: `sent` is 0);
 `400 {"error": "<bad_workspace|bad_product|bad_kind|bad_subject|bad_text|bad_html|bad_link|bad>"}`
