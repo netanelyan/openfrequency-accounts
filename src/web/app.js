@@ -1263,14 +1263,15 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
         }
         if (req.method !== 'POST') return page(404, T.notFound, P.messagePage({ title: T.notFound, lead: '', links: [['/admin', T.adminTitle]] }), { banner });
 
-        // A lead's button (src/web/leads.js): its own (build, send, mark, notes, skip) to Toran's /internal/leads, the
-        // dashboard's status buttons to /internal/ops for Toran's lead. Back to the lead's page with Toran's line, or,
-        // for a demo made from the list (back=list), to the list as it was: at the lead's row, whose tags now say what
-        // is being built, or at the top when Toran refused, where its line is.
+        // A lead's button (src/web/leads.js): its own (go on with, build, send, mark, notes, skip) to Toran's
+        // /internal/leads, the dashboard's status buttons to /internal/ops for Toran's lead. Back to the lead's page with
+        // Toran's line, or, for a choice made from the list (back=list), to the list as it was: at the lead's row, whose
+        // tags now say what is being built, or at the top when Toran refused, where its line is. A choice whose message
+        // can go now (Toran's ready) opens the lead at its message instead.
         m = /^\/admin\/leads\/(\d{1,9})\/([a-z-]{1,20})$/.exec(p);
         if (m) {
           const [, id, action] = m;
-          const list = f('back') === 'list' && action.startsWith('build-');
+          const list = f('back') === 'list' && (action.startsWith('build-') || action.startsWith('go-'));
           const back = (msg, bad) => {
             setFlash(msg, bad);
             if (!list) return redirect(`/admin/leads/${id}`);
@@ -1297,6 +1298,10 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
             r = await toran.act('toran', id, action, body);
           } else return back(LEADS.badAction, true);
           audit(db, { actor: me, action: 'lead_action', ip, detail: { id, action, ok: r.ok } });
+          if (r.ok && r.ready && action.startsWith('go-')) {
+            setFlash(r.message, false);
+            return redirect(`/admin/leads/${id}#send`);
+          }
           if (r.ok) return back(r.message, false);
           return back(r.error || (r.status ? OPS.toranFailed(r.status) : OPS.toranNoAnswer), true);
         }

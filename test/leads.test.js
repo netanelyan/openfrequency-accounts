@@ -55,7 +55,7 @@ test("one lead's page: one main way to send, the two demos, where it stands; a l
     assert.ok(b.includes(`<h2>${LEAD.name}</h2>`));
     assert.match(b, /<form method="post" action="\/admin\/leads\/12\/send-toran" class="inline">.*<button class="primary">לשלוח את תורן<\/button><\/form>/s, 'the main send, the one option the example has');
     assert.ok(b.includes(LEAD.send.toranText), 'the message it sends');
-    assert.match(b, /action="\/admin\/leads\/12\/build-teder"/, 'Teder can be built');
+    assert.match(b, /action="\/admin\/leads\/12\/go-both".*action="\/admin\/leads\/12\/go-toran".*action="\/admin\/leads\/12\/go-teder"/s, 'Toran, Teder or both, whatever is built');
     assert.match(b, /action="\/admin\/leads\/12\/replied"/);
     assert.match(b, /action="\/admin\/leads\/12\/notes"/);
     assert.equal(t.fake.calls.at(-1).path, '/internal/leads/12');
@@ -73,6 +73,7 @@ test("each button goes to Toran with the operator's name and comes back to the l
     const cases = [
       ['send-both', {}, '/internal/leads/12/send-both', { by: 'נתנאל' }],
       ['build-teder', {}, '/internal/leads/12/build-teder', { by: 'נתנאל' }],
+      ['go-both', {}, '/internal/leads/12/go-both', { by: 'נתנאל' }],
       ['notes', { notes: 'לחזור בחמישי' }, '/internal/leads/12/notes', { by: 'נתנאל', notes: 'לחזור בחמישי' }],
       ['skip', { reason: 'לא מתאים' }, '/internal/leads/12/skip', { by: 'נתנאל', reason: 'לא מתאים' }],
       ['replied', {}, '/internal/ops/toran/12/replied', { by: 'נתנאל' }],
@@ -106,20 +107,23 @@ test("each button goes to Toran with the operator's name and comes back to the l
 // suggested being sent to the phone number on whatsapp should be according to that."
 
 const none = { state: 'none', pageUrl: null, sentAt: null, reminderSentAt: null, reminderDue: false, url: null, error: null };
+/** What Toran says each choice of what the lead goes on with would make now (build.go): [] makes nothing, null cannot. */
+const go = (both, toran, teder) => Object.fromEntries(Object.entries({ both, toran, teder }).map(([k, v]) => [k, { can: v !== null, makes: v || [] }]));
 const row = (over) => ({ ...LIST.leads[0], ...over });
 /** One lead as Toran answers it. */
 const answer = (lead) => ({ ok: true, lead });
 
-test('the list: a missing demo is red, one that is there has its colour; each row has one button to make what can be made, and it comes back to the list', async () => {
+test('the list: a missing demo is red, one that is there has its colour; each row has one button for what it goes on with, Toran, Teder or both whatever is built, and it comes back to the list, or to the lead when its message can go', async () => {
   const t = await setup();
   try {
     t.fake.state.leads = {
       ...LIST,
       leads: [
-        row({ id: 21, name: 'אין לה כלום', toran: none, teder: none, build: { toran: true, teder: true, both: true, toranWhyNot: null }, chosen: null }),
-        row({ id: 22, name: 'תדר נכשל', toran: { ...LIST.leads[0].toran }, teder: { ...none, state: 'failed', error: 'לא נקרא' }, build: { toran: true, teder: true, both: false, toranWhyNot: null } }),
+        row({ id: 21, name: 'אין לה כלום', toran: none, teder: none, build: { toran: true, teder: true, both: true, toranWhyNot: null, go: go(['toran', 'teder'], ['toran'], ['teder']) }, chosen: null }),
+        row({ id: 22, name: 'תדר נכשל', toran: { ...LIST.leads[0].toran }, teder: { ...none, state: 'failed', error: 'לא נקרא' }, build: { toran: true, teder: true, both: false, toranWhyNot: null, go: go(['teder'], [], ['teder']) }, chosen: null }),
         row({ id: 23, name: 'הכול מוכן' }),
-        row({ id: 24, name: 'ויקס', toran: none, teder: { ...none, state: 'building' }, build: { toran: false, teder: false, both: false, toranWhyNot: 'תורן קורא כרגע רק חנויות Shopify.' } }),
+        row({ id: 24, name: 'ויקס', toran: none, teder: { ...none, state: 'building' }, build: { toran: false, teder: false, both: false, toranWhyNot: 'תורן קורא כרגע רק חנויות Shopify.', go: go(null, null, []) }, chosen: null }),
+        row({ id: 25, name: 'הוסר', toran: { ...none, state: 'removed' }, teder: none, build: { toran: false, teder: false, both: false, toranWhyNot: null, go: go(null, null, null) }, chosen: null }),
       ],
     };
     const b = (await t.op.get('/admin/leads')).body;
@@ -130,23 +134,34 @@ test('the list: a missing demo is red, one that is there has its colour; each ro
     assert.match(li(23), /<span class="tag p-toran">תורן: מוכן<\/span><span class="tag p-teder">תדר: מוכן<\/span>/);
     assert.match(li(24), /<span class="tag miss">תורן: אין<\/span><span class="tag wait">תדר: נבנה<\/span>/, 'being built is grey');
     assert.doesNotMatch(b, /class="tag p-(toran|teder)">[^<]*: (אין|נכשל|הוסר)</, 'no product colour on anything missing');
-    // One button a row, opening only what can be made, both first.
-    assert.match(li(21), /<details class="make"><summary>ליצור דמו<\/summary><div class="make-pick">.*action="\/admin\/leads\/21\/build-both".*<button class="primary">תורן ותדר<\/button>.*action="\/admin\/leads\/21\/build-toran".*>תורן<\/button>.*action="\/admin\/leads\/21\/build-teder".*>תדר<\/button>/s);
-    assert.ok(li(22).includes('build-teder') && !li(22).includes('build-toran') && !li(22).includes('build-both'), "Toran's page is there: Teder only, again");
-    assert.ok(!li(23).includes('<details class="make">'), 'nothing to make, no button');
-    assert.ok(!li(24).includes('<details class="make">'));
+    // One button a row, opening Toran, Teder and both, both first, whatever is built (the owner, 2026-11-12: "i dont see
+    // a button for going on with teder/toran/both for each lead"); once chosen, the button says which.
+    const choices = (id) => [...li(id).matchAll(/action="\/admin\/leads\/\d+\/(go-[a-z]+)"/g)].map((m) => m[1]);
+    assert.match(li(21), /<details class="make"><summary>להמשיך עם…<\/summary><div class="make-pick">.*action="\/admin\/leads\/21\/go-both".*<button class="primary">תורן ותדר<\/button>.*action="\/admin\/leads\/21\/go-toran".*>תורן<\/button>.*action="\/admin\/leads\/21\/go-teder".*>תדר<\/button>/s);
+    assert.deepEqual(choices(22), ['go-both', 'go-toran', 'go-teder'], "Toran's page is up: both can still be chosen");
+    assert.match(li(23), /<details class="make"><summary>ממשיכים עם תורן ותדר<\/summary>/, 'everything built: still a choice, and it says the one made');
+    assert.deepEqual(choices(23), ['go-both', 'go-toran', 'go-teder']);
+    assert.deepEqual(choices(24), ['go-teder'], 'a site Toran cannot read: Teder alone');
+    assert.ok(!li(25).includes('<details class="make">'), 'nothing can be chosen, no button');
+    assert.doesNotMatch(b, /build-(both|toran|teder)/, 'the list makes nothing but by a choice');
     assert.match(li(21), /<input type="hidden" name="back" value="list">/);
 
     // Made from a tab and a search: Toran builds it, and the list comes back as it was, at the row.
     await t.op.get('/admin/leads?where=new&q=x');
-    const r = await t.op.post('/admin/leads/21/build-both', { back: 'list', where: 'new', q: 'x' });
+    const r = await t.op.post('/admin/leads/21/go-both', { back: 'list', where: 'new', q: 'x' });
     assert.equal(r.status, 303);
     assert.equal(r.headers.location, '/admin/leads?where=new&q=x#lead-21');
-    assert.deepEqual([t.fake.posts().at(-1).path, t.fake.posts().at(-1).body], ['/internal/leads/21/build-both', { by: 'נתנאל' }]);
+    assert.deepEqual([t.fake.posts().at(-1).path, t.fake.posts().at(-1).body], ['/internal/leads/21/go-both', { by: 'נתנאל' }]);
     assert.match((await t.op.get('/admin/leads?where=new&q=x')).body, /<p class="flash" role="status">/);
+    // A choice that makes nothing, its message ready: the lead opens at its message, with Toran's line.
+    t.fake.state.answers['lead:go-toran'] = { status: 200, body: { ok: true, message: 'ממשיכים עם תורן. ההודעה מוכנה לשליחה.', ready: true } };
+    const ready = await t.op.post('/admin/leads/23/go-toran', { back: 'list', where: 'new' });
+    assert.equal(ready.headers.location, '/admin/leads/23#send');
+    t.fake.state.lead = { ok: true, lead: { ...LEAD, id: 23 } };
+    assert.match((await t.op.get('/admin/leads/23')).body, /<p class="flash" role="status">ממשיכים עם תורן\. ההודעה מוכנה לשליחה\.<\/p>/);
     // Refused: the list comes back at its top, where Toran's line is.
-    t.fake.state.answers['lead:build-teder'] = { status: 400, body: { ok: false, error: 'תדר לא ענה כרגע.' } };
-    const refused = await t.op.post('/admin/leads/22/build-teder', { back: 'list' });
+    t.fake.state.answers['lead:go-teder'] = { status: 400, body: { ok: false, error: 'תדר לא ענה כרגע.' } };
+    const refused = await t.op.post('/admin/leads/22/go-teder', { back: 'list' });
     assert.equal(refused.headers.location, '/admin/leads');
     assert.match((await t.op.get('/admin/leads')).body, /<p class="flash bad" role="alert">תדר לא ענה כרגע\.<\/p>/);
     // Under a tab, the tag of where it stands is the tab's: not repeated on each row.
@@ -203,19 +218,19 @@ test("a lead's message is the one for the demo chosen: from our number each one'
   }
 });
 
-test("a lead's demos: the one button makes what is missing (blue while there is none), a missing one is red with its mark grey, and its error says why", async () => {
+test("a lead's demos: the one button for what it goes on with (blue while there is no demo), a missing one is red with its mark grey, and its error says why", async () => {
   const t = await setup();
   try {
-    t.fake.state.lead = answer({ ...LEAD, toran: none, teder: { ...none, state: 'failed', error: 'לא הצלחנו לקרוא את החנות' }, build: { toran: true, teder: true, both: false, toranWhyNot: null }, send: { ...LEAD.send, options: [], main: null, bothText: null, toranText: null, tederText: null, copy: null } });
+    t.fake.state.lead = answer({ ...LEAD, toran: none, teder: { ...none, state: 'failed', error: 'לא הצלחנו לקרוא את החנות' }, build: { toran: true, teder: true, both: false, toranWhyNot: null, go: go(['toran', 'teder'], ['toran'], ['teder']) }, chosen: null, send: { ...LEAD.send, options: [], main: null, bothText: null, toranText: null, tederText: null, copy: null } });
     const b = (await t.op.get('/admin/leads/12')).body;
-    assert.match(b, /<article class="card" id="demos"><h3>הדמואים<\/h3>\n<div class="make-row"><details class="make"><summary class="primary">ליצור דמו<\/summary>.*build-toran.*build-teder/s);
+    assert.match(b, /<article class="card" id="demos"><h3>הדמואים<\/h3>\n<div class="make-row"><details class="make"><summary class="primary">להמשיך עם…<\/summary>.*go-both.*go-toran.*go-teder/s);
     assert.match(b, /<div class="demo-box miss"><header class="op-who"><span class="mark toran"[^]*<span class="tag miss">אין<\/span>/);
     assert.match(b, /<span class="tag miss">נכשל<\/span><\/h3><small class="bad">לא הצלחנו לקרוא את החנות<\/small>/);
     // Toran's page waiting for a look: the look is its main button, and reading the site again is beside it.
     t.fake.state.lead = answer({ ...LEAD, toran: { ...LEAD.toran, state: 'review' } });
     const r = (await t.op.get('/admin/leads/12')).body;
     assert.match(r, /<a class="button primary" href="https:\/\/accounts\.openfrequency\.co\.il\/admin\/toran\/lead\/12\/review">לבדוק ולאשר<\/a>.*action="\/admin\/leads\/12\/build-toran".*לקרוא את האתר מחדש/s);
-    assert.match(r, /<details class="make"><summary>ליצור דמו<\/summary><div class="make-pick">.*build-teder/s, 'Teder can still be made, quietly');
+    assert.match(r, /<details class="make"><summary>ממשיכים עם תורן<\/summary><div class="make-pick">.*go-both.*go-toran.*go-teder/s, 'the choice made, and the others, quietly');
   } finally {
     await t.done();
   }

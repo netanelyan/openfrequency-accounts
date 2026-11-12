@@ -13,8 +13,13 @@ import { LOST_REASONS, WHERE } from './toran.js';
 // not purple or green. each leads should have a button for generating a demo for teder/toran/both. the message that is
 // suggested being sent to the phone number on whatsapp should be according to that." So: a row wraps on a phone (the
 // name and the button on top, the tags under them), a demo that is missing is red and only one that is there has its
-// product's colour, each row and each lead has one "ליצור דמו" that opens what can be made, and the lead's message is
+// product's colour, each row and each lead has one button for what the lead goes on with, and the lead's message is
 // the one for the demo the operator chose (Toran keeps the choice), with the others one press away.
+//
+// The owner, 2026-11-12: "i dont see a button for going on with teder/toran/both for each lead". The button offered
+// only what was missing, so a lead whose Toran page was up had Teder alone, or nothing. It now offers Toran, Teder and
+// both whenever Toran says they can be chosen (build.go), whatever is built: choosing makes only what is missing, and
+// a choice that makes nothing goes straight to the lead's message.
 
 const ext = (href, inner, cls = '') => `<a${cls ? ` class="${cls}"` : ''} href="${esc(href)}" target="_blank" rel="noopener">${inner}</a>`;
 const flashLine = (flash, bad) => (flash ? `<p class="flash${bad ? ' bad' : ''}" role="${bad ? 'alert' : 'status'}">${esc(flash)}</p>` : '');
@@ -45,18 +50,19 @@ const whereTag = (w) => `<span class="tag where">${esc(LEADS.where[w] || w)}</sp
 /** A button of the lead's page: to /admin/leads/<id>/<action>, back to the page. */
 const leadButton = (csrf, id, action, label, kind = '', fields = {}) => button(`/admin/leads/${id}/${action}`, label, csrf, { kind, fields });
 
-/** What the operator can make for the lead now, both first: what Toran says can be built, and is not there yet. */
-const makeable = (x) => PICKS.filter((p) => (p === 'both' ? x.build.both : p === 'toran' ? x.build.toran && x.toran.state === 'none' : x.build.teder));
-
 /**
- * The one button that makes a demo: it opens what can be made now, both first. Making one costs money, so it takes a
- * second press, on what to make. From the list, the choice comes back to the list as it was, at the lead's row.
+ * The one button for what the lead goes on with: it opens Toran, Teder and both, both first, each that Toran says can
+ * be chosen (build.go), whatever is built already. A choice may make a demo, which costs money, so it takes a second
+ * press, on the choice; once one was made, the button says which. From the list, a choice that makes something comes
+ * back to the list as it was, at the lead's row; one whose message can go now opens the lead, at its message.
  */
-function makeDemo(csrf, x, { fields = {}, main = false } = {}) {
-  const can = makeable(x);
+function goMenu(csrf, x, { fields = {}, main = false } = {}) {
+  const go = x.build?.go || {};
+  const can = PICKS.filter((p) => go[p]?.can);
   if (!can.length) return '';
-  const picks = can.map((p, i) => leadButton(csrf, x.id, `build-${p}`, LEADS.pick[p], i ? '' : 'primary', fields)).join('');
-  return `<details class="make"><summary${main ? ' class="primary"' : ''}>${esc(LEADS.make)}</summary><div class="make-pick">${picks}</div></details>`;
+  const picks = can.map((p, i) => leadButton(csrf, x.id, `go-${p}`, LEADS.pick[p], i ? '' : 'primary', fields)).join('');
+  const label = x.chosen && can.includes(x.chosen) ? LEADS.goingWith(LEADS.pick[x.chosen]) : LEADS.goOn;
+  return `<details class="make"><summary${main ? ' class="primary"' : ''}>${esc(label)}</summary><div class="make-pick">${picks}</div></details>`;
 }
 
 /** The list: the tabs by where each lead stands, the search, the rows, and Teder's leads Toran has no store for. */
@@ -75,7 +81,7 @@ ${flashLine(flash, flashBad)}`;
   const rows = d.leads.length
     ? `<ul class="people leads-list">${d.leads
         .map(
-          (x) => `<li id="lead-${esc(x.id)}"><div class="lead-who"><a class="who" href="/admin/leads/${esc(x.id)}"><b>${esc(x.name)}</b></a><bdi class="ltr muted">${esc(x.domain)}</bdi></div><div class="lead-tags">${demoTags(x)}${stands(x.where)}</div>${makeDemo(csrf, x, { fields })}</li>`
+          (x) => `<li id="lead-${esc(x.id)}"><div class="lead-who"><a class="who" href="/admin/leads/${esc(x.id)}"><b>${esc(x.name)}</b></a><bdi class="ltr muted">${esc(x.domain)}</bdi></div><div class="lead-tags">${demoTags(x)}${stands(x.where)}</div>${goMenu(csrf, x, { fields })}</li>`
         )
         .join('')}</ul>`
     : empty(LEADS.none, LEADS.noneLead);
@@ -157,9 +163,9 @@ ${d.pageUrl ? `<p>${ext(d.pageUrl, `${esc(LEADS.openPage)} <bdi class="ltr">↗<
 <div class="op-acts">${acts}</div></div>`;
 }
 
-/** The two demos: the one button to make what is missing, then each one's state, its page and its own buttons. */
+/** The two demos: the one button for what the lead goes on with, then each one's state, its page and its own buttons. */
 function demosCard(csrf, x) {
-  const make = makeDemo(csrf, x, { main: missing(x.toran) && missing(x.teder) });
+  const make = goMenu(csrf, x, { main: missing(x.toran) && missing(x.teder) });
   const toranActs = [
     x.toran.state === 'review' && x.links.toranReview ? `<a class="button primary" href="${esc(x.links.toranReview)}">${esc(LEADS.review)}</a>` : '',
     x.build.toran && !['none', 'building'].includes(x.toran.state) ? leadButton(csrf, x.id, 'build-toran', LEADS.reread) : '',

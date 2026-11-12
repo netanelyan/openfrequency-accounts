@@ -718,8 +718,8 @@ ul.leads-list li:target { background: color-mix(in srgb, var(--accent-fill) 8%, 
   ul.leads-list details.make { grid-column: 3; }
 }
 
-/* "ליצור דמו": one pill that opens what can be made, as a small menu under it. Quiet on a row, blue on a lead's page
-   while it has no demo at all. */
+/* "להמשיך עם…": one pill that opens Toran, Teder and both, as a small menu under it. Quiet on a row, blue on a lead's
+   page while it has no demo at all. */
 details.make { position: relative; }
 details.make > summary {
   display: inline-flex; align-items: center; justify-content: center; min-height: 36px; padding: 0 14px; border-radius: 980px;

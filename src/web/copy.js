@@ -1399,8 +1399,9 @@ export const LEADS = {
   noDemo: 'אין דמו',
   back: 'כל הלידים',
   notFound: 'אין ליד כזה',
-  // The one button that makes a demo, on each row and on the lead's page, and what it can make
-  make: 'ליצור דמו',
+  // The one button for what the lead goes on with, on each row and on the lead's page, and its choices
+  goOn: 'להמשיך עם…',
+  goingWith: (pick) => `ממשיכים עם ${pick}`,
   pick: { both: 'תורן ותדר', toran: 'תורן', teder: 'תדר' },
   // One lead's page
   sendTitle: 'מה שולחים',

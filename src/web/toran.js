@@ -132,7 +132,7 @@ export function readOps(b) {
 export const WHERE = ['new', 'ready', 'sent', 'talking', 'closed'];
 const DEMO_STATES = ['none', 'building', 'review', 'ready', 'failed', 'removed'];
 /** The lead's buttons Toran's /internal/leads takes; the rest (they answered, later, not interested...) are ACTIONS. */
-export const LEAD_ACTIONS = ['build-toran', 'build-teder', 'build-both', 'send-both', 'send-toran', 'send-teder', 'mark-sent', 'mark-reminded', 'notes', 'skip'];
+export const LEAD_ACTIONS = ['go-both', 'go-toran', 'go-teder', 'build-toran', 'build-teder', 'build-both', 'send-both', 'send-toran', 'send-teder', 'mark-sent', 'mark-reminded', 'notes', 'skip'];
 const SENDS = ['both', 'toran', 'teder'];
 
 const demoOf = (d) => {
@@ -148,8 +148,16 @@ const demoOf = (d) => {
   };
 };
 const whereOf = (v) => (WHERE.includes(v) ? v : 'new');
+/** A choice of what the lead goes on with, as Toran says: whether it can be chosen, and the demos it would make now. */
+const goOf = (g) => ({ can: g?.can === true, makes: Array.isArray(g?.makes) ? g.makes.filter((p) => p === 'toran' || p === 'teder') : [] });
 /** What can be built for the lead now, as Toran says; anything it does not say cannot. */
-const buildOf = (b) => ({ toran: b?.toran === true, teder: b?.teder === true, both: b?.both === true, toranWhyNot: str(b?.toranWhyNot, 300) });
+const buildOf = (b) => ({
+  toran: b?.toran === true,
+  teder: b?.teder === true,
+  both: b?.both === true,
+  toranWhyNot: str(b?.toranWhyNot, 300),
+  go: { both: goOf(b?.go?.both), toran: goOf(b?.go?.toran), teder: goOf(b?.go?.teder) },
+});
 const rowOf = (x) => ({
   id: num(x.id),
   name: str(x.name, 200) || str(x.domain, 200) || '',
@@ -286,7 +294,7 @@ export function toranClient({ env = process.env, fetchImpl = globalThis.fetch, l
       const path = `/internal/leads/${id}/${action}`;
       try {
         const r = await call('POST', path, body, POST_MS * 2);
-        if (r.status === 200 && r.json?.ok) return { ok: true, message: str(r.json.message, 400) || '' };
+        if (r.status === 200 && r.json?.ok) return { ok: true, message: str(r.json.message, 400) || '', ready: r.json.ready === true };
         if ((r.status === 400 || r.status === 404) && r.json?.ok === false && typeof r.json.error === 'string') return { ok: false, error: r.json.error.slice(0, 400), status: r.status };
         log(`[accounts] toran POST ${path}: ${r.status}`);
         return { ok: false, status: r.status };

@@ -460,7 +460,7 @@ test("admin-leads: the list and one lead are read in the contract's shape, a but
         if (a.status === 404) assert.equal(out.why, 'none', a.case);
       } else {
         const out = await client.leadAct('12', 'notes', { by: 'Admin', notes: 'x' });
-        if (a.status === 200) assert.deepEqual(out, { ok: true, message: a.body.message });
+        if (a.status === 200) assert.deepEqual(out, { ok: true, message: a.body.message, ready: a.body.ready === true }, a.case);
         else if (a.status === 400 || a.status === 404) assert.deepEqual([out.ok, out.error], [false, a.body.error], a.case);
         else assert.equal(out.ok, false, a.case);
       }

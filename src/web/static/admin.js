@@ -65,8 +65,8 @@
     say(ok ? b.dataset.done : b.dataset.fail, !ok);
   });
 
-  // "Not interested" and a lead's "ליצור דמו" (leads.js): opening one closes the others; "not interested" focuses its
-  // reasons.
+  // "Not interested" and a lead's "להמשיך עם…" (leads.js): opening one closes the others; "not interested" focuses
+  // its reasons.
   const MENUS = 'details.lost[open], details.make[open]';
   document.addEventListener('toggle', (e) => {
     const d = e.target;
@@ -83,7 +83,7 @@
     const n = tabs.getBoundingClientRect();
     tabs.scrollBy({ left: a.left + a.width / 2 - (n.left + n.width / 2) });
   }
-  // "ליצור דמו" opens as a small menu over the rows: a tap anywhere else closes it, and so does Escape.
+  // "להמשיך עם…" opens as a small menu over the rows: a tap anywhere else closes it, and so does Escape.
   document.addEventListener('click', (e) => {
     for (const d of document.querySelectorAll('details.make[open]')) if (!d.contains(e.target)) d.open = false;
   });
