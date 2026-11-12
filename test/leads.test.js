@@ -276,6 +276,19 @@ test("a lead's demos: the one button for what it goes on with (blue while there 
     assert.match(b, /<div class="demo-box miss" id="toran"><header class="op-who"><span class="mark toran"[^]*<span class="tag miss">אין<\/span>/);
     assert.match(b, /<span class="tag miss">נכשל<\/span><\/h3><small class="bad">לא הצלחנו לקרוא את החנות<\/small>/);
     assert.match(b, /<div class="demo-box miss" id="teder">.*action="\/admin\/leads\/12\/build-teder".*<button class="primary">לנסות שוב<\/button>/s, "Teder's that failed: try again, here");
+    // None yet (the owner, 2026-11-12: "add a build button for teder. if there is no demo, i should be able to build it
+    // and then send a message according to that"): each box builds its own; with the other one there, the lead goes on
+    // with both, so the message that waits is the one with both demos.
+    t.fake.state.lead = answer({ ...LEAD, toran: none, teder: none, review: null, build: { toran: true, teder: true, both: true, toranWhyNot: null, go: go(['toran', 'teder'], ['toran'], ['teder']) }, chosen: null, send: { ...LEAD.send, options: [], main: null, bothText: null, toranText: null, tederText: null, copy: null } });
+    const n = (await t.op.get('/admin/leads/12')).body;
+    assert.match(n, /action="\/admin\/leads\/12\/build-toran".*<button class="primary">לבנות את הדף של תורן<\/button>/s);
+    assert.match(n, /action="\/admin\/leads\/12\/build-teder".*<button class="primary">לבנות דמו של תדר<\/button>/s);
+    assert.doesNotMatch(n, /שני הדמואים/, 'neither there: each alone');
+    t.fake.state.lead = answer({ ...LEAD, teder: none, build: { toran: true, teder: true, both: false, toranWhyNot: null, go: go(['teder'], [], ['teder']) }, chosen: null });
+    const withToran = (await t.op.get('/admin/leads/12')).body;
+    assert.match(withToran, /<div class="demo-box miss" id="teder">[^]*?action="\/admin\/leads\/12\/go-both"[^]*?<button class="primary">לבנות דמו של תדר<\/button><\/form><\/div><p class="muted">כשהוא מוכן, ההודעה תצא עם שני הדמואים\.<\/p>/, "Toran's page up: Teder's made, and both go");
+    t.fake.state.lead = answer({ ...LEAD, toran: none, review: null, teder: { ...LEAD.toran, pageUrl: 'https://teder.openfrequency.co.il/s/nurit-ceramics-a1b2c3' }, build: { toran: true, teder: false, both: false, toranWhyNot: null, go: go(['toran'], ['toran'], []) }, chosen: null });
+    assert.match((await t.op.get('/admin/leads/12')).body, /<div class="demo-box miss" id="toran">[^]*?action="\/admin\/leads\/12\/go-both"[^]*?<button class="primary">לבנות את הדף של תורן<\/button>/, "and the other way round");
     // Toran's page waiting for a look, checked here: what holds it back, each with its fix in place, and the page itself
     // to look at; never Toran's own review page.
     const review = { ...LEAD.review, gaps: [{ key: 'name', he: 'אין שם לחנות.' }, { key: 'sample', he: 'אין שיחת דוגמה.' }], approved: false, name: null, colorsFound: ['#0a7d4f', '#b4532a'] };

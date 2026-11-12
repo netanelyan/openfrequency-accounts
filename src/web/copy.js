@@ -1516,6 +1516,9 @@ export const LEADS = {
   // Teder's demo, worked on the lead's page
   idea: (topic) => `רעיון לטיקטוק ולאינסטגרם שלהם: ${topic}`,
   tederTry: 'לנסות שוב',
+  tederBuild: 'לבנות דמו של תדר',
+  toranBuild: 'לבנות את הדף של תורן',
+  buildBoth: 'כשהוא מוכן, ההודעה תצא עם שני הדמואים.',
   tederApprove: 'לאשר את הדמו',
   tederRedo: 'לכתוב את הדמו מחדש',
   tederOther: 'דמו על נושא אחר',

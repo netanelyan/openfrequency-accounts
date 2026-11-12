@@ -284,6 +284,19 @@ ${found.length ? `<div class="row colors" aria-label="${esc(LEADS.colorsFound)}"
 const bubbles = (chat) => `<div class="chat">${chat.map((m) => `<p class="b ${m.role === 'agent' ? 'agent' : 'customer'}" dir="auto">${esc(m.text)}</p>`).join('')}</div>`;
 
 /**
+ * The button that makes a demo the lead has none of, in that demo's own box (the owner, 2026-11-12: "add a build button
+ * for teder. if there is no demo, i should be able to build it and then send a message according to that"). When the
+ * other demo is there or on its way, the lead goes on with both (go-both makes only the one missing), so the message
+ * that waits for it is the one with both demos, said under the button; else it is this one's alone.
+ */
+function buildButton(csrf, x, product) {
+  const other = product === 'toran' ? x.teder : x.toran;
+  const both = ['ready', 'review', 'building'].includes(other.state) && Boolean(x.build.go?.both?.can);
+  const label = product === 'toran' ? LEADS.toranBuild : LEADS.tederBuild;
+  return `<div class="op-acts">${leadButton(csrf, x.id, both ? 'go-both' : `build-${product}`, label, 'primary')}</div>${both ? `<p class="muted">${esc(LEADS.buildBoth)}</p>` : ''}`;
+}
+
+/**
  * Toran's box: its page as it is checked here, not on Toran's own review page. What holds it back comes first, each with
  * its fix in place (the name and the colour, the sample chat made again, the site read again); then the one main button
  * for where it is (approve it, or open it); the sample chat and what its build turned down; the rest under "עוד".
@@ -292,7 +305,7 @@ function toranBox(csrf, x) {
   const d = x.toran;
   const r = x.review;
   if (!r) {
-    const body = d.state === 'building' ? `<p class="muted">${esc(LEADS.pageBuilding)}</p>` : x.build.toranWhyNot ? `<p class="muted">${esc(x.build.toranWhyNot)}</p>` : '';
+    const body = d.state === 'building' ? `<p class="muted">${esc(LEADS.pageBuilding)}</p>` : x.build.toranWhyNot ? `<p class="muted">${esc(x.build.toranWhyNot)}</p>` : d.state === 'none' && x.build.toran ? buildButton(csrf, x, 'toran') : '';
     return demoBox('toran', d, body);
   }
   const gaps = r.gaps.filter((g) => ['name', 'color', 'products', 'sample'].includes(g.key));
@@ -335,6 +348,8 @@ function tederBox(csrf, x) {
   const main =
     d.state === 'failed' && x.build.teder
       ? `<div class="op-acts">${leadButton(csrf, x.id, 'build-teder', LEADS.tederTry, 'primary')}</div>`
+      : ['none', 'removed'].includes(d.state) && x.build.teder
+        ? buildButton(csrf, x, 'teder')
       : d.state === 'review'
         ? `<div class="op-acts">${leadButton(csrf, x.id, 'teder-approve', LEADS.tederApprove, 'primary')}</div>`
         : d.state === 'building'
