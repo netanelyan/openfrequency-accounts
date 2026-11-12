@@ -51,13 +51,29 @@ test('businesses already using OpenFrequency hold a spot each, by name, beside t
 });
 
 test('the next sign-ups take a spot each and pay no setup fee for both products; once the spots are gone, the list price; the count is real', async () => {
-  const t = await setup({ OF_FOUNDERS_SPOTS: '2' });
+  const t = await setup({ OF_FOUNDERS_SPOTS: '2', OF_SIGNUP_NOTIFY: 'boss@example.com' });
   try {
     const page = await t.browser().get('/signup');
-    assert.match(page.body, /<p class="founders-note">מבצע מייסדים: 2 העסקים הראשונים שנרשמים לא משלמים דמי הקמה\. נשארו 2 מתוך 2 מקומות/);
+    // Said once, plainly, with no label and colon; and no plan quotes a setup fee while the offer has a spot (the owner,
+    // 2026-11-11: no setup-fee line at all when the offer makes it 0).
+    assert.match(page.body, /<p class="founders-note">במבצע המייסדים, 2 העסקים הראשונים שנרשמים לא משלמים דמי הקמה\. נשארו 2 מקומות, ומי שנרשם עכשיו מקבל אחד מהם\.<\/p>/);
+    assert.match(page.body, /<small class="price">490 ₪ לחודש ועוד מע״מ<\/small>/);
+    assert.match(page.body, /<small class="price">1,190 ₪ לחודש ועוד מע״מ<\/small>/);
+    assert.doesNotMatch(page.body, /ודמי הקמה של|דמי ההקמה לא מוחזרים|דמי ההקמה משולמים/);
+    assert.match(page.body, /<small>אפשר לעבור חבילה אחר כך, בכתיבה אלינו\.<\/small>/);
+    assert.match(page.body, /<small>חודש מעל מספר השיחות לא עולה לכם יותר\.<\/small>/);
 
     const one = await signUp(t, 1);
     assert.deepEqual(setups(t.db, one.w), [['teder', 0], ['toran', 0]], 'one spot, no setup fee for either product');
+    // The welcome email: each product's month, no word of a fee of 0, and the reason once.
+    const welcome = t.mails.find((m) => m.to === 'owner1@example.com' && m.subject === 'החשבון של Store 1 נפתח');
+    assert.match(welcome.text, /תורן, חנות: 590 ₪ לחודש ועוד מע״מ\.\n/);
+    assert.match(welcome.text, /תדר, החבילה המלאה: 790 ₪ לחודש ועוד מע״מ\.\n/);
+    assert.doesNotMatch(welcome.text, /דמי הקמה של|0 ₪ פעם אחת|אחר כך [\d,.]+ ₪ לחודש/);
+    assert.equal(welcome.text.split('אתם בין העסקים הראשונים שנרשמו במבצע המייסדים, אז אין דמי הקמה.').length - 1, 1);
+    // The operator hears which spot it took.
+    const notice = t.mails.find((m) => m.to === 'boss@example.com' && m.subject === 'הרשמה חדשה: Store 1');
+    assert.match(notice.text, /מבצע המייסדים: מקום 1 מתוך 2, בלי דמי הקמה\./);
     const setupPage = await one.b.get('/setup');
     assert.match(setupPage.body, /במבצע המייסדים, אז אין דמי הקמה/);
     assert.doesNotMatch(setupPage.body, /דמי הקמה של 1,490|דמי הקמה של 990/);

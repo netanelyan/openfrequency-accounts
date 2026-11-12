@@ -128,6 +128,10 @@ body::before { content: ''; position: fixed; inset: 0; z-index: -1; pointer-even
 a { color: var(--accent); text-underline-offset: 3px; }
 :focus-visible { outline: 3px solid color-mix(in srgb, var(--accent-fill) 60%, transparent); outline-offset: 2px; border-radius: 8px; }
 .ltr { direction: ltr; unicode-bidi: isolate; }
+/* An email address in a Hebrew line (html.js homePage): whole and left to right, on the next line as one when it does
+   not fit after the words before it, and broken only when it is wider than the line (the audit of 2026-11-11: at 360px
+   it broke at its hyphen and the pieces swapped sides). Room for the comma after it, so it never starts a line. */
+bdi.addr { display: inline-block; max-width: calc(100% - 1em); direction: ltr; unicode-bidi: isolate; overflow-wrap: anywhere; }
 .muted { color: var(--ink-3); font-size: 14px; }
 
 /* ------------------------------------------------------------ the marks (assets/brand), never recoloured */
@@ -323,7 +327,7 @@ article.ws { padding: 20px 22px; margin-bottom: 16px; }
 article.ws.disabled { opacity: 0.72; }
 article.ws > header { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
 article.ws > header .slug { color: var(--ink-3); font: 400 14px/1 var(--text); margin-inline-start: 8px; }
-.tag { font-size: 13px; font-weight: 600; padding: 4px 12px; border-radius: 999px; background: var(--ok-bg); color: var(--ok); }
+.tag { font-size: 13px; font-weight: 600; padding: 4px 12px; border-radius: 999px; background: var(--ok-bg); color: var(--ok); white-space: nowrap; flex: none; }
 article.ws.disabled .tag { background: var(--bad-bg); color: var(--bad); }
 
 .section-l { font-size: 13px; font-weight: 600; color: var(--ink-3); margin: 18px 0 8px; }
@@ -389,6 +393,8 @@ main.wide .card.sub { margin: 0; display: flex; flex-direction: column; gap: 6px
 .card.sub .go { margin-top: auto; padding-top: 16px; }
 .card.sub .go .button { width: 100%; min-height: 48px; }
 .s-due .tag, .s-ending .tag { background: var(--warn-bg); color: var(--warn); }
+/* Stopped: its 72 hours are over and the paywall keeps it closed (html.js subCard). */
+.s-stopped .tag { background: var(--bad-bg); color: var(--bad); }
 .s-ended .tag { background: var(--fill); color: var(--ink-3); }
 .s-ended { opacity: 0.8; }
 /* The month paid for: the words above, the bar under them. A <progress> fills from the inline start, the right
@@ -412,7 +418,7 @@ ul.more a:hover { background: var(--fill); }
 ul.more .mark { width: 36px; height: 36px; }
 ul.more b { display: block; font-weight: 600; }
 ul.more small { margin: 2px 0 0; }
-ul.more .go { margin-inline-start: auto; color: var(--accent); font-size: 14px; font-weight: 600; }
+ul.more .go { margin-inline-start: auto; color: var(--accent); font-size: 14px; font-weight: 600; white-space: nowrap; flex: none; }
 
 .pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; margin-top: 32px; }
 main.wide .pair .card { margin: 0; }
@@ -809,7 +815,16 @@ fieldset.plans-pick > small { margin: 0; }
    some). A browser without :has() shows them all along. */
 @supports selector(:has(*)) {
   label.product-pick:not(:has(input:checked)) + fieldset.plans-pick { display: none; }
+  /* The box names the contract of what is being bought: once a product is ticked, the one of a product not ticked steps
+     aside (html.js termsBox; with none ticked yet, both show). */
+  form:has(input[type='checkbox'][name='products']:checked):has(input[type='checkbox'][name='products'][value='teder']:not(:checked)) .c-teder,
+  form:has(input[type='checkbox'][name='products']:checked):has(input[type='checkbox'][name='products'][value='toran']:not(:checked)) .c-toran { display: none; }
 }
+/* "אפשר לבחור את שניהם" under the question, before the products (html.js signupPage). */
+fieldset.products-pick > small.pick-hint { margin: -4px 0 2px; }
+/* The products a confirmation opens, one a line with its plan (html.js signupConfirmPage). */
+.card p.picked-h { margin: 0 0 4px; }
+.card ul.picked { margin: 0 0 14px; }
 label.check.terms { display: flex; align-items: flex-start; gap: 10px; margin: 20px 0 0; padding-top: 10px; line-height: 1.45; font-size: 15px; }
 label.check.terms input { flex: none; margin: 1px 0 0; }
 .card form > button.google { margin-top: 0; }
@@ -854,13 +869,19 @@ ol.steps .button { min-height: 40px; padding: 0 18px; font-size: 15px; }
 /* A product card's buttons: into the product (or to the payment), then cancelling or taking it back, one per row. */
 .card.sub .go { display: grid; gap: 8px; }
 .card.sub .go form, .card.sub .go form button { width: 100%; margin: 0; }
-.card.sub .go form button { min-height: 44px; }
+.card.sub .go form button { min-height: 48px; }
 .s-open .tag, .s-cancelled .tag { background: var(--warn-bg); color: var(--warn); }
 .s-comp .tag { background: var(--ok-bg); color: var(--ok); }
 /* A step of a product that opens after the payment: there, quieter, and nothing to press. */
 .st-locked .what b { color: var(--ink-2); font-weight: 500; }
 .card.setup-p.locked > header .mark { filter: grayscale(1); opacity: 0.6; }
 .card.setup-p.locked > .muted { margin: 0 0 12px; }
+/* A product closed until the payment: its steps behind one line (html.js setupPage). */
+details.steps-later summary { display: inline-flex; align-items: center; min-height: 44px; cursor: pointer; list-style: none; color: var(--ink-2); font-weight: 600; }
+details.steps-later summary::-webkit-details-marker { display: none; }
+details.steps-later summary::after { content: '+'; margin-inline-start: 8px; font-weight: 400; font-size: 20px; line-height: 1; }
+details.steps-later[open] summary::after { content: '−'; }
+details.steps-later[open] > .section-l, details.steps-later[open] > ol.steps { margin-top: 8px; }
 ul.prices { list-style: none; padding: 0; margin: 12px 0 0; display: grid; gap: 4px; font-weight: 500; }
 /* What the payment comes to, with VAT, and the receipt (אסמכתא) to send after a transfer: both read before the rest. */
 .setup-p p.pay-total { margin: 10px 0 0; }
@@ -876,6 +897,14 @@ ul.prices { list-style: none; padding: 0; margin: 12px 0 0; display: grid; gap: 
 .card.pay-wa p.pay-go { margin: 24px 0 0; }
 .card.pay-wa p.pay-go a.button { width: auto; min-width: 280px; min-height: 52px; margin: 0; padding: 0 28px; font-size: 17px; font-weight: 600; }
 @media (max-width: 560px) { .card.pay-wa p.pay-go a.button { width: 100%; min-width: 0; } }
+/* Under that button, one tap away: the owner's details for a transfer without WhatsApp (html.js payWaCard), as quiet as
+   the team's invite form behind its summary, with the room of a tap between it and the button. */
+details.pay-direct { margin-top: 14px; }
+details.pay-direct summary { display: inline-flex; align-items: center; min-height: 44px; cursor: pointer; list-style: none; color: var(--accent); font-weight: 600; }
+details.pay-direct summary::-webkit-details-marker { display: none; }
+details.pay-direct summary::after { content: '+'; margin-inline-start: 8px; font-weight: 400; font-size: 20px; line-height: 1; }
+details.pay-direct[open] summary::after { content: '−'; }
+details.pay-direct p { margin: 8px 0 0; max-width: 62ch; overflow-wrap: anywhere; }
 label.product-pick small.price { color: var(--ink-2); }
 /* A transfer's receipt from Toran (/admin/receipts/<id>): the picture at the width of the card, never past the screen's
    height, then its facts, what was owed and the two buttons (.row keeps them apart). */
@@ -890,7 +919,7 @@ label.product-pick small.price { color: var(--ink-2); }
 .card.receipt .row.inv-retry { margin: 0 0 16px; }
 .card.receipt-list ul.people .who { overflow-wrap: anywhere; }
 /* The console: a product's access, and the form that deletes a workspace. */
-p.access { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin: 6px 0 0; flex: 1 0 100%; }
+div.access { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin: 6px 0 0; flex: 1 0 100%; }
 details.ws-delete { margin-top: 12px; }
 details.ws-delete summary { cursor: pointer; color: var(--bad); font-size: 14px; font-weight: 500; min-height: 32px; display: flex; align-items: center; }
 details.ws-delete form { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px 12px; margin-top: 8px; }

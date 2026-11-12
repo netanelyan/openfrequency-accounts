@@ -55,7 +55,7 @@ GOOGLE_CLIENT_SECRET=
 
 # Public sign-up (docs/setup.md):
 OF_SIGNUP=                    # 1 opens /signup; anything else, it says it opens soon
-OF_SIGNUP_PRODUCTS=           # the products it offers, comma-separated; teder while Toran waits for Meta
+OF_SIGNUP_PRODUCTS=           # the products it offers (and an account may add), comma-separated; teder,toran
 OF_SIGNUP_NOTIFY=             # who hears of each sign-up, cancellation, deletion, unpaid payment and ended grace (comma-separated)
 OF_SIGNUP_DAILY_EMAILS=       # the most sign-up emails a day, from everyone together; empty means 200
 OF_PAYMENT=                   # manual (empty means manual) or provider; anything else and the service will not start

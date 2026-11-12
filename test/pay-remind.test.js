@@ -118,7 +118,7 @@ test("soon1, due and last once each, to the owners' linked numbers, as the contr
       assert.deepEqual({ ...c.body, kind: null }, { workspace: ws.id, phone: NOA, kind: null, business: 'Noa Shop', products: ['teder'], paidUntil: '2026-11-21', graceUntil: '2026-11-24', code });
     }
     // The emails as before, to both owners: each kind once.
-    const owner = ['התשלום הבא על תדר: 22.11.2026', 'התשלום הבא על תדר: 22.11.2026', 'התשלום על החודש החדש של תדר עוד לא הגיע', 'תדר ייעצר מחר אם התשלום לא יגיע היום', 'תדר נעצר עד שהתשלום יגיע'];
+    const owner = ['התשלום הבא על תדר, ב-22.11.2026', 'התשלום הבא על תדר, ב-22.11.2026', 'התשלום על החודש החדש של תדר עוד לא הגיע', 'תדר ייעצר מחר אם התשלום לא יגיע היום', 'תדר נעצר עד שהתשלום יגיע'];
     assert.deepEqual(subjects(t, 'noa@example.com'), owner);
     assert.deepEqual(subjects(t, 'dan@example.com'), owner);
     // Each day's reminder after that day's emails.
@@ -183,7 +183,7 @@ test('Toran down or refusing the request: the emails go, one line in the log, th
     const down = t.logs.filter((l) => /Toran did not take it/.test(l));
     assert.equal(down.length, 1, t.logs.join('\n'));
     assert.match(down[0], /^\[accounts\] daily: WhatsApp reminder to …0123 \(workspace \d+, soon1\): Toran did not take it \(ECONNREFUSED\); the email went as always, and the 2 other WhatsApp reminders of today are not tried\. None is sent again later$/);
-    for (const slug of ['noa-shop', 'gal-shop', 'dan-shop']) assert.deepEqual(subjects(t, `${slug}@example.com`), ['התשלום הבא על תדר: 22.11.2026'], `${slug}: the email`);
+    for (const slug of ['noa-shop', 'gal-shop', 'dan-shop']) assert.deepEqual(subjects(t, `${slug}@example.com`), ['התשלום הבא על תדר, ב-22.11.2026'], `${slug}: the email`);
     assert.ok(t.logs.some((l) => l.includes('WhatsApp reminders {"sent":0,"notSent":0,"notTried":3}')));
 
     // 22.11, due: Toran is back, and answers 503 (its token unset): the same, and nothing of 21.11 again.
@@ -232,7 +232,7 @@ test('Toran slow: no answer in the time allowed is a line, the run goes on to it
     assert.equal(r.ran, true);
     assert.equal(t.toran.calls.length, 1, 'one try, then none');
     assert.ok(t.logs.some((l) => /Toran did not take it \(no answer in 0\.3 seconds\); the email went as always, and the 1 other WhatsApp reminder of today is not tried/.test(l)), t.logs.join('\n'));
-    assert.deepEqual(subjects(t, 'gal@example.com'), ['התשלום הבא על תדר: 22.11.2026']);
+    assert.deepEqual(subjects(t, 'gal@example.com'), ['התשלום הבא על תדר, ב-22.11.2026']);
     assert.ok(t.db.get('SELECT finished_at FROM daily_runs WHERE day = ?', '2026-11-21').finished_at, 'the run finished');
   } finally {
     await t.done();

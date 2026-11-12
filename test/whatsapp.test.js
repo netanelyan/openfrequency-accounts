@@ -23,7 +23,8 @@ const LINE = '972500000100';
 async function setup(env = { OF_ASSISTANT_WA: '+972 500000100' }, products = ['teder', 'toran']) {
   const h = tempHome();
   setNow('2026-10-24T09:00:00.000Z');
-  const shop = makeWorkspace(h.db, 'dana-shop', { name: 'Dana Shop', products, members: { 'dana@example.com': 'client_owner', 'noa@example.com': 'client_member' } });
+  // Complimentary, so Toran is open to them: the card waits until it is (the audit of 2026-11-11; the last test here).
+  const shop = makeWorkspace(h.db, 'dana-shop', { name: 'Dana Shop', products, comp: true, members: { 'dana@example.com': 'client_owner', 'noa@example.com': 'client_member' } });
   h.db.run("UPDATE users SET name = 'נועה' WHERE email = 'noa@example.com'");
   const user = (email) => h.db.get('SELECT * FROM users WHERE email = ?', email);
   const site = await startSite(h.db, { env });
@@ -267,6 +268,22 @@ test('the console reads the WhatsApp entries in Hebrew', async () => {
     const names = t.db.all("SELECT action FROM audit WHERE action LIKE 'phone_%' ORDER BY id").map((a) => a.action);
     assert.deepEqual(names, ['phone_link_created', 'phone_linked', 'phone_opt_in', 'phone_opt_out', 'phone_removed']);
     for (const n of names) assert.ok(AUDIT_NAMES[n], n);
+  } finally {
+    await t.done();
+  }
+});
+
+test('before Toran is open to them (not paid yet) there is no card: asking Toran about the store would answer nothing; a number linked already keeps it, to remove it', async () => {
+  const t = await setup();
+  try {
+    t.db.run('UPDATE workspace_products SET comp = 0 WHERE workspace_id = ?', t.shop.id);
+    const b = signedIn(t, t.db, t.dana);
+    assert.doesNotMatch((await b.get('/')).body, /id="whatsapp"|לחבר את הוואטסאפ/);
+    linkPhone(t.db, DANA, t.dana, t.shop);
+    const home = (await b.get('/')).body;
+    assert.match(home, /<section class="card wa" id="whatsapp">/);
+    assert.match(home, /action="\/whatsapp\/remove"/);
+    assert.doesNotMatch(home, /action="\/whatsapp\/link"/, 'no new code until it is open');
   } finally {
     await t.done();
   }

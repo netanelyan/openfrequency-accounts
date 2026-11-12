@@ -62,8 +62,14 @@ test('an owner invites someone by email; the invite waits on the page, can be ca
     assert.equal(r.headers.location, '/#team');
     const mail = t.mails.at(-1);
     assert.equal(mail.to, 'noa@example.com');
-    assert.equal(mail.subject, 'הזמנה ל-החנות של דנה ב-OpenFrequency', 'the same invite the console sends');
+    assert.equal(mail.subject, 'הזמנה לחשבון של החנות של דנה ב-OpenFrequency', 'the subject the console sends');
     assert.match(mail.link, /^https:\/\/accounts\.openfrequency\.co\.il\/invite\?t=/);
+    // From the home page it names who sent it (her address: she has no name), so it is hers and not ours, and a new one
+    // is hers to send (the audit of 2026-11-11).
+    assert.match(mail.text, /קיבלתם הזמנה מ-dana@example\.com להצטרף לחשבון של החנות של דנה ב-OpenFrequency\./);
+    assert.match(mail.text, /אם עבר הזמן, בקשו מ-dana@example\.com לשלוח הזמנה חדשה\./);
+    assert.match(mail.text, /לא ציפיתם להזמנה\? אפשר להתעלם מהמייל הזה\./);
+    assert.doesNotMatch(mail.text, /פתחנו לכם חשבון|ענו למייל הזה/);
     let home = (await dana.get('/')).body;
     assert.match(home, /<p class="flash" role="status">שלחנו הזמנה ל-noa@example\.com\. היא עובדת 72 שעות\.<\/p>/);
     card = teamCard(home);
@@ -71,8 +77,16 @@ test('an owner invites someone by email; the invite waits on the page, can be ca
     assert.match(card, /<li class="waiting"><span class="who"><bdi class="ltr">noa@example\.com<\/bdi><small>הזמנה נשלחה, מחכה עד 25\.10\.2026, 12:00<\/small><\/span><span class="muted end">צוות<\/span>/);
     assert.match(card, /נשאר מקום לעוד אדם אחד/);
 
-    // Sent again to the same address: the first link stops working, and it still takes one place.
-    await dana.post('/team/invite', { email: 'noa@example.com', role: 'client_member' });
+    // Sent again to the same address at once: refused, one each 10 minutes to an address (the audit of 2026-11-11), and
+    // nothing sent. Ten minutes on, sent again: the first link stops working, and it still takes one place.
+    const before = t.mails.length;
+    const soon = await dana.post('/team/invite', { email: 'noa@example.com', role: 'client_member' });
+    assert.equal(soon.status, 429);
+    assert.match(soon.body, /<p class="error" id="team-err" role="alert">ל-noa@example\.com כבר נשלחה הזמנה לא מזמן\. אפשר לשלוח שוב בעוד 10 דקות\.<\/p>/);
+    assert.equal(t.mails.length, before);
+    advance(10 * 60_000);
+    assert.equal((await dana.post('/team/invite', { email: 'noa@example.com', role: 'client_member' })).status, 303);
+    assert.equal(t.mails.length, before + 1);
     assert.equal((await t.browser().get(pathOf(mail.link))).status, 410);
     assert.equal(teamOf(t.db, t.ws.id).taken, 2);
     const second = t.mails.at(-1);
@@ -121,11 +135,14 @@ test('three people at most, the owner and the invites still waiting included; th
     assert.match(card, /<div class="team-full" role="note"><p>בחשבון יש כבר 3 אנשים, כולל הזמנות שעוד לא התקבלו\. כדי להוסיף עוד, דברו איתנו\.<\/p><p><a class="button quiet" href="https:\/\/wa\.me\/972500000000\?text=([^"]+)">כתבו לנו בוואטסאפ<\/a><\/p><\/div>/);
     assert.equal(decodeURIComponent(/wa\.me\/972500000000\?text=([^"]+)/.exec(card)[1]), 'היי, כותבים מ״החנות של דנה״. רוצים להוסיף לחשבון יותר מ-3 אנשים.', 'the message to us is already written');
 
-    // The form skipped: refused, nothing sent, nothing stored.
+    // The form skipped: refused, nothing sent, nothing stored. The full box says why, once (the audit of 2026-11-11:
+    // the same sentence was said twice, as the error and in the box).
     const mails = t.mails.length;
     const r = await dana.post('/team/invite', { email: 'gal@example.com', role: 'client_member' });
     assert.equal(r.status, 400);
-    assert.match(r.body, /<p class="error" id="team-err" role="alert">בחשבון יש כבר 3 אנשים, כולל הזמנות שעוד לא התקבלו\. כדי להוסיף עוד, דברו איתנו\.<\/p>/);
+    assert.doesNotMatch(r.body, /id="team-err"/);
+    assert.equal(r.body.split('בחשבון יש כבר 3 אנשים, כולל הזמנות שעוד לא התקבלו.').length - 1, 1);
+    assert.match(r.body, /<div class="team-full" role="note">/);
     assert.equal(t.mails.length, mails);
     assert.equal(t.db.get("SELECT COUNT(*) AS n FROM tokens WHERE email = 'gal@example.com'").n, 0);
     // Someone already in is refused for what it is, not as a fourth.
@@ -285,6 +302,48 @@ test('the support contact is our WhatsApp (OF_SUPPORT_WA); unset, the page says 
     const home = (await signIn(t, 'dana@example.com').then((b) => b.get('/'))).body;
     assert.match(teamCard(home), /<div class="team-full" role="note"><p>בחשבון יש כבר 3 אנשים, כולל הזמנות שעוד לא התקבלו\. כדי להוסיף עוד, ענו לאחד המיילים שקיבלתם מאיתנו\.<\/p><\/div>/);
     assert.match(home, /שאלה על המנוי או על החיוב\? ענו לאחד המיילים שקיבלתם מאיתנו\./);
+  } finally {
+    await t.done();
+  }
+});
+
+test('invites are limited, re-sends counted: 10 emails a day from a workspace, and to one address one each 10 minutes and 3 a day from every workspace together', async () => {
+  // Sign-up is open and needs no payment, so without a limit anyone could sign up and loop invites to any address from
+  // our domain, their own words in the business's name (the audit of 2026-11-11).
+  const t = await setup();
+  try {
+    const dana = await signIn(t, 'dana@example.com');
+    const invites_ = () => t.mails.filter((m) => m.subject.startsWith('הזמנה לחשבון של')).length;
+    // Ten, each cancelled so the team has room: all sent.
+    for (let i = 1; i <= 10; i++) {
+      assert.equal((await dana.post('/team/invite', { email: `p${i}@example.com`, role: 'client_member' })).status, 303, `invite ${i}`);
+      const id = t.db.get("SELECT id FROM tokens WHERE kind = 'invite' AND used_at IS NULL AND email = ?", `p${i}@example.com`).id;
+      await dana.post(`/team/invites/${id}/cancel`);
+    }
+    assert.equal(invites_(), 10);
+    // The eleventh: refused for the day, nothing stored or sent, and the form says when it can go.
+    const r = await dana.post('/team/invite', { email: 'p11@example.com', role: 'client_member' });
+    assert.equal(r.status, 429);
+    assert.match(r.body, /<p class="error" id="team-err" role="alert">שלחתם היום הרבה הזמנות מהחשבון הזה\. אפשר לשלוח עוד בעוד 24 שעות\.<\/p>/);
+    assert.match(r.body, /<details class="team-more" open>/, 'the form stays open with what was typed');
+    assert.equal(invites_(), 10);
+    assert.equal(t.db.get("SELECT COUNT(*) AS n FROM tokens WHERE email = 'p11@example.com'").n, 0);
+
+    // Another workspace is not held back by this one's day, but an address is counted across workspaces: p1 already
+    // got one today, so two more, ten minutes apart, and then none until tomorrow.
+    const yossi = await signIn(t, 'yossi@example.com');
+    advance(10 * 60_000);
+    assert.equal((await yossi.post('/team/invite', { email: 'P1@example.com', role: 'client_member' })).status, 303);
+    advance(10 * 60_000);
+    assert.equal((await yossi.post('/team/invite', { email: 'p1@example.com', role: 'client_member' })).status, 303, 'sent again: the third today');
+    advance(10 * 60_000);
+    const fourth = await yossi.post('/team/invite', { email: 'p1@example.com', role: 'client_member' });
+    assert.equal(fourth.status, 429);
+    assert.match(fourth.body, /ל-p1@example\.com כבר נשלחה הזמנה לא מזמן\. אפשר לשלוח שוב בעוד 24 שעות\./);
+    assert.equal(invites_(), 12);
+    // A day on, the workspace sends again.
+    advance(24 * HOUR);
+    assert.equal((await dana.post('/team/invite', { email: 'p11@example.com', role: 'client_member' })).status, 303);
   } finally {
     await t.done();
   }

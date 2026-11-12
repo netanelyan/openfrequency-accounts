@@ -82,7 +82,7 @@ test('the billing emails: each kind once for each paid period, to the owners, th
 
     const r = await t.run('2026-11-15T08:00:00.000Z');
     assert.deepEqual(r.billing, { soon7: 1, soon1: 0, due: 0, last: 0, stopped: 0 });
-    assert.deepEqual(t.mails.map((m) => [m.to, m.subject]), [['noa@example.com', 'התשלום הבא על תדר: 22.11.2026']]);
+    assert.deepEqual(t.mails.map((m) => [m.to, m.subject]), [['noa@example.com', 'התשלום הבא על תדר, ב-22.11.2026']]);
     assert.match(t.mails[0].text, /החודש הבא של תדר בחשבון של Noa Shop מתחיל ב-22\.11\.2026\. הסכום: 790 ₪ ועוד מע״מ, 932\.20 ₪ בסך הכול\./);
     // Manual payment (OF_PAYMENT unset) with the owner's details (OF_PAYMENT_METHOD): the details themselves, the receipt
     // (אסמכתא) to us, and a reply for questions; nothing points to an earlier email.
@@ -95,7 +95,7 @@ test('the billing emails: each kind once for each paid period, to the owners, th
     assert.equal(t.mails.length, 1);
 
     await t.run('2026-11-21T08:00:00.000Z');
-    assert.equal(t.mails.at(-1).subject, 'התשלום הבא על תדר: 22.11.2026');
+    assert.equal(t.mails.at(-1).subject, 'התשלום הבא על תדר, ב-22.11.2026');
 
     // The first day after the paid month: the month is over, Teder works to the end of Tuesday 24.11, then stops.
     t.mails.length = 0;
@@ -155,7 +155,7 @@ test('the billing emails: each kind once for each paid period, to the owners, th
     payMonth(t.db, ws.id, 'teder', { by: null }); // from 25.11: paid until 24.12
     assert.equal(t.db.get("SELECT paid_until FROM subscriptions WHERE workspace_id = ? AND product = 'teder'", ws.id).paid_until, '2026-12-24');
     await t.run('2026-12-18T08:00:00.000Z');
-    assert.deepEqual(t.mails.map((m) => m.subject), ['התשלום הבא על תדר: 25.12.2026']);
+    assert.deepEqual(t.mails.map((m) => m.subject), ['התשלום הבא על תדר, ב-25.12.2026']);
     assert.ok(lastRuns(t.db)[0].finished_at);
   } finally {
     t.cleanup();
@@ -176,8 +176,8 @@ test("the 72 hours at a month's end, for Teder and Toran each: due on the 1st, l
       for (const m of t.mails.filter((x) => x.to === 'gal@example.com')) (sent[day] ||= []).push(m.subject);
     }
     assert.deepEqual(sent, {
-      '2026-11-24': ['התשלום הבא על תדר: 1.12.2026', 'התשלום הבא על תורן: 1.12.2026'],
-      '2026-11-30': ['התשלום הבא על תדר: 1.12.2026', 'התשלום הבא על תורן: 1.12.2026'],
+      '2026-11-24': ['התשלום הבא על תדר, ב-1.12.2026', 'התשלום הבא על תורן, ב-1.12.2026'],
+      '2026-11-30': ['התשלום הבא על תדר, ב-1.12.2026', 'התשלום הבא על תורן, ב-1.12.2026'],
       '2026-12-02': ['התשלום על החודש החדש של תדר עוד לא הגיע', 'התשלום על החודש החדש של תורן עוד לא הגיע'],
       '2026-12-03': ['תדר ייעצר מחר אם התשלום לא יגיע היום', 'תורן ייעצר מחר אם התשלום לא יגיע היום'],
       '2026-12-04': ['תדר נעצר עד שהתשלום יגיע', 'תורן נעצר עד שהתשלום יגיע'],
@@ -202,7 +202,8 @@ test('the week the clocks go forward: due on the first day, last on the 4th, eac
       if (m) sent[day] = [m.subject, linesOf(m.text)[1] + (m.subject.startsWith('התשלום על') ? ` ${linesOf(m.text)[2]}` : '')];
     }
     assert.deepEqual(sent, {
-      '2027-03-24': ['התשלום הבא על תדר: 25.3.2027', 'החודש הבא של תדר בחשבון של Noa Shop מתחיל ב-25.3.2027. הסכום: 790 ₪ ועוד מע״מ, 932.20 ₪ בסך הכול.'],
+      // soon1, the day before, says it is tomorrow (soon7's words were the same word for word; the audit of 2026-11-11).
+      '2027-03-24': ['התשלום הבא על תדר, ב-25.3.2027', 'מחר, 25.3.2027, מתחיל החודש הבא של תדר בחשבון של Noa Shop. הסכום: 790 ₪ ועוד מע״מ, 932.20 ₪ בסך הכול.'],
       '2027-03-25': ['התשלום על החודש החדש של תדר עוד לא הגיע', 'המנוי לתדר בחשבון של Noa Shop שולם עד 24.3.2027, והתשלום על החודש החדש (790 ₪ ועוד מע״מ, 932.20 ₪ בסך הכול) עוד לא הגיע אלינו. תדר ממשיך לעבוד עד סוף יום ראשון, 28.3.2027. אם התשלום לא יגיע עד אז, תדר ייעצר עד שישולם.'],
       '2027-03-28': ['תדר ייעצר מחר אם התשלום לא יגיע היום', 'היום האחרון לשלם על החודש החדש של תדר בחשבון של Noa Shop הוא היום, יום ראשון, 28.3.2027. הסכום: 790 ₪ ועוד מע״מ, 932.20 ₪ בסך הכול.'],
       '2027-03-29': ['תדר נעצר עד שהתשלום יגיע', 'התשלום על תדר בחשבון של Noa Shop לא הגיע עד סוף תקופת החסד, אז תדר נעצר. הנתונים נשמרים, ותדר ייפתח שוב כשהתשלום יגיע.'],
@@ -226,7 +227,7 @@ test('a payment in the 72 hours: no last and no stopped for that month, and the 
     for (const day of ['2026-11-23', '2026-11-24', '2026-11-25', '2026-11-26']) await t.run(`${day}T08:00:00.000Z`);
     assert.deepEqual(t.mails, []);
     await t.run('2026-12-15T08:00:00.000Z');
-    assert.deepEqual(t.mails.map((m) => m.subject), ['התשלום הבא על תדר: 22.12.2026']);
+    assert.deepEqual(t.mails.map((m) => m.subject), ['התשלום הבא על תדר, ב-22.12.2026']);
   } finally {
     t.cleanup();
   }

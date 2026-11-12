@@ -55,12 +55,12 @@ test('opening a workspace sends its owner a 72-hour invite; accepting it signs t
     assert.equal(t.mails.length, 1);
     const mail = t.mails[0];
     assert.equal(mail.to, 'dana@example.com');
-    assert.equal(mail.subject, 'הזמנה ל-חנות של דנה ב-OpenFrequency');
+    assert.equal(mail.subject, 'הזמנה לחשבון של חנות של דנה ב-OpenFrequency');
     assert.match(mail.link, /^https:\/\/accounts\.openfrequency\.co\.il\/invite\?t=/);
     assert.match(mail.text, /עד 25\.10\.2026, 12:00/);
 
     const page = await t.browser().get(pathOf(mail.link));
-    assert.match(page.body, /הוזמנתם ל-חנות של דנה/);
+    assert.match(page.body, /הוזמנתם לחשבון של חנות של דנה/);
 
     const { b, r: joined } = await accept(t, mail);
     assert.equal(joined.headers.location, '/');
@@ -287,7 +287,7 @@ test("the customer's dashboard: each product's subscription, recorded on the con
     // Nothing paid yet: said in plain words (not "active"), with the setup fee, and the button leads to the payment.
     assert.match(home, /<span class="tag">עוד לא שולם<\/span>/);
     assert.match(home, /תדר נפתח אחרי התשלום על המנוי\./);
-    assert.match(home, /דמי הקמה: 1,490 ₪, פעם אחת/);
+    assert.match(home, /דמי הקמה: 1,490 ₪ ועוד מע״מ, פעם אחת/);
     assert.match(home, /href="\/setup#setup-billing">להסדיר תשלום</);
     assert.match(home, /מנוי מאז 22\.10\.2026/);
     assert.match(home, /עוד מאיתנו[^]*openfrequency\.co\.il\/toran/, 'Toran, which they do not have, is offered');

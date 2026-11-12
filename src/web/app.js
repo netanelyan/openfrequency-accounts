@@ -15,14 +15,14 @@ import { chooseWorkspace, createSession, describeSession, enabledProducts, findS
 import { acceptInvite, consumeMagicLink, createInvite, InviteError, normEmail, peekInvite, peekMagicLink, requestMagicLink, revokeInvite, validEmail } from '../accounts/links.js';
 import { verifySuperadmin } from '../accounts/superadmin.js';
 import { createWorkspace, getWorkspace, listWorkspaces, recentAudit, setDisabled, setProduct, startViewAs, stopViewAs, WorkspaceError } from '../accounts/workspaces.js';
-import { checkSignup, completeSignup, CONTACT_URL, dropSignup, peekSignup, requestSignup, SignupError, signupNotify, signupOpen, signupProducts, startProducts } from '../accounts/signup.js';
-import { foundersState, giveBackSpot, isFounder } from '../accounts/founders.js';
-import { assistantWa, billingReady, checkoutUrl, payHow, paymentMode, supportWa } from '../accounts/billing.js';
+import { addProduct, checkSignup, completeSignup, CONTACT_URL, dropSignup, hadProduct, peekSignup, requestSignup, SignupError, signupNotify, signupOpen, signupProducts, startProducts } from '../accounts/signup.js';
+import { foundersSpots, foundersState, giveBackSpot, isFounder } from '../accounts/founders.js';
+import { amountDue, assistantWa, billingReady, checkoutUrl, payHow, paymentMode, supportWa } from '../accounts/billing.js';
 import { accessAll, accessFor, BillingError, cancelSubscription, resumeSubscription, setComp } from '../accounts/entitlement.js';
 import { eraseWorkspace, productsEver, sameName } from '../accounts/erase.js';
 import { prefsOf, savePrefs } from '../accounts/notify.js';
 import { cancelMail, cancelNoticeMail, deleteNoticeMail, existingAccountMail, inviteMail, magicLinkMail, paidMail, paidOpening, signupMail, signupNoticeMail, welcomeMail } from '../mail/messages.js';
-import { CANCEL, ERASE, LEADS, MAIL, MORNING, NOTIFY, OPS, PAY, PRODUCT_NAMES, SETUP, SIGNUP, T, WAIT, dayHe, ils, opensAfter, phoneHe } from './copy.js';
+import { ADD, CANCEL, ERASE, LEADS, MAIL, MORNING, NOTIFY, OPS, PAY, PRODUCT_NAMES, SETUP, SIGNUP, T, WAIT, dayHe, ils, opensAfter, phoneHe } from './copy.js';
 import { payOverWa } from './pay.js';
 import { setupClient, setupState } from './setup.js';
 import { eraseClient } from './erase.js';
@@ -83,6 +83,8 @@ export function defaultLimiters() {
     signupEmail: createLimiter(LIMITS.signupPerEmail),
     signupIp: createLimiter(LIMITS.signupPerIp),
     signupMail: createLimiter(signupMailDaily()),
+    inviteWorkspace: createLimiter(LIMITS.invitePerWorkspace),
+    inviteAddress: createLimiter(LIMITS.invitePerAddress),
   };
 }
 
@@ -238,14 +240,17 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
   };
   // The owner hears of each confirmed sign-up (OF_SIGNUP_NOTIFY). Called once its transaction has committed; the
   // mailer queues and never waits, and a failure here is logged and never stands in the customer's way. It has each
-  // product's plan and price as its subscription has them, and what to do next: in manual mode, email the customer
-  // the payment details.
+  // product's plan and price as its subscription has them, the founders' spot when it took one, and what to do next:
+  // in manual mode, email the customer the payment details unless their email has them. `added`: a product a customer
+  // added to their account (/subscription/<product>/add), the same notice about that product alone.
   const notifyTo = signupNotify(env);
-  const noticeSignup = ({ user, workspace }, method, base) => {
+  const noticeSignup = ({ user, workspace, founder = null }, method, base, { added = null } = {}) => {
     if (!notifyTo.length) return;
     try {
-      const products = enabledProducts(db, workspace.id);
+      const products = added ? [added] : enabledProducts(db, workspace.id);
       const subs = subscriptionsOf(db, workspace.id);
+      // Sign-up's founder is its spot's number; an added product's, { spot, spots, already } (signup.js addProduct).
+      const spot = founder == null ? null : typeof founder === 'object' ? founder : { spot: founder, spots: foundersSpots(env), already: false };
       const fields = {
         name: user.name,
         email: user.email,
@@ -257,12 +262,16 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
           const setupFee = s.setup ?? list.setup;
           return MAIL.noticePrice(P.productLabel(p, s.plan), ils(s.monthly ?? list.monthly), setupFee ? ils(setupFee) : '', (s.vat ?? list.vat) === 'included' ? T.vatIncluded : T.vatExcluded);
         }),
+        founders: spot ? MAIL.noticeFounders(spot.spot, spot.spots, spot.already) : '',
         payment,
-        // The welcome email carries the payment details when the owner wrote them (OF_PAYMENT_METHOD).
+        // The customer's email carries the payment details when the owner wrote them (OF_PAYMENT_METHOD), under the
+        // button to pay over WhatsApp too (with OF_ASSISTANT_WA) since 2026-11-11.
         detailsSent: Boolean(payHow(env)),
+        wa: Boolean(payHow(env) && assistantWa(env)),
+        added: Boolean(added),
         names: products.map((p) => PRODUCT_NAMES[p]).join(SIGNUP.and),
         many: products.length > 1,
-        at: workspace.created_at,
+        at: added ? new Date(now()).toISOString() : workspace.created_at,
         method,
         link: `${base}/admin/accounts#ws-${workspace.id}`,
       };
@@ -283,29 +292,29 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
   // Right after a sign-up is confirmed: the welcome email, what happens next (pay, then set up), with each product's
   // plan and price (Teder's setup fee not refunded, as its terms say), and how paying works in this mode (OF_PAYMENT):
   // manual, we email the details, with how they pay (OF_PAYMENT_METHOD) when the owner has said, and questions come
-  // to us; provider, they pay on the setup page.
-  const welcome = ({ user, workspace }, base) => {
+  // to us; provider, they pay on the setup page. What is to pay is what /setup and Toran say (billing.js amountDue):
+  // after a sign-up, each product's first month and setup fee. `added` (a product added to an open account): the same
+  // email about it, and the payment is everything owed now (the other product's month too, when it is owed). A
+  // founder's setup fee is 0, so no word of one, and one line says why (the owner, 2026-11-11).
+  const welcome = ({ user, workspace, founder = null }, base, { added = null } = {}) => {
     try {
-      const subs = subscriptionsOf(db, workspace.id);
-      const products = enabledProducts(db, workspace.id);
-      // The first payment: each product's month and setup fee, with VAT (payTotal), and the months after it.
-      const owed = [];
-      const months = [];
-      const prices = products.map((p) => {
-        const list = listPrice(p, subs[p]?.plan);
-        const setupFee = subs[p]?.setup ?? list.setup;
-        const monthly = subs[p]?.monthly ?? list.monthly;
-        const vat = subs[p]?.vat ?? list.vat;
-        owed.push({ sum: monthly, vat }, ...(setupFee ? [{ sum: setupFee, vat }] : []));
-        months.push({ sum: monthly, vat });
-        return MAIL.welcomePrice(P.productLabel(p, subs[p]?.plan), ils(monthly), ils(setupFee), p === 'teder' && setupFee > 0);
+      const due = amountDue(db, workspace.id);
+      const owed = due.lines.filter((l) => l.item);
+      const prices = owed.map((l) => {
+        const label = P.productLabel(l.product, l.plan);
+        const plusVat = l.vat !== 'included';
+        return l.kind === 'owed' && l.item.firstMonth
+          ? MAIL.welcomePrice(label, ils(l.item.monthly), l.item.setup ? ils(l.item.setup) : '', l.product === 'teder' && l.item.setup > 0, plusVat)
+          : MAIL.welcomeMonth(label, ils(l.item.monthly), plusVat);
       });
-      const now = payTotal(owed);
-      const total = owed.length ? [MAIL.payNow(ils(now.total), ils(now.net), now.vat ? ils(now.vat) : ''), ...(owed.length > months.length ? [MAIL.payThen(ils(payTotal(months).total))] : [])] : [];
-      const opens = opensAfter(payment, products.map((p) => PRODUCT_NAMES[p]).join(SIGNUP.and), products.length > 1);
+      const total = owed.length ? [MAIL.payNow(ils(due.total), ils(due.net), due.vat ? ils(due.vat) : ''), ...(due.monthsAfter != null ? [MAIL.payThen(ils(due.monthsAfter))] : [])] : [];
+      // What opens once paid: the products owed that are closed now (one in its 72 hours still works).
+      const closed = owed.filter((l) => l.kind === 'owed').map((l) => PRODUCT_NAMES[l.product]);
+      const opens = closed.length ? opensAfter(payment, closed.join(SIGNUP.and), closed.length > 1) : '';
+      const founders = Boolean(founder) && owed.some((l) => l.kind === 'owed' && l.item.firstMonth && !l.item.setup);
       // Paying over WhatsApp (src/web/pay.js): with OF_PAYMENT_METHOD and OF_ASSISTANT_WA, the payment's own button.
       const wa = payOverWa(db, { env, workspaceId: workspace.id, business: workspace.name });
-      mailer.send(welcomeMail(user.email, { business: workspace.name, link: `${base}/setup`, payment, opens, prices, total, payHow: payHow(env), wa: supportWa(env), payLink: wa?.href || null, payButton: PAY.button }));
+      mailer.send(welcomeMail(user.email, { business: workspace.name, link: `${base}/setup`, payment, opens, prices, total, payHow: payHow(env), wa: supportWa(env), payLink: wa?.href || null, payButton: PAY.button, founders, added: added ? PRODUCT_NAMES[added] : '' }));
     } catch (e) {
       log(`[accounts] the welcome email for workspace ${workspace.id} failed: ${e.message}`);
     }
@@ -378,11 +387,14 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
       res.writeHead(303, headers({ location: to }));
       res.end();
     };
+    // A request the pages never send, or one too large, answered with a page in Hebrew, not the code's English ("too
+    // large", "method not allowed"; the audit of 2026-11-11). The status stays what it is.
+    const refused = (status, title = status === 413 ? T.tooLarge : status === 421 ? T.notFound : T.badRequest) => send(status, layout({ title, body: P.messagePage({ title, lead: '' }) }));
 
     try {
       const host = String(req.headers.host || '').toLowerCase();
       const port = req.socket.localPort;
-      if (![publicHost, `127.0.0.1:${port}`, `localhost:${port}`].includes(host)) return text(421, 'unknown host');
+      if (![publicHost, `127.0.0.1:${port}`, `localhost:${port}`].includes(host)) return refused(421);
       const secure = isHttps(req);
       if (publicHost && host === publicHost && !secure) return text(403, T.httpsOnly);
 
@@ -443,7 +455,7 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
           log,
           failed: (status) =>
             status === 413
-              ? text(413, 'too large')
+              ? refused(413)
               : teder_
                 ? page_(502, OPS.tederNoAnswerTitle, P.messagePage({ title: OPS.tederNoAnswerTitle, lead: OPS.tederNoAnswerLead, links: [['/admin', OPS.toranNoAnswerBack]] }))
                 : page_(502, OPS.toranNoAnswerTitle, P.messagePage({ title: OPS.toranNoAnswerTitle, lead: OPS.toranNoAnswerLead, links: [['/admin', OPS.toranNoAnswerBack]] })),
@@ -494,11 +506,15 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
         }
         if (!csrfOk(form.get('_csrf'), nonce, secret)) return send(403, layout({ title: T.loginTitle, body: P.messagePage({ title: T.staleForm, lead: '', links: [[p.startsWith('/admin') ? '/admin' : '/login', T.notFoundBack]] }) }));
       } else if (req.method !== 'GET' && req.method !== 'HEAD') {
-        return text(405, 'method not allowed');
+        return refused(405);
       }
       const f = (k) => String(form?.get(k) ?? '');
       const page = (status, title, body, opts = {}) => send(status, layout({ title, body, flash, ...opts }));
       const next = (raw) => safeNext(raw, { allowLocal: dev });
+      // An invite that does not work any more: a new one comes from whoever sent it, so there is no button (its "לקישור
+      // חדש" led to the sign-in, useless to someone without an account; the audit of 2026-11-11), and a quiet way in for
+      // someone who joined already.
+      const deadInvite = () => P.messagePage({ title: T.inviteDeadTitle, lead: T.inviteDeadLead, links: [['/login', T.inviteDeadLogin]] });
       const setSession = (user, opts = {}) => {
         const s = createSession(db, user, { ip, userAgent: req.headers['user-agent'], ...opts });
         out.cookies.push(sessionCookie(s.id, { secure, maxAgeMs: user.is_superadmin ? LIFETIME.superadmin.maxMs : LIFETIME.client.maxMs }));
@@ -512,9 +528,11 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
         const mine = memberships(db, found.user.id).filter((m) => !m.disabled_at);
         const change = graceChangeOf(db, wsId);
         const subscriptions = Object.fromEntries(Object.entries(subscriptionsOf(db, wsId)).map(([prod, row]) => [prod, describe(row, undefined, change)]));
-        // Only a product they can buy now (OF_SIGNUP_PRODUCTS): while Toran waits for Meta, a Teder workspace is not shown
-        // Toran (the owner, 2026-11-06: "if an option isnt relevant dont show it").
+        // Only a product they can buy now (OF_SIGNUP_PRODUCTS): a product not on sale is not shown (the owner,
+        // 2026-11-06: "if an option isnt relevant dont show it"). While sign-up is open, its owner adds it here
+        // (/subscription/<product>/add; the owner, 2026-11-11); otherwise it leads to its page on the website.
         const others = PRODUCTS.filter((prod) => !d.body.products.includes(prod) && openProducts.includes(prod));
+        const access = accessAll(db, wsId);
         const body = P.homePage({
           csrf,
           user: found.user,
@@ -523,24 +541,33 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
           productUrls: urls,
           canSwitch: mine.length > 1,
           subscriptions,
-          access: accessAll(db, wsId),
+          access,
           providerReady: billingReady(env),
           others,
+          addable: signupOn ? others : [],
           // Invoices are the owners' only: a member sees the team and the products, not what the business pays.
           invoices: d.body.role === 'client_owner' ? invoicesOf(db, wsId) : null,
           team: teamOf(db, wsId),
           // A linked number is for Toran's assistant only (Teder is managed on its dashboard): the card's form shows only
-          // with Toran (html.js whatsappCard).
-          whatsapp: { phones: phonesFor(db, { userId: found.user.id, workspaceId: wsId, role: d.body.role }), code: openLinkCode(db, found.user.id, wsId), waNumber, toran: d.body.products.includes('toran') },
+          // with Toran (html.js whatsappCard), and only once Toran is open to them (paid, comp, or in its 72 hours):
+          // before that, asking it about the store answers nothing (the audit of 2026-11-11). A number linked already
+          // keeps the card, to remove it.
+          whatsapp: { phones: phonesFor(db, { userId: found.user.id, workspaceId: wsId, role: d.body.role }), code: openLinkCode(db, found.user.id, wsId), waNumber, toran: d.body.products.includes('toran') && Boolean(access.toran?.allowed) },
           role: d.body.role,
           readOnly: d.body.readOnly,
           support,
           supportTeam: supportUrl(env, T.supportTeamText(d.body.workspace.name, TEAM_LIMIT)),
           flash,
-          setup: st.complete ? null : { done: st.done, total: st.total, incomplete: st.incomplete },
+          setup: st.complete ? null : { done: st.done, total: st.total, incomplete: st.incomplete, onlyPay: st.onlyPay, renewal: st.renewal },
           ...extra,
         });
         return page(status, T.homeHello(found.user.name || found.user.email), body, { wide: true });
+      };
+      // A closed workspace (disabled on /admin): its name, and whom to tell when it is a mistake, our WhatsApp with the
+      // words written (OF_SUPPORT_WA) when it is set (the audit of 2026-11-11); then another workspace of theirs, and out.
+      const closedPage = (name, canSwitch) => {
+        const wa = supportUrl(env, T.homeClosedText(name));
+        return P.messagePage({ title: T.homeClosed(name), lead: wa ? T.homeClosedWa : T.homeClosedMail, links: [...(wa ? [[wa, T.supportWrite]] : []), ...(canSwitch ? [['/workspace', T.homeSwitch]] : []), ['/logout', T.homeSignOut]] });
       };
       const clearSession = () => out.cookies.push(sessionCookie('', { secure, clear: true }));
       // Where a sign-in lands: ?next= first; then, for a customer whose workspace is not set up yet (a product that
@@ -569,8 +596,7 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
         const mine = memberships(db, found.user.id).filter((m) => !m.disabled_at);
         if (d.status === 403) {
           const ws = db.get('SELECT name FROM workspaces WHERE id = ?', found.session.workspace_id);
-          const links = [...(mine.length ? [['/workspace', T.homeSwitch]] : []), ['/logout', T.homeSignOut]];
-          return page(403, T.loginTitle, P.messagePage({ title: T.homeClosed(ws?.name || ''), lead: '', links }));
+          return page(403, T.loginTitle, closedPage(ws?.name || '', mine.length > 0));
         }
         return await dashboard(d);
       }
@@ -604,6 +630,64 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
         return { d };
       };
 
+      // A product added to the account (the owner, 2026-11-11: a customer of one product adds the other from their
+      // account, where before only the operator could): its owner chooses its plan and accepts its terms as at sign-up
+      // (src/accounts/signup.js addProduct), and it is turned on unpaid at its list price, the founders' offer by the
+      // sign-up's rule. The email about it and the operator's notice go as on a sign-up, and they land on /setup, where
+      // they pay and set it up. Only while sign-up sells it (OF_SIGNUP, OF_SIGNUP_PRODUCTS). A product the account had
+      // before is the operator's to bring back. The superadmin (whose view-as is read-only) adds nothing here.
+      const addMatch = /^\/subscription\/(teder|toran)\/add$/.exec(p);
+      if (addMatch) {
+        if (!found) return redirect(`/login?next=${encodeURIComponent(p + url.search)}`);
+        if (found.user.is_superadmin) return page(403, SIGNUP.title, P.messagePage({ title: ADD.readOnly, lead: '', links: [['/admin', T.adminTitle]] }));
+        const { d, go } = customerIn(p + url.search);
+        if (go) return redirect(go);
+        const product = addMatch[1];
+        const name = PRODUCT_NAMES[product];
+        const ws = d.body.workspace;
+        const title = ADD.title(name);
+        const say = (status, heading, lead, more = []) => page(status, title, P.messagePage({ title: heading, lead, links: [...more, ['/', T.logoutBack]] }));
+        const closed = () => say(403, ADD.closed(name), ADD.closedLead);
+        const owners = () => say(403, ADD.ownersOnly(name), ADD.ownersOnlyLead);
+        const had = () => {
+          const wa = supportUrl(env, ADD.hadText(ws.name, name));
+          return say(409, ADD.hadTitle(name), ADD.hadLead(Boolean(wa)), wa ? [[wa, T.supportWrite]] : []);
+        };
+        if (d.body.products.includes(product)) return redirect('/');
+        if (!signupOn || !openProducts.includes(product)) return closed();
+        if (d.body.role !== 'client_owner') return owners();
+        if (hadProduct(db, ws.id, product)) return had();
+        const field = P.PLAN_FIELD[product];
+        const founder = isFounder(db, ws.id);
+        const view = (status, form_ = {}, error = '', errorAt = '') =>
+          page(status, title, P.addProductPage({ csrf, product, workspace: ws, form: form_, error, errorAt, payment, founder, founders: founder ? null : foundersState(db, env) }));
+        if (req.method !== 'POST') {
+          // ?plan= (the website's button under a plan card, kept through /signup) starts that plan chosen.
+          const asked = url.searchParams.get('plan') || '';
+          return view(200, { [field]: Object.hasOwn(PLANS[product], asked) ? asked : '' });
+        }
+        const form_ = { [field]: f(field).slice(0, 20), terms: f('terms') === '1' };
+        let added;
+        try {
+          added = addProduct(db, { workspaceId: ws.id, product, plan: form_[field], terms: form_.terms, by: found.user, ip, env, open: signupOn ? openProducts : [] });
+        } catch (e) {
+          if (!(e instanceof SignupError)) throw e;
+          // Sent twice (a double click): it is on, and home says so.
+          if (e.code === 'already') return redirect('/');
+          if (e.code === 'product_closed') return closed();
+          if (e.code === 'not_owner') return owners();
+          if (e.code === 'had_before') return had();
+          return view(400, form_, ADD.errors[e.code] || SIGNUP.errors[e.code] || e.code, e.code === 'no_terms' ? 'terms' : 'plan');
+        }
+        // Committed: the product hears at once, then the emails, which never stand in the way.
+        accessChanged(ws.id, [product], 'product');
+        const done = { user: found.user, workspace: getWorkspace(db, ws.id), founder: added.founder };
+        welcome(done, base, { added: product });
+        noticeSignup(done, 'account', base, { added: product });
+        setFlash(ADD.flashAdded(name));
+        return redirect('/setup');
+      }
+
       const subMatch = /^\/subscription\/(teder|toran)\/(cancel|resume)$/.exec(p);
       if (subMatch) {
         if (!found) return redirect('/login');
@@ -613,7 +697,9 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
         const [, product, action] = subMatch;
         const ws = d.body.workspace;
         const name = PRODUCT_NAMES[product];
-        const refuse = (code, status = 400) => page(status, CANCEL.title, P.messagePage({ title: CANCEL.errors[code] || code, lead: '', links: [['/', CANCEL.back]] }));
+        // A refusal has nothing to say no to: its link is "חזרה לדף הראשי", not the confirmation page's "לא, ..." (the
+        // audit of 2026-11-11).
+        const refuse = (code, status = 400) => page(status, CANCEL.title, P.messagePage({ title: CANCEL.errors[code] || code, lead: '', links: [['/', T.logoutBack]] }));
         if (d.body.role !== 'client_owner') return refuse('not_owner', 403);
         if (action === 'cancel' && req.method !== 'POST') {
           const a = accessFor(db, ws.id, product);
@@ -649,7 +735,7 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
         if (found.user.is_superadmin) return page(403, ERASE.title, P.messagePage({ title: ERASE.readOnly, lead: '', links: [['/admin/accounts', T.adminTitle]] }));
         const { d, go } = customerIn(p);
         if (go) return redirect(go);
-        if (d.body.role !== 'client_owner') return page(403, ERASE.title, P.messagePage({ title: ERASE.ownersOnly, lead: '', links: [['/', ERASE.back]] }));
+        if (d.body.role !== 'client_owner') return page(403, ERASE.title, P.messagePage({ title: ERASE.ownersOnly, lead: '', links: [['/', T.logoutBack]] }));
         const ws = getWorkspace(db, d.body.workspace.id);
         const canCancel = enabledProducts(db, ws.id).some((pr) => ['paid', 'due', 'unpaid'].includes(accessFor(db, ws.id, pr).access));
         const again = (status, error = '', typed = '') => page(status, ERASE.title, P.deletePage({ csrf, workspace: ws, error, typed, canCancel }));
@@ -708,10 +794,23 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
           return redirect('/setup');
         }
 
-        // Someone already signed in: their account is open. A second workspace is the superadmin's to open.
+        // Someone already signed in: their account is open. A second workspace is the superadmin's to open. A product
+        // their workspace does not have is added to it (/subscription/<product>/add; the owner, 2026-11-11): the one
+        // ?p= names (the website's buttons), or the only one there is to add; ?plan= goes with it. Otherwise, the page
+        // says what is so: the product is there already, its owners add it, or who they are signed in as.
         if (found) {
-          const links = found.user.is_superadmin ? [['/admin', T.adminTitle]] : [['/', SIGNUP.home], ['/logout', SIGNUP.signOut]];
-          return page(200, SIGNUP.title, P.messagePage({ title: SIGNUP.signedInTitle(found.user.email), lead: found.user.is_superadmin ? '' : SIGNUP.signedInLead, links }));
+          if (found.user.is_superadmin) return page(200, SIGNUP.title, P.messagePage({ title: SIGNUP.signedInTitle(found.user.email), lead: '', links: [['/admin', T.adminTitle]] }));
+          const d = describeSession(db, sid);
+          if (d.status === 409) return redirect(`/workspace?next=${encodeURIComponent(p + url.search)}`);
+          const ws = d.status === 200 && !d.body.readOnly ? d.body.workspace : null;
+          const want = startProducts(url.searchParams.get('p'), PRODUCTS)[0] || null;
+          const can = ws && req.method !== 'POST' ? PRODUCTS.filter((x) => openProducts.includes(x) && !d.body.products.includes(x)) : [];
+          const pick = can.includes(want) ? want : !want && can.length === 1 ? can[0] : null;
+          const plan = url.searchParams.get('plan') || '';
+          if (pick && d.body.role === 'client_owner') return redirect(`/subscription/${pick}/add${Object.hasOwn(PLANS[pick], plan) ? `?plan=${plan}` : ''}`);
+          const links = [['/', SIGNUP.home], ['/logout', SIGNUP.signOut]];
+          if (ws && want && d.body.products.includes(want)) return page(200, SIGNUP.title, P.messagePage({ title: SIGNUP.hasTitle(PRODUCT_NAMES[want], ws.name), lead: '', links }));
+          return page(200, SIGNUP.title, P.messagePage({ title: SIGNUP.signedInTitle(found.user.email), lead: pick ? SIGNUP.ownerAdds(PRODUCT_NAMES[pick]) : SIGNUP.signedInLead, links }));
         }
         // The product the visitor came from (?p=) starts ticked when it is open, and the only one open always, without
         // asking (startProducts; the owner, 2026-11-02, in place of 2026-10-31's "nothing starts ticked"). The POST
@@ -726,7 +825,9 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
 
         const via = f('via') === 'google' && google ? 'google' : 'email';
         const raw = { name: f('name').slice(0, 200), business: f('business').slice(0, 200), email: f('email').slice(0, 254), products: form.getAll('products'), plan: f('plan').slice(0, 20), plan_toran: f('plan_toran').slice(0, 20), terms: f('terms') === '1' };
-        const again = (status, error, extra) => send(status, layout({ title: SIGNUP.title, body: P.signupPage({ csrf, form: raw, error, google: Boolean(google), open: openProducts, payment, founders: foundersState(db, env) }) }), extra);
+        // `errorAt`: the field an error is about, where the page says it (html.js signupPage); none for the whole form.
+        const again = (status, error, extra, errorAt = '') => send(status, layout({ title: SIGNUP.title, body: P.signupPage({ csrf, form: raw, error, errorAt, google: Boolean(google), open: openProducts, payment, founders: foundersState(db, env) }) }), extra);
+        const FIELD_OF = { bad_name: 'name', bad_business: 'business', bad_email: 'email', no_products: 'products', product_closed: 'products', bad_plan: 'products', bad_plan_toran: 'products', no_terms: 'terms' };
         const sent = (email) => page(200, SIGNUP.sentTitle, P.signupSentPage({ email }));
         // The honeypot: a field people never see. Filled, it was not a person: the same page as a real sign-up, and
         // nothing kept or sent.
@@ -739,7 +840,7 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
           ok = checkSignup(raw, { needEmail: via === 'email', open: openProducts });
         } catch (e) {
           if (!(e instanceof SignupError)) throw e;
-          return again(400, SIGNUP.errors[e.code]);
+          return again(400, SIGNUP.errors[e.code], undefined, FIELD_OF[e.code] || '');
         }
         const wait = Math.max(limiters.signupIp.check(ipKey(ip)) || 0, via === 'email' ? limiters.signupEmail.check(ok.email) || 0 : 0);
         if (wait) return again(429, SIGNUP.tooMany(wait), { 'retry-after': String(wait) });
@@ -785,8 +886,20 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
         try {
           if (d.body.role !== 'client_owner') throw new TeamError('not_owner');
           if (p === '/team/invite') {
+            // Each email counted (src/auth/limiter.js LIMITS.invitePerWorkspace, invitePerAddress), a re-send too:
+            // sign-up is open, so an account must not be a way to send our emails to anyone, again and again (the
+            // audit of 2026-11-11). Refused, nothing is stored or sent, and the form says when it can go.
+            const to = normEmail(f('email'));
+            const waitWs = limiters.inviteWorkspace.check(String(wsId));
+            const waitTo = validEmail(to) ? limiters.inviteAddress.check(to) : null;
+            if (waitWs || waitTo) {
+              return await dashboard(d, 429, { teamError: waitWs ? T.inviteTooMany(waitWs) : T.inviteTooSoon(to, waitTo), teamForm: { email: f('email'), role: f('role') } });
+            }
             const inv = inviteToTeam(db, { workspaceId: wsId, email: f('email'), role: f('role'), ...by });
-            mailer.send(inviteMail(inv.email, inv.workspace.name, `${base}/invite?t=${inv.token}`, inv.expiresAt));
+            limiters.inviteWorkspace.hit(String(wsId));
+            limiters.inviteAddress.hit(inv.email);
+            // Who sent it is named in it: the owner's name, else their address (the audit of 2026-11-11).
+            mailer.send(inviteMail(inv.email, inv.workspace.name, `${base}/invite?t=${inv.token}`, inv.expiresAt, found.user.name || found.user.email));
             setFlash(T.flashTeamInvited(inv.email));
           } else if ((m = /^\/team\/invites\/(\d+)\/cancel$/.exec(p))) {
             const email = cancelTeamInvite(db, { workspaceId: wsId, tokenId: m[1], ...by });
@@ -885,7 +998,7 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
       // back to the callback, which signs in the customer that Google account is, or accepts the invite for them.
       if (p === '/auth/google' || p === '/auth/google/callback') {
         const missing = () => page(404, T.notFound, P.messagePage({ title: T.notFound, lead: '', links: [['/login', T.notFoundBack]] }));
-        const inviteDead = () => page(410, T.inviteDeadTitle, P.deadPage({ title: T.inviteDeadTitle, lead: T.inviteDeadLead }));
+        const inviteDead = () => page(410, T.inviteDeadTitle, deadInvite());
         if (!google || req.method === 'POST') return missing();
 
         if (p === '/auth/google') {
@@ -970,7 +1083,7 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
       }
 
       if (p === '/invite') {
-        const dead = () => page(410, T.inviteDeadTitle, P.deadPage({ title: T.inviteDeadTitle, lead: T.inviteDeadLead }));
+        const dead = () => page(410, T.inviteDeadTitle, deadInvite());
         if (req.method !== 'POST') {
           const t = url.searchParams.get('t') || '';
           const live = peekInvite(db, t);
@@ -993,7 +1106,13 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
           return redirect(next(f('next')) || '/');
         }
         const to = next(url.searchParams.get('next'));
-        if (!mine.length) return page(200, T.loginTitle, P.messagePage({ title: T.homeNoWorkspace, lead: '', links: [['/logout', T.homeSignOut]] }));
+        if (!mine.length) {
+          // In a workspace that is closed, and no other: that it is closed, not "we have not connected you yet" (the
+          // audit of 2026-11-11).
+          const shut = memberships(db, found.user.id).find((m) => m.disabled_at);
+          if (shut) return page(403, T.loginTitle, closedPage(shut.name, false));
+          return page(200, T.loginTitle, P.messagePage({ title: T.homeNoWorkspace, lead: '', links: [['/logout', T.homeSignOut]] }));
+        }
         if (mine.length === 1) {
           chooseWorkspace(db, found.session, mine[0].id);
           return redirect(to || '/');
@@ -1081,9 +1200,12 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
           return res.end(Buffer.from(r.file));
         };
         const by = { by: me, ip };
-        const problem = (e, form_) => {
-          if (e instanceof WorkspaceError || e instanceof InviteError) return console_(400, { error: T.errors[e.code] || e.code, form: form_ });
-          throw e;
+        // A refusal is said where its form is: a workspace's (`wsId`: its invoice, subscription, invite...) at that
+        // workspace, and only "פתיחת חשבון"'s in that form (the audit of 2026-11-11: an invoice's error showed there).
+        const problem = (e, form_, wsId = null) => {
+          if (!(e instanceof WorkspaceError || e instanceof InviteError)) throw e;
+          const error = T.errors[e.code] || e.code;
+          return wsId ? console_(400, { errorWs: { id: Number(wsId), text: error } }) : console_(400, { error, form: form_ });
         };
 
         // The operator's home: the dashboard, read from Toran and from our own subscriptions at each load.
@@ -1283,7 +1405,7 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
             setFlash(T.flashInvoiceAdded(fields.number.trim(), w.name));
             return toConsole();
           } catch (e) {
-            return problem(e, {});
+            return problem(e, {}, m[1]);
           }
         }
 
@@ -1313,7 +1435,7 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
             else if (inv.state === 'failed' || inv.state === 'blocked') setFlash(MORNING.flashFailed, true);
             return redirect(`/admin/receipts/${rid}`);
           } catch (e) {
-            return problem(e, {});
+            return problem(e, {}, m[1]);
           }
         }
 
@@ -1362,7 +1484,7 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
             }
             return toConsole();
           } catch (e) {
-            return problem(e, {});
+            return problem(e, {}, m[1]);
           }
         }
 
@@ -1377,7 +1499,7 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
             setFlash((on ? T.flashCompOn : T.flashCompOff)(PRODUCT_NAMES[f('product')], w.name));
             return toConsole();
           } catch (e) {
-            return problem(e, {});
+            return problem(e, {}, m[1]);
           }
         }
 
@@ -1387,13 +1509,13 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
           try {
             const w = getWorkspace(db, m[1]);
             if (w.deleted_at) throw new WorkspaceError('no_workspace');
-            if (!sameName(f('name'), w.name)) return console_(400, { error: T.errors.name_mismatch });
+            if (!sameName(f('name'), w.name)) return console_(400, { errorWs: { id: w.id, text: T.errors.name_mismatch } });
             const r = await eraseAll(w, { by: me, ip, source: 'admin' });
-            if (!r.ok) return console_(502, { error: r.error });
+            if (!r.ok) return console_(502, { errorWs: { id: w.id, text: r.error } });
             setFlash(T.flashDeleted(r.name));
             return toConsole();
           } catch (e) {
-            return problem(e, {});
+            return problem(e, {}, m[1]);
           }
         }
 
@@ -1429,7 +1551,7 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
             }
             return toConsole();
           } catch (e) {
-            return problem(e, {});
+            return problem(e, {}, m[1]);
           }
         }
 
@@ -1448,7 +1570,7 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
 
       return page(404, T.notFound, P.messagePage({ title: T.notFound, lead: '', links: [['/login', T.notFoundBack]] }));
     } catch (e) {
-      if (e instanceof Refused) return text(e.status, e.message);
+      if (e instanceof Refused) return res.headersSent ? res.end() : refused(e.status);
       log(`[accounts] ${req.method} ${req.url?.split('?')[0]}: ${e.stack || e.message}`);
       if (!res.headersSent) {
         out.cookies = [];

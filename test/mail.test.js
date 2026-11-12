@@ -4,8 +4,8 @@ import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { tempHome } from './helpers.js';
 import { createMailer } from '../src/mail/send.js';
-import { inviteMail, magicLinkMail } from '../src/mail/messages.js';
-import { AUDIT_NAMES, CANCEL, ERASE, MAIL, MORNING, NOTIFY, PAY, SETUP, SIGNUP, T } from '../src/web/copy.js';
+import { billingMail, inviteMail, ltrNumbers, magicLinkMail, receiptNoticeMail, welcomeMail } from '../src/mail/messages.js';
+import { ADD, AUDIT_NAMES, CANCEL, ERASE, MAIL, MORNING, NOTIFY, PAY, SETUP, SIGNUP, T, ils } from '../src/web/copy.js';
 import { outboxDir } from '../src/core/paths.js';
 
 const LINK = 'https://accounts.openfrequency.co.il/auth/link?t=AbCdEfGhIjKlMnOpQrStUvWxYz0123456789_-abcd';
@@ -86,11 +86,57 @@ test('the magic-link email: Hebrew, right to left, the link as a button and in f
 
 test('the invite email names the workspace and when the invite ends, escaped', () => {
   const m = inviteMail('noa@example.com', 'Dana <b>Shop</b>', LINK.replace('/auth/link', '/invite'), '2026-10-25T10:00:00.000Z');
-  assert.equal(m.subject, 'הזמנה ל-Dana <b>Shop</b> ב-OpenFrequency');
+  // "לחשבון של", never "ל-" before a name (the audit of 2026-11-11: "הזמנה ל-הסטודיו של דנה").
+  assert.equal(m.subject, 'הזמנה לחשבון של Dana <b>Shop</b> ב-OpenFrequency');
   assert.ok(m.html.includes('Dana &lt;b&gt;Shop&lt;/b&gt;'));
   assert.ok(!m.html.includes('<b>Shop</b>'));
   // Israel time: summer time ends on 25 October 2026 at 02:00, so 10:00 UTC is 12:00.
   assert.match(m.text, /25\.10\.2026, 12:00/);
+  // From an owner on the home page: who sent it, made plain (no line breaks or bidi overrides in it) and escaped.
+  const from = inviteMail('noa@example.com', 'Dana Shop', LINK.replace('/auth/link', '/invite'), '2026-10-25T10:00:00.000Z', 'דנה <i>' + String.fromCharCode(0x202e) + 'כהן</i>\nX');
+  assert.match(from.text, /קיבלתם הזמנה מ-דנה <i> כהן<\/i> X להצטרף לחשבון של Dana Shop ב-OpenFrequency\./);
+  assert.ok(from.html.includes('מ-דנה &lt;i&gt; כהן&lt;/i&gt; X להצטרף'));
+  assert.match(from.text, /בקשו מ-דנה <i> כהן<\/i> X לשלוח הזמנה חדשה\./);
+});
+
+test('an amount of a thousand and up stays whole and left to right in the HTML: 3,610.80, never "610.80,3" (the audit of 2026-11-11)', () => {
+  const span = (n) => `<span dir="ltr" style="white-space:nowrap">${n}</span>`;
+  // Every shape an amount takes: thousands with and without agorot, under a thousand, none. A number with no
+  // separator is already one run and is left as it is.
+  for (const [n, out] of [
+    ['1,490', span('1,490')],
+    ['3,610.80', span('3,610.80')],
+    ['1,404.20', span('1,404.20')],
+    ['1,746.40', span('1,746.40')],
+    ['790', '790'],
+    ['0', '0'],
+  ])
+    assert.equal(ltrNumbers(`${n} ₪`), `${out} ₪`, n);
+  // The comma after a date is the sentence's: the date alone is kept whole.
+  assert.equal(ltrNumbers('10.11.2026, והתשלום'), `${span('10.11.2026')}, והתשלום`);
+  assert.equal(ltrNumbers('25.10.2026, 12:00'), `${span('25.10.2026')}, ${span('12:00')}`);
+
+  // The welcome email of Teder's small plan: 490 + 990 before VAT, 1,746.40 with it, then 578.20 a month.
+  const w = welcomeMail('dana@example.com', {
+    business: 'הסטודיו של דנה',
+    link: 'https://accounts.openfrequency.co.il/setup',
+    prices: [MAIL.welcomePrice('תדר, החבילה הקטנה', ils(490), ils(990), true)],
+    total: [MAIL.payNow(ils(1746.4), ils(1480), ils(266.4)), MAIL.payThen(ils(578.2))],
+    payHow: 'העברה בנקאית',
+  });
+  assert.ok(w.html.includes(`סך הכול לתשלום עכשיו: ${span('1,746.40')} ₪, כולל מע״מ (${span('1,480')} ₪ ועוד ${span('266.40')} ₪ מע״מ).`), 'the total and its parts');
+  assert.ok(w.html.includes('ודמי הקמה של 990 ₪'), 'an amount under a thousand as it is');
+  assert.ok(w.html.includes(`אחר כך ${span('578.20')} ₪ לחודש`));
+  // The bug: only the part after the comma was wrapped, and the isolated span moved left of "1,".
+  assert.ok(!w.html.includes(`1,${span('746.40')}`));
+  // A billing email of Toran's big plan: 1,190 before VAT, 1,404.20 with it.
+  const b = billingMail('dana@example.com', { kind: 'due', business: 'הסטודיו של דנה', product: 'toran', paidUntil: '2026-11-10', dueOn: '2026-11-11', graceUntil: '2026-11-13', amount: MAIL.amount(ils(1190), true, ils(1404.2)), pay: [], link: 'https://accounts.openfrequency.co.il/setup' });
+  assert.ok(b.html.includes(`(${span('1,190')} ₪ ועוד מע״מ, ${span('1,404.20')} ₪ בסך הכול)`));
+  // The operator's receipt notice: 3,610.80.
+  const r = receiptNoticeMail('boss@example.com', { business: 'הסטודיו של דנה', total: 3610.8, phone: '972500000123', at: '2026-11-11T10:00:00.000Z', link: 'https://accounts.openfrequency.co.il/admin/receipts/1' });
+  assert.ok(r.html.includes(`סכום: ${span('3,610.80')} ₪, כולל מע״מ`));
+  // The text part was never wrong, and stays so.
+  assert.match(w.text, /סך הכול לתשלום עכשיו: 1,746\.40 ₪/);
 });
 
 // The hebrew-voice rules a test can hold: no em or en dashes, no exclamation
@@ -114,6 +160,7 @@ test('every Hebrew string keeps the voice rules', () => {
   walk(NOTIFY);
   walk(PAY);
   walk(MORNING);
+  walk(ADD);
   const hebrew = strings.filter((s) => /[֐-׿]/.test(s));
   assert.ok(hebrew.length > 60, `only ${hebrew.length} Hebrew strings found`);
   for (const s of hebrew) {

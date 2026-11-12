@@ -287,7 +287,12 @@ test("the billing emails: manual gives the owner's details (without them, points
           assert.match(m.html, />לחשבון<\/a>/);
           assert.doesNotMatch(m.text, /בקרוב|כרטיס אשראי/);
         }
+        // Stopped too gives the details and leads to the payment step, "לתשלום" (the audit of 2026-11-11: it had no
+        // way to pay).
         assert.equal(stopped.link, `${BASE}/setup`);
+        assert.match(stopped.html, />לתשלום<\/a>/);
+        assert.match(stopped.text, /איך משלמים: העברה בנקאית או ביט/);
+        assert.match(stopped.text, /הסכום: 790 ₪ ועוד מע״מ, 932\.20 ₪ בסך הכול\./);
       },
     ],
     [
@@ -299,9 +304,10 @@ test("the billing emails: manual gives the owner's details (without them, points
           assert.match(m.html, /<a href="https:\/\/pay\.example\.com\/openfrequency"[^>]*>לתשלום<\/a>/);
           assert.doesNotMatch(m.text, /איך משלמים|פרטי התשלום/);
         }
-        // Stopped says nothing of how to pay: it leads to the account, where the payment step is.
-        assert.equal(stopped.link, `${BASE}/setup`);
-        assert.match(stopped.html, />לחשבון<\/a>/);
+        // Stopped leads to the payment page too, with how to pay (the audit of 2026-11-11: it had no way to pay).
+        assert.equal(stopped.link, PAY_URL);
+        assert.match(stopped.html, /<a href="https:\/\/pay\.example\.com\/openfrequency"[^>]*>לתשלום<\/a>/);
+        assert.match(stopped.text, /משלמים בכרטיס אשראי, בדף התשלום:/);
       },
     ],
   ]) {
@@ -315,7 +321,7 @@ test("the billing emails: manual gives the owner's details (without them, points
       const day = async (at) => (setNow(at), runDaily(h.db, { env: { PUBLIC_HOST: 'accounts.openfrequency.co.il', ...env }, mailer: { send: (m) => mails.push(m) }, eraser: { erase: async () => ({ results: {}, ok: true, failed: [] }) }, log: () => {} }));
       for (const at of ['2026-11-15', '2026-11-22', '2026-11-24', '2026-11-25']) await day(`${at}T08:00:00.000Z`);
       const to = (subject) => mails.find((m) => m.to === 'noa@example.com' && m.subject === subject);
-      check(to('התשלום הבא על תדר: 22.11.2026'), to('התשלום על החודש החדש של תדר עוד לא הגיע'), to('תדר ייעצר מחר אם התשלום לא יגיע היום'), to('תדר נעצר עד שהתשלום יגיע'));
+      check(to('התשלום הבא על תדר, ב-22.11.2026'), to('התשלום על החודש החדש של תדר עוד לא הגיע'), to('תדר ייעצר מחר אם התשלום לא יגיע היום'), to('תדר נעצר עד שהתשלום יגיע'));
     } finally {
       h.cleanup();
     }

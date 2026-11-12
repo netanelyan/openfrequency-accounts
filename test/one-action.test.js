@@ -88,10 +88,10 @@ test("a product that can't be bought now isn't offered, and the second way to si
   } finally {
     await t.done();
   }
-  // With both products sold, a Teder workspace is shown Toran.
+  // With both products sold, a Teder workspace is shown Toran, and its owner adds it here (the owner, 2026-11-11).
   const u = await setup();
   try {
-    assert.match((await u.as('tal@example.com').get('/')).body, /עוד מאיתנו[^]*openfrequency\.co\.il\/toran/);
+    assert.match((await u.as('tal@example.com').get('/')).body, /עוד מאיתנו[^]*<a href="\/subscription\/toran\/add">[^]*<span class="go">להוסיף לחשבון<\/span>/);
   } finally {
     await u.done();
   }

@@ -40,8 +40,12 @@ the terms and the privacy policy. An emailed link (15 minutes, one use, like the
 "continue with Google", opens the user, the workspace with only those products (each with its
 subscription at the list price and nothing paid yet) and makes them its owner, without an invite.
 An address that already has an account gets a sign-in link instead, never a second workspace.
-`OF_SIGNUP_PRODUCTS` (default `teder,toran`) says which products the form offers: one left out
-is refused (Toran waits for Meta's approval of WhatsApp: `teder`). With only one open the form
+`OF_SIGNUP_PRODUCTS` (default `teder,toran`; both are on sale since 2026-11-08) says which products the
+form offers: one left out is refused, and an account cannot add it. An owner adds the product their
+account does not have from its home page ("עוד מאיתנו", and `/signup` while signed in lead to
+`/subscription/<product>/add`): its plan, the terms ticked as at sign-up, its subscription at the list
+price unpaid, the founders' offer by the sign-up's rule, the email about it with how to pay, and
+`OF_SIGNUP_NOTIFY` told (`src/accounts/signup.js` `addProduct`). With only one open the form
 does not ask: that product is ticked in a hidden field and the heading names it. With both,
 `?p=teder` or `?p=toran` (the website's and Teder's buttons) starts that one ticked.
 Each confirmed sign-up sends a short email to every address in `OF_SIGNUP_NOTIFY` (unset: none),
@@ -90,7 +94,7 @@ An owner cancels a product online from the home page (a confirmation page first)
 the last day paid for and then stops, with nothing more charged, and can be taken back until
 then; the owners get an email and `OF_SIGNUP_NOTIFY` a notice. An owner (or the superadmin) can
 delete the workspace and its data, typing its name to confirm: Teder and Toran are asked first
-(`POST /internal/workspaces/<id>/delete`; a 404 does not stop it, any other failure does), then
+(`POST /internal/workspaces/<id>/delete`; any failure stops it, a 404 included: `src/web/erase.js`), then
 ours is deleted, the invoices kept and detached as the law asks. Teder and Toran email a
 workspace's people through `POST /internal/notify`, and each person chooses which emails they
 get, per product and kind, on `/notifications`. All of it is in [docs/setup.md](docs/setup.md).
@@ -102,12 +106,15 @@ required step is left. The contract and the settings are in [docs/setup.md](docs
 
 ## The operator's dashboard, /admin
 
-The superadmin's `/admin` has three tabs. **היום** (`/admin`) is the operator's dashboard,
+The superadmin's `/admin` has five tabs. **היום** (`/admin`) is the operator's dashboard,
 which used to be on Toran's home page (toran.openfrequency.co.il now shows Toran only).
-**חשבונות** (`/admin/accounts`) is the console: workspaces, products, subscriptions,
-invoices, invites, view-as and the audit log. **תורן** (`/admin/toran/`) is Toran's operator
-dashboard: the leads, a lead's page, the review queue, the follow-ups, the chats, the settings
-and the pitch pages' previews, rendered by Toran and proxied from it (below).
+**לידים** (`/admin/leads`) is the shared lead dashboard, Toran's and Teder's leads on one list.
+**תורן** and **תדר** open the products' own sites, where the operator is in the company's
+workspace as its owner (`OF_OPERATOR_WORKSPACE`, docs/admin-split.md); the operator's pages
+inside each product (the review queue, the follow-ups, the settings, Teder's demos) are the
+links on `/admin`, rendered by the product and proxied under `/admin/toran/` and `/admin/teder/`
+(below). **חשבונות** (`/admin/accounts`) is the console: workspaces, products, subscriptions,
+invoices, invites, view-as and the audit log.
 
 The dashboard shows:
 
@@ -239,8 +246,9 @@ The full steps (DNS, Resend, Caddy, backups, checks) are in [docs/deploy.md](doc
 - Google: the authorization code flow with PKCE, a state and a nonce in a signed 10-minute
   cookie, a verified address only; the Google account is tied to the user on first use.
 - `?next=` only to `https://<one label>.openfrequency.co.il` or a path here.
-- The superadmin: password and TOTP (one use per code), 5 tries per address in 15 minutes, 12-hour
-  sessions, every action in the audit log, view-as read-only.
+- The superadmin: password and TOTP (one use per code), 5 tries per address in 15 minutes, sessions of
+  30 days (14 without a visit end one sooner; the owner, 2026-11-11), every action in the audit log,
+  view-as read-only.
 - Every form: a CSRF token and an Origin check. Every page: CSP with our own script files only and nothing inline
   (`static/a11y.js`, the accessibility panel and the light or dark switch, and `static/load.js`, the loading state, on
   every page; `static/admin.js`

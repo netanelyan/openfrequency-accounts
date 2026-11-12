@@ -5,8 +5,8 @@ import { PRODUCTS } from '../db/schema.js';
 import { hashToken, looksLikeToken, newToken } from '../auth/tokens.js';
 import { MAGIC_TTL, normEmail, validEmail } from './links.js';
 import { openWorkspace } from './workspaces.js';
-import { PLANS, defaultPlan } from './subscriptions.js';
-import { takeFoundersSpot } from './founders.js';
+import { PLANS, defaultPlan, ensureSubscription } from './subscriptions.js';
+import { foundersSpots, spotOf, takeFoundersSpot } from './founders.js';
 
 // Public sign-up: a business opens its own account, without the superadmin. Open only while OF_SIGNUP=1.
 //
@@ -67,8 +67,9 @@ const clean = (v) =>
 
 /**
  * The products a business may sign up for on its own: OF_SIGNUP_PRODUCTS, comma-separated, unknown names left out;
- * unset or blank, every product. (Toran waits for Meta's approval of WhatsApp: OF_SIGNUP_PRODUCTS=teder.) The others
- * show on the form as coming soon and are refused. The superadmin's console opens any product, whatever this says.
+ * unset or blank, every product (both are on sale since 2026-11-08: OF_SIGNUP_PRODUCTS=teder,toran on the server). The
+ * others show on the form as coming soon and are refused, and an account cannot add them (addProduct). The
+ * superadmin's console opens any product, whatever this says.
  */
 export function signupProducts(env = process.env) {
   const raw = String(env.OF_SIGNUP_PRODUCTS ?? '').trim();
@@ -90,9 +91,10 @@ export function startProducts(want, open = PRODUCTS) {
 
 /**
  * The form, checked. Returns { name, business, email, products, plan, plan_toran } or throws SignupError: bad_name,
- * bad_business, no_products, product_closed (one chosen that is not in `open`), bad_plan (a Teder or Toran plan that
- * does not exist), no_terms, bad_email (only when `needEmail`: Google brings its own). `plan` is Teder's, the full one
- * when none is given, and null without Teder; `plan_toran` is Toran's, store when none is given, null without Toran.
+ * bad_business, no_products, product_closed (one chosen that is not in `open`), bad_plan (a Teder plan that does not
+ * exist), bad_plan_toran (a Toran one), no_terms, bad_email (only when `needEmail`: Google brings its own). `plan` is
+ * Teder's, the full one when none is given, and null without Teder; `plan_toran` is Toran's, store when none is given,
+ * null without Toran.
  */
 export function checkSignup({ name, business, email, products = [], terms, plan = '', plan_toran = '' }, { needEmail = true, open = PRODUCTS } = {}) {
   const n = clean(name);
@@ -103,7 +105,8 @@ export function checkSignup({ name, business, email, products = [], terms, plan 
   if (!chosen.length) throw new SignupError('no_products');
   if (chosen.some((p) => !open.includes(p))) throw new SignupError('product_closed');
   if (plan && !Object.hasOwn(PLANS.teder, plan)) throw new SignupError('bad_plan');
-  if (plan_toran && !Object.hasOwn(PLANS.toran, plan_toran)) throw new SignupError('bad_plan');
+  // Its own error: "צריך לבחור אחת מהחבילות של תדר" for a Toran plan was the wrong product (the audit of 2026-11-11).
+  if (plan_toran && !Object.hasOwn(PLANS.toran, plan_toran)) throw new SignupError('bad_plan_toran');
   if (!terms) throw new SignupError('no_terms');
   const e = normEmail(email);
   if (needEmail && !validEmail(e)) throw new SignupError('bad_email');
@@ -213,3 +216,62 @@ export function completeSignup(db, token, { kind = 'email', email = null, ip = n
     return { user, workspace, founder };
   });
 }
+
+// ---- a product added to an account that is open already
+//
+// The owner, 2026-11-11, before the launch: a customer of one product adds the other from their own account (the home
+// page's "עוד מאיתנו", and /signup while signed in), in the same workspace: the same sign-in and people, one bill. Until
+// now only the operator could turn a product on, and "sign out and use another address" made a second workspace.
+
+/**
+ * An owner adds a product their workspace does not have, the sign-up's way: the product turned on, its subscription at
+ * the list price of the plan chosen with nothing paid (ensureSubscription), today's terms (TERMS_VERSION) recorded as
+ * accepted by them and by the workspace, as a sign-up records them, and the founders' offer by the sign-up's rule
+ * (src/accounts/founders.js): a workspace holding a spot adds it with no setup fee (its products together are one
+ * spot), and one that does not takes a spot while any is left, for this product. One transaction. Returns { product,
+ * plan, founder: { spot, spots, already } | null }, or throws SignupError:
+ *   product_closed  sign-up does not sell it (`open`: OF_SIGNUP and OF_SIGNUP_PRODUCTS)
+ *   bad_plan, bad_plan_toran, no_terms
+ *   not_owner       `by` is not an owner of the workspace, or the workspace is closed
+ *   already         it is on in the workspace already
+ *   had_before      the workspace had it before (its subscription is kept): the operator brings it back on /admin,
+ *                   where what was paid and agreed for it is
+ * The terms accepted here move a workspace on the terms from before 2026-11-03 to today's (the 72 hours,
+ * subscriptions.js graceChange()), as a sign-up today would be: the box names today's terms, and its owner ticked it.
+ */
+export function addProduct(db, { workspaceId, product, plan = '', terms = false, by, ip = null, env = process.env, open = PRODUCTS }) {
+  if (!PRODUCTS.includes(product) || !open.includes(product)) throw new SignupError('product_closed');
+  if (plan && !Object.hasOwn(PLANS[product] || {}, plan)) throw new SignupError(product === 'toran' ? 'bad_plan_toran' : 'bad_plan');
+  if (!terms) throw new SignupError('no_terms');
+  return db.tx(() => {
+    const w = db.get("SELECT w.* FROM workspaces w JOIN memberships m ON m.workspace_id = w.id AND m.user_id = ? AND m.role = 'client_owner' WHERE w.id = ?", by.id, Number(workspaceId));
+    if (!w || w.disabled_at || w.deleted_at) throw new SignupError('not_owner');
+    if (db.get('SELECT 1 FROM workspace_products WHERE workspace_id = ? AND product = ? AND enabled = 1', w.id, product)) throw new SignupError('already');
+    if (db.get('SELECT 1 FROM subscriptions WHERE workspace_id = ? AND product = ?', w.id, product)) throw new SignupError('had_before');
+    const t = nowIso();
+    const chosen = plan || defaultPlan(product);
+    db.run(
+      'INSERT INTO workspace_products (workspace_id, product, enabled, updated_at) VALUES (?, ?, 1, ?) ON CONFLICT(workspace_id, product) DO UPDATE SET enabled = 1, updated_at = excluded.updated_at',
+      w.id,
+      product,
+      t
+    );
+    ensureSubscription(db, w.id, product, undefined, chosen);
+    let founder = null;
+    const held = spotOf(db, w.id);
+    if (held != null) {
+      db.run('UPDATE subscriptions SET setup = 0, updated_at = ? WHERE workspace_id = ? AND product = ?', t, w.id, product);
+      founder = { spot: held, spots: foundersSpots(env), already: true };
+    } else {
+      const spot = takeFoundersSpot(db, w.id, { env, by, ip, product });
+      if (spot) founder = { spot, spots: foundersSpots(env), already: false };
+    }
+    db.update('users', by.id, { terms_version: TERMS_VERSION, terms_accepted_at: t });
+    db.update('workspaces', w.id, { terms_version: TERMS_VERSION, terms_accepted_at: t });
+    audit(db, { actor: by, action: 'product_added', workspaceId: w.id, ip, detail: { product, plan: chosen, terms: TERMS_VERSION, ...(founder ? { founder: founder.spot } : {}) } });
+    return { product, plan: chosen, founder };
+  });
+}
+
+/** Whether a workspace held `product` before (its subscription is kept, turned off or ended): addProduct() refuses it. */
+export const hadProduct = (db, workspaceId, product) => Boolean(db.get('SELECT 1 FROM subscriptions WHERE workspace_id = ? AND product = ?', Number(workspaceId), product));

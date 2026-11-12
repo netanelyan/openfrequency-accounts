@@ -9,8 +9,11 @@ import { audit } from '../core/audit.js';
 // for "8/10 spots left to boost confidence", and a count that is not real would mislead a buyer about the offer.
 //
 // The waiver is the subscriptions' own setup fee set to 0 in the same transaction as the sign-up, so billing, /setup,
-// the payment email and the Morning invoice, which already leave out a setup of 0, need nothing more. A product turned
-// on later pays its setup fee as listed; /admin can still set any subscription's fee by hand.
+// the payment email and the Morning invoice, which already leave out a setup of 0, need nothing more. A product the
+// operator turns on later on /admin pays its setup fee as listed (/admin can still set any subscription's fee by hand).
+// A product a customer adds from their account (src/accounts/signup.js addProduct; the owner, 2026-11-11) follows the
+// sign-up's rule: a workspace holding a spot adds it with no setup fee too (its products together are one spot), and
+// one that does not takes a spot while any is left, for that product alone.
 
 /** How many spots the offer has: OF_FOUNDERS_SPOTS, 10 when unset, 0 (or anything that is not a whole number) for off. */
 export function foundersSpots(env = process.env) {
@@ -40,9 +43,11 @@ export const isFounder = (db, workspaceId) => Boolean(db.get('SELECT 1 FROM foun
 /**
  * Give a workspace just opened at sign-up the next spot, when one is left: its subscriptions' setup fees go to 0 and the
  * spot is kept. Called inside the sign-up's transaction (src/accounts/signup.js completeSignup), so two sign-ups at once
- * cannot take the same spot (the spot number is the table's key). Returns the spot's number, or null.
+ * cannot take the same spot (the spot number is the table's key). Returns the spot's number, or null. `product`: a
+ * product added to a workspace open already (addProduct, in its transaction): only its fee goes to 0, the others it
+ * had stay as they were billed.
  */
-export function takeFoundersSpot(db, workspaceId, { env = process.env, by = null, ip = null } = {}) {
+export function takeFoundersSpot(db, workspaceId, { env = process.env, by = null, ip = null, product = null } = {}) {
   const { spots, left } = foundersState(db, env);
   if (!left || isFounder(db, workspaceId)) return null;
   // The first number free after the earlier businesses': one given back (giveBackSpot) is taken again.
@@ -50,10 +55,14 @@ export function takeFoundersSpot(db, workspaceId, { env = process.env, by = null
   let spot = foundersEarlier(env).length + 1;
   while (used.has(spot)) spot += 1;
   db.run('INSERT INTO founders (spot, workspace_id, taken_at) VALUES (?, ?, ?)', spot, Number(workspaceId), nowIso());
-  db.run('UPDATE subscriptions SET setup = 0, updated_at = ? WHERE workspace_id = ?', nowIso(), Number(workspaceId));
-  audit(db, { actor: by, action: 'founders_spot', workspaceId: Number(workspaceId), ip, detail: { spot, of: spots } });
+  if (product) db.run('UPDATE subscriptions SET setup = 0, updated_at = ? WHERE workspace_id = ? AND product = ?', nowIso(), Number(workspaceId), product);
+  else db.run('UPDATE subscriptions SET setup = 0, updated_at = ? WHERE workspace_id = ?', nowIso(), Number(workspaceId));
+  audit(db, { actor: by, action: 'founders_spot', workspaceId: Number(workspaceId), ip, detail: { spot, of: spots, ...(product ? { product } : {}) } });
   return spot;
 }
+
+/** The spot a workspace holds, or null. */
+export const spotOf = (db, workspaceId) => db.get('SELECT spot FROM founders WHERE workspace_id = ?', Number(workspaceId))?.spot ?? null;
 
 /**
  * A spot taken by a workspace that is not a business joining, given back from /admin (the owner, 2026-11-09, signed up
