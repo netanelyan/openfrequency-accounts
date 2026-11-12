@@ -37,7 +37,7 @@ import { opsCustomers } from '../accounts/ops.js';
 import { now } from '../core/clock.js';
 import { dashboardPage } from './dashboard.js';
 import { leadPage, leadsPage } from './leads.js';
-import { ACTIONS, ID, LEAD_ACTIONS, LOST_REASONS, WHERE, toranClient } from './toran.js';
+import { ACTIONS, ID, LEAD_ACTIONS, LOST_REASONS, SOURCES, WHERE, toranClient } from './toran.js';
 import { siteClient, waitlistPage } from './waitlist.js';
 import { isAdminToran, operatorAssertion, proxyToToran, toranBase, touchesInternal } from './admin-toran.js';
 import { isAdminTeder, proxyToTeder, tederAt as tederInternal } from './admin-teder.js';
@@ -1251,7 +1251,8 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
           if (session.view_as_workspace_id) return redirect('/admin');
           const where = WHERE.includes(url.searchParams.get('where')) ? url.searchParams.get('where') : '';
           const q = String(url.searchParams.get('q') || '').trim().slice(0, 100);
-          const body = leadsPage({ csrf, flash, flashBad, result: await toran.leads({ where, q }), where, q, at: now() });
+          const all = url.searchParams.get('all') === '1';
+          const body = leadsPage({ csrf, flash, flashBad, result: await toran.leads({ where, q, all }), where, q, all, at: now() });
           return send(200, layout({ title: LEADS.title, body, wide: true, banner, script: true }), { 'content-security-policy': CSP_SCRIPT });
         }
         m = /^\/admin\/leads\/(\d{1,9})$/.exec(p);
@@ -1263,11 +1264,29 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
         }
         if (req.method !== 'POST') return page(404, T.notFound, P.messagePage({ title: T.notFound, lead: '', links: [['/admin', T.adminTitle]] }), { banner });
 
-        // A lead's button (src/web/leads.js): its own (go on with, build, send, mark, notes, skip) to Toran's
-        // /internal/leads, the dashboard's status buttons to /internal/ops for Toran's lead. Back to the lead's page with
-        // Toran's line, or, for a choice made from the list (back=list), to the list as it was: at the lead's row, whose
-        // tags now say what is being built, or at the top when Toran refused, where its line is. A choice whose message
-        // can go now (Toran's ready) opens the lead at its message instead.
+        // The list's own buttons (src/web/leads.js): a store added by its address, more stores found. Back to the list
+        // with Toran's line, or to the lead when the store was here already.
+        if (p === '/admin/leads/add' || p === '/admin/leads/discover') {
+          const what = p.endsWith('/add') ? 'add' : 'discover';
+          const fail = (msg) => {
+            setFlash(msg, true);
+            return redirect('/admin/leads');
+          };
+          if (session.view_as_workspace_id) return fail(OPS.viewAsClosed);
+          const by = me.name || me.email;
+          const r = await toran.leadsDo(what, what === 'add' ? { url: f('url').trim().slice(0, 300), by } : { source: SOURCES.includes(f('source')) ? f('source') : 'storecensus', by });
+          audit(db, { actor: me, action: `leads_${what}`, ip, detail: { ok: r.ok } });
+          if (!r.ok) return fail(r.error || (r.status ? OPS.toranFailed(r.status) : OPS.toranNoAnswer));
+          setFlash(r.message, false);
+          return redirect(r.id ? `/admin/leads/${r.id}` : '/admin/leads');
+        }
+
+        // A lead's button (src/web/leads.js), every one Toran's /internal/leads: what it goes on with, its demos built,
+        // sent and marked, Toran's page checked and fixed, where it stands, Teder's demo worked, the page taken down,
+        // the store deleted. Back to the lead's page with Toran's line, or, for a choice made from the list (back=list),
+        // to the list as it was: at the lead's row, whose tags now say what is being built, or at the top when Toran
+        // refused, where its line is. A choice whose message can go now (Toran's ready) opens the lead at its message
+        // instead, and a store deleted goes back to the list.
         m = /^\/admin\/leads\/(\d{1,9})\/([a-z-]{1,20})$/.exec(p);
         if (m) {
           const [, id, action] = m;
@@ -1275,32 +1294,33 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
           const back = (msg, bad) => {
             setFlash(msg, bad);
             if (!list) return redirect(`/admin/leads/${id}`);
-            const qs = new URLSearchParams(Object.entries({ where: WHERE.includes(f('where')) ? f('where') : '', q: f('q').trim().slice(0, 100) }).filter(([, v]) => v)).toString();
+            const qs = new URLSearchParams(Object.entries({ where: WHERE.includes(f('where')) ? f('where') : '', q: f('q').trim().slice(0, 100), all: f('all') === '1' ? '1' : '' }).filter(([, v]) => v)).toString();
             return redirect(`/admin/leads${qs ? `?${qs}` : ''}${bad ? '' : `#lead-${id}`}`);
           };
           if (session.view_as_workspace_id) return back(OPS.viewAsClosed, true);
+          if (!LEAD_ACTIONS.includes(action)) return back(LEADS.badAction, true);
           const by = me.name || me.email;
-          let r;
-          if (LEAD_ACTIONS.includes(action)) {
-            const body = { by };
-            if (action === 'notes') body.notes = f('notes').slice(0, 4000);
-            if (action === 'skip') body.reason = f('reason').trim().slice(0, 300);
-            // "שלחתי" on the message the page showed: which demo it was for (Toran when the page says none).
-            if ((action === 'mark-sent' || action === 'mark-reminded') && ['both', 'toran', 'teder'].includes(f('product'))) body.product = f('product');
-            r = await toran.leadAct(id, action, body);
-          } else if (['replied', 'later', 'lost', 'reopen'].includes(action)) {
-            const body = { by };
-            if (action === 'later') body.days = f('days') === '7' ? 7 : 1;
-            if (action === 'lost') {
-              if (!LOST_REASONS.includes(f('reason'))) return back(OPS.badReason, true);
-              body.reason = f('reason');
-            }
-            r = await toran.act('toran', id, action, body);
-          } else return back(LEADS.badAction, true);
+          const body = { by };
+          if (action === 'notes') body.notes = f('notes').slice(0, 4000);
+          if (action === 'skip' || action === 'go-none') body.reason = f('reason').trim().slice(0, 300);
+          if (action === 'later') body.days = f('days') === '7' ? 7 : 1;
+          if (action === 'lost') {
+            if (!LOST_REASONS.includes(f('reason'))) return back(OPS.badReason, true);
+            body.reason = f('reason');
+          }
+          // The name and the colour Toran's page shows: either, or both.
+          if (action === 'brand') Object.assign(body, { name: f('name').trim().slice(0, 80), color: f('color').trim().slice(0, 7) });
+          // "שלחתי" on the message the page showed: which demo it was for (Toran when the page says none).
+          if ((action === 'mark-sent' || action === 'mark-reminded') && ['both', 'toran', 'teder'].includes(f('product'))) body.product = f('product');
+          const r = await toran.leadAct(id, action, body);
           audit(db, { actor: me, action: 'lead_action', ip, detail: { id, action, ok: r.ok } });
           if (r.ok && r.ready && action.startsWith('go-')) {
             setFlash(r.message, false);
             return redirect(`/admin/leads/${id}#send`);
+          }
+          if (r.ok && r.gone) {
+            setFlash(r.message, false);
+            return redirect('/admin/leads');
           }
           if (r.ok) return back(r.message, false);
           return back(r.error || (r.status ? OPS.toranFailed(r.status) : OPS.toranNoAnswer), true);

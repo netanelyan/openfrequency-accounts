@@ -117,6 +117,13 @@ export async function startToran({ token = TOKEN, data = sampleOps(), answers = 
     if (req.method === 'GET' && /^\/internal\/leads(\?.*)?$/.test(req.url)) return send(200, state.leads || leadsExample('/internal/leads'));
     const one = /^\/internal\/leads\/(\d+)$/.exec(req.url);
     if (req.method === 'GET' && one) return one[1] === '999' ? send(404, { ok: false, error: 'אין ליד כזה' }) : send(200, state.lead || leadsExample('/internal/leads/<id>'));
+    // The list's own buttons: a store added by its address, more stores found ('lead:add', 'lead:discover').
+    const own = /^\/internal\/leads\/(add|discover)$/.exec(req.url);
+    if (req.method === 'POST' && own) {
+      const a = state.answers[`lead:${own[1]}`];
+      if (a) return send(a.status, a.body);
+      return send(200, { ok: true, message: own[1] === 'add' ? 'קוראים את האתר.' : 'מחפשים חנויות.' });
+    }
     const act = /^\/internal\/leads\/(\d+)\/([a-z-]+)$/.exec(req.url);
     if (req.method === 'POST' && act) {
       const a = state.answers[`lead:${act[2]}`];

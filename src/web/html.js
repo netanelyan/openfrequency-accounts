@@ -927,16 +927,12 @@ export const adminTop = ({ csrf, tab, env = process.env }) => {
  * of the product, proxied under /admin/toran or /admin/teder (admin-toran.js, admin-teder.js), so it opens here, signed
  * in as the operator, and the product's own site shows the product only. The tabs above open the products' own sites.
  */
+// The lead pages that were here (Toran's review queue, its follow-ups and stores, Teder's leads) are all /admin/leads now
+// (the owner, 2026-11-12: it has "everything i need for creating and doing leads" and "MUST not send me to old fronts").
 export const PRODUCT_TOOLS = {
-  toran: [
-    ['/admin/toran/review', 'toranReview'],
-    ['/admin/toran/followups', 'toranFollowups'],
-    ['/admin/toran/leads?all=1', 'toranStores'],
-    ['/admin/toran/settings', 'toranSettings'],
-  ],
+  toran: [['/admin/toran/settings', 'toranSettings']],
   teder: [
     ['/admin/teder/demos', 'tederDemos'],
-    ['/admin/teder/leads', 'tederLeads'],
     ['/admin/teder/all', 'tederAll'],
     ['/admin/teder/settings', 'tederSettings'],
   ],

@@ -78,14 +78,25 @@ says when the workspace it names is closed or gone.
 
 | Feature | Before | Now |
 |---|---|---|
-| Shared leads | `/admin/leads` | the same |
-| Toran's review queue, follow-ups, leads, a lead's page, queue, jobs, brand | `toran.../x`, sent to `/admin/toran/x` | `/admin/toran/x` (the old address still sends there) |
+| Shared leads | `/admin/leads` | the same, and everything about a lead is there since 2026-11-12 (below) |
+| Toran's review queue, follow-ups, leads, a lead's page, queue, jobs, brand | `toran.../x`, sent to `/admin/toran/x` | `/admin/toran/x` (the old address still sends there); a lead's work is on `/admin/leads` |
 | Toran's costs, discovery, offer, our number's channels, keys | `/admin/toran/settings` | the same |
 | Teder's demos, a demo's page | `teder.../demos` | `/admin/teder/demos` |
-| Teder's leads | `teder.../leads` | `/admin/teder/leads` |
+| Teder's leads | `teder.../leads` | `/admin/teder/leads`; a lead's work is on `/admin/leads` |
 | Teder's every workspace's accounts and health | `teder.../all` (operator) | `/admin/teder/all`; `teder.../all` is the workspace's own, as for a customer |
 | Teder's kill switch, when posts are written, costs and quotas | `teder.../settings` (operator) | `/admin/teder/settings` |
 | Teder's format names, publishers, English reasons, notes | Teder's pages (operator) | the same pages under `/admin/teder` |
+
+## Leads are /admin/leads alone (2026-11-12)
+
+The owner: "i want https://accounts.openfrequency.co.il/admin/leads to have everything i need for creating and doing
+leads ... it MUST not send me to old fronts like https://accounts.openfrequency.co.il/admin/teder/leads". So
+`/admin/leads` adds a store by its address and runs discovery, says each store in a few words, checks and fixes
+Toran's page (what holds it back, the name, the colour, the sample chat, approve and hold), works Teder's demo (again,
+another topic, taken down), and has where it stands, the take-down and the delete; Toran does each through its
+`/internal/leads` (docs/contracts/admin-leads.json), and Teder's part through Teder's own internal routes. Nothing on it
+links to `/admin/toran` or `/admin/teder`, and the tools on `/admin` no longer offer Toran's review queue, follow-ups and
+stores, or Teder's leads. Those pages still answer at their addresses.
 
 ## Consistency (Toran and Teder in the pro look)
 

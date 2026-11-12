@@ -62,9 +62,11 @@ test('the superadmin gets the whole dashboard: who to write to with the message,
 
     // The tabs, our number, and the numbers at the top.
     assert.match(b, /<a href="\/admin" aria-current="page">היום<\/a><a href="\/admin\/leads">לידים<\/a><a href="https:\/\/toran\.openfrequency\.co\.il\/">תורן<\/a><a href="https:\/\/teder\.openfrequency\.co\.il\/">תדר<\/a><a href="\/admin\/accounts">חשבונות<\/a>/);
-    // Each product's operator pages, grouped under its name, all under /admin (docs/admin-split.md).
-    assert.match(b, /<nav class="product-tools" aria-label="הדפים של תורן ותדר"><section class="card tool-group"><header class="op-who"><span class="mark toran"[^]*?<h3>תורן<\/h3><a class="end" href="\/admin\/toran\/">לכל הדפים<\/a><\/header><div class="row"><a class="button" href="\/admin\/toran\/review">לבדיקה<\/a>/);
-    assert.match(b, /<h3>תדר<\/h3><a class="end" href="\/admin\/teder\/">לכל הדפים<\/a><\/header><div class="row"><a class="button" href="\/admin\/teder\/demos">דמואים<\/a><a class="button" href="\/admin\/teder\/leads">לידים<\/a><a class="button" href="\/admin\/teder\/all">כל החשבונות<\/a><a class="button" href="\/admin\/teder\/settings">הגדרות השרת<\/a><\/div>/);
+    // Each product's operator pages, grouped under its name, all under /admin (docs/admin-split.md). The lead pages are
+    // /admin/leads alone (the owner, 2026-11-12: it "MUST not send me to old fronts").
+    assert.match(b, /<nav class="product-tools" aria-label="הדפים של תורן ותדר"><section class="card tool-group"><header class="op-who"><span class="mark toran"[^]*?<h3>תורן<\/h3><a class="end" href="\/admin\/toran\/">לכל הדפים<\/a><\/header><div class="row"><a class="button" href="\/admin\/toran\/settings">הגדרות וערוצים<\/a>/);
+    assert.match(b, /<h3>תדר<\/h3><a class="end" href="\/admin\/teder\/">לכל הדפים<\/a><\/header><div class="row"><a class="button" href="\/admin\/teder\/demos">דמואים<\/a><a class="button" href="\/admin\/teder\/all">כל החשבונות<\/a><a class="button" href="\/admin\/teder\/settings">הגדרות השרת<\/a><\/div>/);
+    assert.doesNotMatch(b, /href="\/admin\/(toran\/(review|followups|leads)|teder\/leads)/, 'no lead page of the products');
     assert.doesNotMatch(b, /teder\.openfrequency\.co\.il\/(leads|all)"/, 'nothing of the operator points at the product\'s own site');
     assert.match(b, /<p class="number-line ok" role="note">המספר שלנו מחובר דרך Meta\. <bdi class="ltr">\+972500000999<\/bdi><\/p>\s*<div class="kpis top-kpis">/);
     assert.match(b, /<a class="kpi lead" href="#contact"><span class="l">לפנות היום<\/span><span class="v">4<\/span><span class="s">ההודעה מוכנה בכל כרטיס/);

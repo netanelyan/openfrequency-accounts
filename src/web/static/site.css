@@ -786,6 +786,70 @@ a.chip:hover { background: var(--fill-2); }
 .demo-box .op-acts button, .demo-box .op-acts a.button { min-height: 38px; padding: 0 14px; font-size: 14px; }
 #demos > p.muted { margin: 12px 0 0; }
 
+/* A store in a few words (the owner, 2026-11-12: "a short description, so that i will know if i should build
+   toran/teder/both/neither for that store"): its own line, then what Toran found of it, the facts one after the other
+   with a dot between them. On a row it takes the row's whole width, under the name and the tags. */
+.lead-about { min-width: 0; }
+ul.leads-list .lead-about { grid-column: 1 / -1; grid-row: 3; }
+@media (min-width: 720px) { ul.leads-list .lead-about { grid-row: 2; } }
+p.about { margin: 0; color: var(--ink); font-size: 14px; line-height: 1.5; overflow-wrap: anywhere; }
+p.facts { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 0; margin: 2px 0 0; color: var(--ink-3); font-size: 13px; line-height: 1.6; }
+p.facts > span:not(:last-child)::after { content: '·'; padding-inline: 7px; color: var(--ink-3); }
+p.facts .nets a { color: var(--accent); text-decoration: none; }
+p.facts .nets a:hover { text-decoration: underline; }
+p.facts .bad { color: var(--bad); }
+#lead .list-h .lead-about { margin-top: 8px; }
+#lead .list-h p.about { font-size: 15px; }
+.tag.due { background: var(--warn-bg); color: var(--warn); }
+
+/* Creating leads, above the tabs: a store by its address, on one line with its button; more stores found under it;
+   the stores still being read, or refused, each a line. */
+.lead-create { display: grid; gap: 8px; margin: 14px 0 18px; }
+form.lead-add { flex-wrap: nowrap; margin: 0; }
+form.lead-add input { flex: 1 1 auto; width: auto; min-width: 0; }
+form.lead-add button { flex: none; }
+details.find summary { cursor: pointer; color: var(--accent); font-size: 14px; font-weight: 500; min-height: 32px; display: inline-flex; align-items: center; }
+details.find form { flex-wrap: wrap; margin: 6px 0 0; }
+details.find select { width: auto; flex: 1 1 220px; min-height: 40px; padding-block: 6px; }
+details.find p.muted { margin: 8px 0 0; font-size: 13px; }
+ul.adding { display: grid; gap: 6px; margin: -6px 0 16px; padding: 0; list-style: none; font-size: 14px; }
+ul.adding li { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+ul.adding .tag { font-size: 12px; padding: 2px 10px; }
+p.lead-all { margin: 10px 0 0; font-size: 14px; }
+
+/* What cannot be undone asks once more: its pill opens a line that says what happens, and the button that does it. */
+details.lost .sure { flex: 1 0 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+details.lost .sure p { margin: 0; flex: 1 1 220px; font-size: 14px; }
+details.lost .sure form { flex: none; }
+.card.end .op-more { margin-top: 14px; }
+
+/* Toran's page as it is checked here: what holds it back in red, the name and colour with the site's own colours one
+   press each, the sample chat as bubbles, and the rest under "עוד". */
+.demo-box .gaps { padding: 10px 12px; border-radius: var(--r-m); background: var(--bad-bg); color: var(--bad); font-size: 14px; }
+.demo-box .gaps ul { margin: 4px 0 0; padding-inline-start: 18px; }
+.demo-box details > summary { cursor: pointer; color: var(--accent); font-size: 14px; font-weight: 500; min-height: 32px; display: flex; align-items: center; list-style: none; }
+.demo-box details > summary::-webkit-details-marker { display: none; }
+.demo-box details.more > .op-acts, .demo-box details.more > p { margin-top: 8px; }
+.demo-box details.more details.lost summary { color: var(--ink); min-height: 36px; padding: 0 14px; display: inline-flex; margin-top: 8px; }
+.demo-box details.more details.lost[open] summary { color: var(--bad); }
+form.brand-form { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: end; margin: 6px 0 0; }
+form.brand-form label { margin: 0; font-size: 13px; }
+form.brand-form label:first-of-type { grid-column: 1 / -1; }
+form.brand-form input[type='color'] { width: 56px; min-height: 40px; padding: 2px; }
+form.brand-form button { min-height: 40px; }
+.row.colors { gap: 6px; margin-top: 8px; }
+button.swatch-b { display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 0 12px; font-size: 13px; }
+svg.swatch { width: 16px; height: 16px; flex: none; }
+.chat { display: grid; gap: 6px; margin-top: 8px; }
+.chat .b { max-width: 88%; margin: 0; padding: 8px 12px; border-radius: 14px; font-size: 14px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
+.chat .b.customer { justify-self: start; background: var(--fill); color: var(--ink); }
+.chat .b.agent { justify-self: end; background: color-mix(in srgb, var(--accent-fill) 14%, transparent); color: var(--ink); }
+details.turned ul { margin: 6px 0 0; padding-inline-start: 18px; font-size: 13px; color: var(--ink-2); }
+details.score { margin-top: 10px; }
+details.score summary { cursor: pointer; color: var(--accent); font-size: 14px; font-weight: 500; }
+details.score ul { margin: 6px 0 0; padding-inline-start: 18px; font-size: 13px; }
+details.score li.bad { color: var(--bad); }
+
 /* ------------------------------------------------------------ sign-up (/signup) */
 
 /* The products to choose: each a row of glass with its mark, its name and its one line, the box at the start. */

@@ -131,9 +131,20 @@ export function readOps(b) {
 
 export const WHERE = ['new', 'ready', 'sent', 'talking', 'closed'];
 const DEMO_STATES = ['none', 'building', 'review', 'ready', 'failed', 'removed'];
-/** The lead's buttons Toran's /internal/leads takes; the rest (they answered, later, not interested...) are ACTIONS. */
-export const LEAD_ACTIONS = ['go-both', 'go-toran', 'go-teder', 'build-toran', 'build-teder', 'build-both', 'send-both', 'send-toran', 'send-teder', 'mark-sent', 'mark-reminded', 'notes', 'skip'];
+/**
+ * Every button of a lead, all Toran's /internal/leads (the owner, 2026-11-12: /admin/leads "to have everything i need for
+ * creating and doing leads", and never "old fronts"): what it goes on with (go-none is neither), its demos built, sent
+ * and marked, Toran's page checked and fixed, where it stands (with Teder's lead moved to match), Teder's demo worked,
+ * and the page taken down or the store deleted. The dashboard's own list (/admin) keeps ACTIONS, on /internal/ops.
+ */
+export const LEAD_ACTIONS = [
+  'go-both', 'go-toran', 'go-teder', 'go-none', 'build-toran', 'build-teder', 'build-both', 'send-both', 'send-toran', 'send-teder', 'mark-sent', 'mark-reminded', 'notes', 'skip',
+  'approve-toran', 'hold-toran', 'brand', 'sample', 'replied', 'later', 'lost', 'reopen', 'teder-approve', 'teder-redo', 'teder-other', 'teder-remove', 'takedown', 'delete',
+];
 const SENDS = ['both', 'toran', 'teder'];
+/** Where more stores are found (Toran's discovery sources), in the order offered. */
+export const SOURCES = ['storecensus', 'crawl', 'brave', 'seeds'];
+const GAPS = ['name', 'color', 'products', 'sample', 'price', 'of_number', 'demo_number'];
 
 const demoOf = (d) => {
   const o = d && typeof d === 'object' ? d : {};
@@ -143,8 +154,41 @@ const demoOf = (d) => {
     sentAt: str(o.sentAt, 40),
     reminderSentAt: str(o.reminderSentAt, 40),
     reminderDue: o.reminderDue === true,
-    url: safeHref(o.url),
     error: str(o.error, 300),
+    // What Teder's demo is about, as Teder's own lead card said it.
+    idea: str(o.idea, 120),
+  };
+};
+/** A colour as #rrggbb, else null: it is drawn as an SVG fill, so nothing else reaches the page. */
+const hex = (v) => (typeof v === 'string' && /^#[0-9a-f]{6}$/i.test(v.trim()) ? v.trim().toLowerCase() : null);
+/** A profile on a network, only an https address on that network's own site. */
+const profile = (v, host) => {
+  const h = safeHref(v);
+  try {
+    return h && h.startsWith('https://') && host.test(new URL(h).hostname) ? h : null;
+  } catch {
+    return null;
+  }
+};
+/** A store in a few words, as Toran found it: its own line, and its facts (products, prices, kinds, profiles). */
+const aboutOf = (x) => {
+  const f = x.facts && typeof x.facts === 'object' ? x.facts : {};
+  const so = f.social && typeof f.social === 'object' ? f.social : {};
+  return {
+    about: str(x.about, 200),
+    facts: {
+      products: num(f.products),
+      productsAtLeast: f.productsAtLeast === true,
+      priceMin: num(f.priceMin),
+      priceMax: num(f.priceMax),
+      currency: str(f.currency, 3) || 'ILS',
+      kinds: (Array.isArray(f.kinds) ? f.kinds : []).map((k) => str(k, 40)).filter(Boolean).slice(0, 3),
+      social: {
+        instagram: profile(so.instagram, /(^|\.)instagram\.com$/),
+        tiktok: profile(so.tiktok, /(^|\.)tiktok\.com$/),
+        facebook: profile(so.facebook, /(^|\.)(facebook|fb)\.com$/),
+      },
+    },
   };
 };
 const whereOf = (v) => (WHERE.includes(v) ? v : 'new');
@@ -164,6 +208,7 @@ const rowOf = (x) => ({
   domain: str(x.domain, 200) || '',
   url: safeHref(x.url),
   platform: str(x.platform, 40),
+  ...aboutOf(x),
   score: num(x.score) ?? 0,
   qualified: x.qualified === true,
   where: whereOf(x.where),
@@ -185,8 +230,39 @@ export function readLeads(b) {
     counts,
     leads: list(b.leads).map(rowOf).filter((x) => x.id != null),
     tederOnly: list(b.tederOnly)
-      .map((x) => ({ tederId: num(x.tederId), name: str(x.name, 200) || str(x.domain, 200) || '', domain: str(x.domain, 200) || '', where: whereOf(x.where), teder: demoOf(x.teder), leadUrl: safeHref(x.leadUrl) }))
+      .map((x) => ({ tederId: num(x.tederId), name: str(x.name, 200) || str(x.domain, 200) || '', domain: str(x.domain, 200) || '', where: whereOf(x.where), teder: demoOf(x.teder) }))
       .filter((x) => x.tederId != null),
+    // The stores added by their address that are not leads yet: being read, or refused with Toran's reason.
+    adding: list(b.adding).map((x) => ({ url: safeHref(x.url) || '', state: x.state === 'failed' ? 'failed' : 'reading', error: str(x.error, 300), at: str(x.at, 40) })).filter((x) => x.url),
+    discovery: discoveryOf(b.discovery),
+  };
+}
+
+function discoveryOf(d) {
+  const o = d && typeof d === 'object' ? d : {};
+  const last = o.last && typeof o.last === 'object' ? o.last : null;
+  return {
+    running: SOURCES.includes(o.running) ? o.running : null,
+    sources: (Array.isArray(o.sources) ? o.sources : []).filter((x) => SOURCES.includes(x)),
+    last: last ? { source: SOURCES.includes(last.source) ? last.source : null, at: str(last.at, 40), found: num(last.found) ?? 0, fit: num(last.fit) ?? 0, looked: num(last.looked) ?? 0 } : null,
+  };
+}
+
+/** Toran's page as it is checked on the lead's page; null before it is built. */
+function reviewOf(r) {
+  if (!r || typeof r !== 'object') return null;
+  const list = (v) => (Array.isArray(v) ? v.filter((x) => x && typeof x === 'object') : []);
+  return {
+    gaps: list(r.gaps).map((g) => ({ key: GAPS.includes(g.key) ? g.key : null, he: str(g.he, 300) || '' })).filter((g) => g.key),
+    approved: r.approved === true,
+    held: r.held === true,
+    building: r.building === true,
+    name: str(r.name, 80),
+    color: hex(r.color),
+    colorsFound: (Array.isArray(r.colorsFound) ? r.colorsFound : []).map(hex).filter(Boolean).slice(0, 6),
+    chat: list(r.chat).map((m) => ({ role: m.role === 'agent' ? 'agent' : 'customer', text: str(m.text, 2000) || '' })).slice(0, 12),
+    turnedDown: list(r.turnedDown).map((t) => ({ product: str(t.product, 200) || '', why: str(t.why, 400) || '' })).slice(0, 8),
+    builtAt: str(r.builtAt, 40),
   };
 }
 
@@ -202,8 +278,15 @@ export function readLead(b) {
     notes: str(x.notes, 4000) || '',
     demoCode: str(x.demoCode, 40),
     opens: num(x.opens) ?? 0,
+    stats: x.stats && typeof x.stats === 'object' ? { opens: num(x.stats.opens) ?? 0, visitors: num(x.stats.visitors) ?? 0, depth: num(x.stats.depth) ?? 0, clicks: num(x.stats.clicks) ?? 0, lastOpen: str(x.stats.lastOpen, 40) } : null,
     demoStartedAt: str(x.demoStartedAt, 40),
     tederOk: x.tederOk !== false,
+    takedownAskedAt: str(x.takedownAskedAt, 40),
+    scoreParts: (Array.isArray(x.scoreParts) ? x.scoreParts : [])
+      .filter((f) => f && typeof f === 'object')
+      .map((f) => ({ factor: str(f.factor, 40) || '', he: str(f.he, 40) || '', points: num(f.points) ?? 0, max: num(f.max) ?? 0, evidence: str(f.evidence, 200) || '' }))
+      .slice(0, 12),
+    review: reviewOf(x.review),
     send: {
       stage: ['first', 'reminder'].includes(send.stage) ? send.stage : null,
       pitchable: send.pitchable === true,
@@ -215,7 +298,6 @@ export function readLead(b) {
       tederText: str(send.tederText, 2000),
       copy: copy?.href ? copy : null,
     },
-    links: { toranPage: safeHref(x.links?.toranPage), toranReview: safeHref(x.links?.toranReview), tederLead: safeHref(x.links?.tederLead) },
   };
 }
 
@@ -255,9 +337,9 @@ export function toranClient({ env = process.env, fetchImpl = globalThis.fetch, l
       }
     },
     /** The shared lead list: { ok: true, data } or { ok: false, why: 'not_configured' | 'down' }. */
-    async leads({ where = '', q = '' } = {}) {
+    async leads({ where = '', q = '', all = false } = {}) {
       if (!configured) return { ok: false, why: 'not_configured' };
-      const qs = new URLSearchParams(Object.entries({ where: WHERE.includes(where) ? where : '', q: String(q || '').slice(0, 100) }).filter(([, v]) => v)).toString();
+      const qs = new URLSearchParams(Object.entries({ where: WHERE.includes(where) ? where : '', q: String(q || '').slice(0, 100), all: all ? '1' : '' }).filter(([, v]) => v)).toString();
       try {
         const r = await call('GET', `/internal/leads${qs ? `?${qs}` : ''}`, null, POST_MS);
         if (r.status !== 200 || !r.json || typeof r.json !== 'object') {
@@ -294,8 +376,27 @@ export function toranClient({ env = process.env, fetchImpl = globalThis.fetch, l
       const path = `/internal/leads/${id}/${action}`;
       try {
         const r = await call('POST', path, body, POST_MS * 2);
-        if (r.status === 200 && r.json?.ok) return { ok: true, message: str(r.json.message, 400) || '', ready: r.json.ready === true };
+        if (r.status === 200 && r.json?.ok) return { ok: true, message: str(r.json.message, 400) || '', ready: r.json.ready === true, gone: r.json.gone === true };
         if ((r.status === 400 || r.status === 404) && r.json?.ok === false && typeof r.json.error === 'string') return { ok: false, error: r.json.error.slice(0, 400), status: r.status };
+        log(`[accounts] toran POST ${path}: ${r.status}`);
+        return { ok: false, status: r.status };
+      } catch (e) {
+        log(`[accounts] toran POST ${path}: ${why(e)}`);
+        return { ok: false, status: 0 };
+      }
+    },
+    /**
+     * The list's own buttons: a store added by its address (add, { url, by }) or more stores found (discover, { source,
+     * by }), as leadAct answers: { ok, message, id } (id: the lead, when the store was here already) / { ok: false, error }.
+     */
+    async leadsDo(what, body) {
+      if (!configured) return { ok: false, status: 0 };
+      if (what !== 'add' && what !== 'discover') return { ok: false, status: 404 };
+      const path = `/internal/leads/${what}`;
+      try {
+        const r = await call('POST', path, body, POST_MS);
+        if (r.status === 200 && r.json?.ok) return { ok: true, message: str(r.json.message, 400) || '', id: num(r.json.id) };
+        if (r.status === 400 && r.json?.ok === false && typeof r.json.error === 'string') return { ok: false, error: r.json.error.slice(0, 400), status: r.status };
         log(`[accounts] toran POST ${path}: ${r.status}`);
         return { ok: false, status: r.status };
       } catch (e) {

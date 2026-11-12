@@ -444,9 +444,10 @@ test('toran-ops: the dashboard\'s answer is read, an action\'s line comes back, 
 });
 
 test("admin-leads: the list and one lead are read in the contract's shape, a button's line comes back, a refusal keeps Toran's words", async () => {
-  const [list, one, act] = contracts['admin-leads'].routes;
+  const [list, one, act, add, discover] = contracts['admin-leads'].routes;
   const l = list.answers[0];
-  assert.deepEqual(shapeProblems(readLeads(l.body), { teder: l.body.teder, counts: l.body.counts, leads: l.body.leads, tederOnly: l.body.tederOnly }, l.nullable), []);
+  const { ok: _ok, ...listBody } = l.body;
+  assert.deepEqual(shapeProblems(readLeads(l.body), listBody, l.nullable), []);
   const o = one.answers[0];
   assert.deepEqual(shapeProblems(readLead(o.body), o.body.lead, o.nullable), []);
   for (const [route, a] of [...list.answers.map((a) => [list, a]), ...one.answers.map((a) => [one, a]), ...act.answers.map((a) => [act, a])]) {
@@ -460,12 +461,26 @@ test("admin-leads: the list and one lead are read in the contract's shape, a but
         if (a.status === 404) assert.equal(out.why, 'none', a.case);
       } else {
         const out = await client.leadAct('12', 'notes', { by: 'Admin', notes: 'x' });
-        if (a.status === 200) assert.deepEqual(out, { ok: true, message: a.body.message, ready: a.body.ready === true }, a.case);
+        if (a.status === 200) assert.deepEqual(out, { ok: true, message: a.body.message, ready: a.body.ready === true, gone: a.body.gone === true }, a.case);
         else if (a.status === 400 || a.status === 404) assert.deepEqual([out.ok, out.error], [false, a.body.error], a.case);
         else assert.equal(out.ok, false, a.case);
       }
     } finally {
       await p.close();
+    }
+  }
+  // The list's own buttons: a store added by its address (id: the lead it already was), more stores found.
+  for (const [route, what] of [[add, 'add'], [discover, 'discover']]) {
+    for (const a of route.answers) {
+      const p = await answering(() => ({ status: a.status, body: a.body }));
+      try {
+        const out = await toranClient({ env: { OF_INTERNAL_TOKEN: TOKEN, OF_TORAN_INTERNAL: p.url }, log: () => {} }).leadsDo(what, { by: 'Admin' });
+        if (a.status === 200) assert.deepEqual(out, { ok: true, message: a.body.message, id: a.body.id ?? null }, a.case);
+        else if (a.status === 400) assert.deepEqual([out.ok, out.error], [false, a.body.error], a.case);
+        else assert.equal(out.ok, false, a.case);
+      } finally {
+        await p.close();
+      }
     }
   }
 });
