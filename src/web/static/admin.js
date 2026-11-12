@@ -128,6 +128,24 @@
     }
   });
 
+  // A lead whose demo is being built (leads.js, [data-reload] on the line said in place of what to send): the page looks
+  // again by itself every so often, so the message is there once the demo is up. Never over something typed, chosen
+  // or opened on it since it came, nor while it is not on the screen.
+  const again = document.querySelector('[data-reload]');
+  if (again) {
+    const every = Math.max(10, Number(again.dataset.reload) || 20) * 1000;
+    const valueOf = (el) => (el.type === 'checkbox' || el.type === 'radio' ? el.checked : el.tagName === 'SELECT' ? el.selectedIndex : el.value);
+    const fields = new Map([...document.querySelectorAll('input, textarea, select')].map((el) => [el, valueOf(el)]));
+    const opened = new Set(document.querySelectorAll('details[open]'));
+    const touched = () =>
+      document.hidden ||
+      document.activeElement?.matches?.('input, textarea, select') ||
+      [...fields].some(([el, v]) => valueOf(el) !== v) ||
+      [...document.querySelectorAll('details')].some((d) => d.open !== opened.has(d));
+    const look = () => (touched() ? setTimeout(look, every) : location.reload());
+    setTimeout(look, every);
+  }
+
   // A link to a section opens its <details>.
   document.addEventListener('click', (e) => {
     const a = e.target.closest('a[href^="#"]');

@@ -302,6 +302,48 @@ export function readLead(b) {
   };
 }
 
+/**
+ * The two lead lists (the owner, 2026-11-12: "On the leda page, those that were already reached to, move them to a
+ * different page"): /admin/leads, the stores we have not written to yet (new, ready to send, and those closed before
+ * any message went), and /admin/leads/reached, the ones we have, with where each stands since (sent, talking, closed).
+ * Each list's tabs, in order.
+ */
+export const LEAD_PAGES = { leads: ['new', 'ready', 'closed'], reached: ['sent', 'talking', 'closed'] };
+export const LEAD_PATHS = { leads: '/admin/leads', reached: '/admin/leads/reached' };
+
+/** We wrote to them: a message went from either product, from our number or by hand, or they are talking to us. */
+export const isReached = (x) => Boolean(x.toran?.sentAt || x.teder?.sentAt) || x.where === 'sent' || x.where === 'talking';
+
+/**
+ * Toran's list (asked with the search, and every tab) cut to one of the two lists: its rows under its tab, and the
+ * counts of each list's tabs, the other list's too, for its link. The counts are of the stores that answer the search,
+ * so a store searched for on the wrong list is counted on the other one's link. Toran sends 300 leads at most, the
+ * latest changed first: past that, with no search, the tabs that are one list's alone are counted as Toran counts them.
+ */
+export function leadsOfPage(d, { page, where = '', q = '' }) {
+  const rows = [...d.leads, ...d.tederOnly];
+  const counts = Object.fromEntries(
+    Object.entries(LEAD_PAGES).map(([pg, tabs]) => {
+      const of = rows.filter((x) => isReached(x) === (pg === 'reached'));
+      return [pg, Object.fromEntries([['all', of.length], ...tabs.map((w) => [w, of.filter((x) => x.where === w).length])])];
+    })
+  );
+  if (!q && d.counts.all > rows.length) {
+    for (const [pg, w] of [['leads', 'new'], ['leads', 'ready'], ['reached', 'sent'], ['reached', 'talking']]) counts[pg][w] = Math.max(counts[pg][w], d.counts[w]);
+    for (const pg of Object.keys(counts)) counts[pg].all = LEAD_PAGES[pg].reduce((n, w) => n + counts[pg][w], 0);
+  }
+  const keep = (x) => isReached(x) === (page === 'reached') && (!where || x.where === where);
+  return { ...d, counts, leads: d.leads.filter(keep), tederOnly: d.tederOnly.filter(keep) };
+}
+
+/**
+ * The lead's demos being built now (the owner, 2026-11-12: "Lead page shouldnt let me send a message while a demo is
+ * being built"): Toran's page built for the first time (toran.state building: its site read with no page yet) or built
+ * again (review.building: its site read again, or its sample chat made again), and Teder's demo written or written
+ * again (teder.state building: a demo Teder has new or building).
+ */
+export const buildingOf = (x) => ['toran', 'teder'].filter((p) => x[p]?.state === 'building' || (p === 'toran' && x.review?.building === true));
+
 export function toranClient({ env = process.env, fetchImpl = globalThis.fetch, log = console.error } = {}) {
   const base = (String(env.OF_TORAN_INTERNAL || '').trim() || TORAN_INTERNAL).replace(/\/+$/, '');
   const token = String(env.OF_INTERNAL_TOKEN || '').trim();

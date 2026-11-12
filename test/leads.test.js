@@ -32,8 +32,11 @@ test('the list: both products for each store, the tabs by where it stands, the s
     assert.match(b, /<a href="\/admin\/leads" aria-current="page">לידים<\/a>/, 'the tab in the header');
     assert.ok(b.includes(`<a class="who" href="/admin/leads/${LIST.leads[0].id}"><b>${LIST.leads[0].name}</b></a>`), 'the row opens its lead');
     assert.match(b, /<span class="tag p-toran">תורן: מוכן<\/span><span class="tag p-teder">תדר: מוכן<\/span>/);
-    assert.match(b, /חנות אחת שיש רק בתדר/);
-    assert.match(b, /<form method="post" action="\/admin\/leads\/add" class="inline">.*<input type="hidden" name="url" value="https:\/\/kelim\.example\/"><button class="quiet">להוסיף לרשימה<\/button>/s, "a store Teder alone has is added to the list here");
+    // The store Teder alone has was written to: it is on the list of the ones we wrote to, and added to Toran's from there.
+    assert.doesNotMatch(b, /חנות אחת שיש רק בתדר/);
+    const reached = (await t.op.get('/admin/leads/reached')).body;
+    assert.match(reached, /חנות אחת שיש רק בתדר/);
+    assert.match(reached, /<form method="post" action="\/admin\/leads\/add" class="inline">.*<input type="hidden" name="url" value="https:\/\/kelim\.example\/"><button class="quiet">להוסיף לרשימה<\/button>/s, "a store Teder alone has is added to the list here");
     // A store in a few words: its own line, then what Toran found of it.
     const first = new RegExp(`<li id="lead-${LIST.leads[0].id}">(.*?)</li>`, 's').exec(b)[1];
     assert.ok(first.includes(`<p class="about" dir="auto">${LIST.leads[0].about}</p>`), 'its own line');
@@ -45,10 +48,13 @@ test('the list: both products for each store, the tabs by where it stands, the s
     assert.match(b, /<ul class="adding"><li><bdi class="ltr">new-store\.example<\/bdi> <span class="tag wait">קוראים את האתר<\/span><\/li><\/ul>/);
     // Nothing here opens the products' own operator pages (the owner, 2026-11-12: "MUST not send me to old fronts").
     assert.doesNotMatch(b, /\/admin\/(toran|teder)\/(lead|leads|demos|review)|leads\?tab=/);
+    // Toran is asked with the search and every tab: the tab, and which list, are cut here.
     await t.op.get('/admin/leads?where=ready&q=nurit');
-    assert.equal(t.fake.calls.at(-1).path, '/internal/leads?where=ready&q=nurit');
+    assert.equal(t.fake.calls.at(-1).path, '/internal/leads?q=nurit');
     await t.op.get('/admin/leads?all=1');
     assert.equal(t.fake.calls.at(-1).path, '/internal/leads?all=1', 'the stores that did not pass the score too');
+    await t.op.get('/admin/leads/reached?all=1');
+    assert.equal(t.fake.calls.at(-1).path, '/internal/leads', 'every one we wrote to is on the list anyway');
     await t.op.get('/admin/leads?where=nonsense');
     assert.equal(t.fake.calls.at(-1).path, '/internal/leads', 'an unknown tab is all');
     // Toran down: the page says so.
@@ -246,8 +252,9 @@ test("a lead's message is the one for the demo chosen: from our number each one'
     await t.op.post('/admin/leads/12/mark-sent', { product: 'nonsense' });
     assert.deepEqual(t.fake.posts().at(-1).body, { by: 'נתנאל' }, 'an unknown one is not passed on: Toran marks Toran');
 
-    // Both chosen, only Toran's up: its message, and a line on what both waits for. A page under review sends nothing.
-    t.fake.state.lead = answer({ ...LEAD, teder: { ...none, state: 'building' }, chosen: 'both', send: { ...LEAD.send, pitchable: false, options: [], main: null, bothText: null, toranText: 'רק תורן', tederText: null } });
+    // Both chosen, only Toran's up and Teder's failed: Toran's message, and a line on what both waits for. A page under
+    // review sends nothing.
+    t.fake.state.lead = answer({ ...LEAD, teder: { ...none, state: 'failed' }, chosen: 'both', send: { ...LEAD.send, pitchable: false, options: [], main: null, bothText: null, toranText: 'רק תורן', tederText: null } });
     b = (await t.op.get('/admin/leads/12')).body;
     assert.match(b, /כשגם הדמו של תדר יהיה מוכן, אפשר לשלוח את שניהם בהודעה אחת\./);
     assert.doesNotMatch(b, /<fieldset class="seg">/, 'one message: no switch');
@@ -302,7 +309,135 @@ test('only the superadmin: anyone else is sent to the admin sign-in, and nothing
     const anon = t.browser();
     assert.equal((await anon.get('/admin/leads')).headers.location, '/admin/login');
     assert.equal((await anon.get('/admin/leads/12')).headers.location, '/admin/login');
+    assert.equal((await anon.get('/admin/leads/reached')).headers.location, '/admin/login');
     assert.equal(t.fake.calls.length, 0);
+  } finally {
+    await t.done();
+  }
+});
+
+// The owner, 2026-11-12: "On the leda page, those that were already reached to, move them to a different page".
+test('the stores we wrote to are a list of their own: each list its tabs and its count, a link between them, and a lead goes back to its own', async () => {
+  const t = await setup();
+  try {
+    const sent = { ...LIST.leads[0].toran, sentAt: '2026-11-07T09:00:00.000Z' };
+    t.fake.state.leads = {
+      ...LIST,
+      leads: [
+        row({ id: 31, name: 'חדשה', where: 'new', toran: none, teder: none }),
+        row({ id: 32, name: 'מוכנה', where: 'ready' }),
+        row({ id: 33, name: 'נשלחה', where: 'sent', toran: sent }),
+        row({ id: 34, name: 'ענתה', where: 'talking', toran: sent }),
+        row({ id: 35, name: 'נסגרה אחרי ההודעה', where: 'closed', toran: sent }),
+        row({ id: 36, name: 'דילגנו עליה', where: 'closed', toran: none, teder: none }),
+        row({ id: 37, name: 'רק תדר נשלח', where: 'sent', teder: { ...LIST.leads[0].teder, sentAt: '2026-11-07T09:00:00.000Z' } }),
+      ],
+      tederOnly: [],
+    };
+    const ids = (b) => [...b.matchAll(/<li id="lead-(\d+)">/g)].map((m) => Number(m[1]));
+    const tabs = (b) => [.../<nav class="tabs lead-tabs"[^>]*>(.*?)<\/nav>/s.exec(b)[1].matchAll(/<a href="([^"]+)"[^>]*>([^<]+) <span class="muted">(\d+)<\/span><\/a>/g)].map((m) => [m[1], m[2], Number(m[3])]);
+    // The leads: the ones we have not written to, closed before any message too; a link to the others, with how many.
+    const leads = (await t.op.get('/admin/leads')).body;
+    assert.deepEqual(ids(leads), [31, 32, 36]);
+    assert.deepEqual(tabs(leads), [['/admin/leads', 'הכול', 3], ['/admin/leads?where=new', 'חדשים', 1], ['/admin/leads?where=ready', 'מוכנים לשליחה', 1], ['/admin/leads?where=closed', 'סגורים', 1]]);
+    assert.match(leads, /<a class="chip to-reached" href="\/admin\/leads\/reached">פנינו אליהם <span class="muted">4<\/span><\/a>/);
+    assert.match(leads, /action="\/admin\/leads\/add"/, 'stores are added and found here');
+    // The ones we wrote to, by either product: where each stands since, back to the leads, and nothing to add or find.
+    const r = await t.op.get('/admin/leads/reached');
+    assert.equal(r.status, 200);
+    assert.match(r.body, /<title>פנינו אליהם · OpenFrequency<\/title>/);
+    assert.match(r.body, /<a href="\/admin\/leads" aria-current="page">לידים<\/a>/, "the header's tab is the leads'");
+    assert.deepEqual(ids(r.body), [33, 34, 35, 37]);
+    assert.deepEqual(tabs(r.body), [['/admin/leads/reached', 'הכול', 4], ['/admin/leads/reached?where=sent', 'מחכים לתשובה', 2], ['/admin/leads/reached?where=talking', 'בשיחה', 1], ['/admin/leads/reached?where=closed', 'סגורים', 1]]);
+    assert.match(r.body, /<p><a href="\/admin\/leads">← לידים<\/a><\/p>\n<div class="list-h"><h2>פנינו אליהם<\/h2>/);
+    assert.match(r.body, /<form class="row lead-search" method="get" action="\/admin\/leads\/reached" role="search">/);
+    assert.doesNotMatch(r.body, /action="\/admin\/leads\/(add|discover)"|class="lead-all"/);
+    assert.match(r.body, /<li id="lead-34">.*?<span class="tag where">בשיחה<\/span>/s);
+    // Under a tab, its own; a choice made from a row comes back to this list, at the row.
+    assert.deepEqual(ids((await t.op.get('/admin/leads/reached?where=closed')).body), [35]);
+    assert.deepEqual(ids((await t.op.get('/admin/leads?where=closed')).body), [36]);
+    const tab = (await t.op.get('/admin/leads/reached?where=sent')).body;
+    assert.match(new RegExp('<li id="lead-33">(.*?)</li>', 's').exec(tab)[1], /<input type="hidden" name="page" value="reached"><input type="hidden" name="where" value="sent">/);
+    assert.equal((await t.op.post('/admin/leads/33/go-teder', { back: 'list', page: 'reached', where: 'sent' })).headers.location, '/admin/leads/reached?where=sent#lead-33');
+    assert.equal((await t.op.post('/admin/leads/31/go-teder', { back: 'list', where: 'sent' })).headers.location, '/admin/leads#lead-31', "a tab that is not the list's own is all");
+    // A search counts the other list too, and its link keeps it: the store searched for is found on its own list.
+    const q = (await t.op.get('/admin/leads?q=x')).body;
+    assert.match(q, /<a class="chip to-reached" href="\/admin\/leads\/reached\?q=x">/);
+    t.fake.state.leads = { ...t.fake.state.leads, leads: t.fake.state.leads.leads.filter((x) => x.id === 33) };
+    const found = (await t.op.get('/admin/leads?q=x')).body;
+    assert.match(found, /<b>אין כאן חנויות<\/b><p>אין כאן חנות שהשם או הדומיין שלה כוללים &quot;x&quot;\.<\/p>/);
+    assert.match(found, /פנינו אליהם <span class="muted">1<\/span>/);
+    // An old link to a tab that is now the other list's opens there.
+    assert.equal((await t.op.get('/admin/leads?where=talking&q=x')).headers.location, '/admin/leads/reached?where=talking&q=x');
+    assert.equal((await t.op.get('/admin/leads/reached?where=new')).headers.location, '/admin/leads?where=new');
+    // Nothing written to yet: the list says so in its own words.
+    const counts = (o) => ({ all: 0, new: 0, ready: 0, sent: 0, talking: 0, closed: 0, ...o });
+    t.fake.state.leads = { ...LIST, counts: counts({ all: 1, new: 1 }), leads: [row({ id: 31, where: 'new', toran: none, teder: none })], tederOnly: [] };
+    assert.match((await t.op.get('/admin/leads/reached')).body, /<b>עוד לא פנינו לאף חנות<\/b><p>חנות עוברת לכאן כשההודעה הראשונה אליה יוצאת\.<\/p>/);
+    assert.match((await t.op.get('/admin/leads?where=closed')).body, /<b>אין כאן חנויות<\/b><\/div>/);
+    // A lead's page goes back to the list it is on.
+    t.fake.state.lead = answer({ ...LEAD, where: 'sent', toran: { ...LEAD.toran, sentAt: '2026-11-07T09:00:00.000Z' } });
+    assert.match((await t.op.get('/admin/leads/12')).body, /<p><a href="\/admin\/leads\/reached">← פנינו אליהם<\/a><\/p>/);
+    t.fake.state.lead = null;
+    assert.match((await t.op.get('/admin/leads/12')).body, /<p><a href="\/admin\/leads">← לידים<\/a><\/p>/);
+    // The list's empty title is its own (the choice "neither" had the same key, and won).
+    t.fake.state.leads = { ...LIST, counts: counts({}), leads: [], tederOnly: [] };
+    assert.match((await t.op.get('/admin/leads')).body, /<b>אין כאן לידים<\/b><p>ליד מופיע כאן כשתורן מוצא חנות מתאימה/);
+  } finally {
+    await t.done();
+  }
+});
+
+test('the counts of each list: past the 300 Toran sends at once, the tabs that are one list\'s alone are counted as Toran counts them', async () => {
+  const { leadsOfPage } = await import('../src/web/toran.js');
+  const { readLeads } = await import('../src/web/toran.js');
+  const sent = { ...LIST.leads[0].toran, sentAt: '2026-11-07T09:00:00.000Z' };
+  const d = readLeads({ ...LIST, counts: { all: 420, new: 300, ready: 40, sent: 50, talking: 10, closed: 20 }, leads: [row({ id: 1, where: 'new' }), row({ id: 2, where: 'sent', toran: sent }), row({ id: 3, where: 'closed', toran: sent }), row({ id: 4, where: 'closed' })], tederOnly: [] });
+  const cut = leadsOfPage(d, { page: 'leads' });
+  assert.deepEqual(cut.counts, { leads: { all: 341, new: 300, ready: 40, closed: 1 }, reached: { all: 61, sent: 50, talking: 10, closed: 1 } });
+  assert.deepEqual(cut.leads.map((x) => x.id), [1, 4]);
+  // With a search, the counts are of what it found.
+  assert.deepEqual(leadsOfPage(d, { page: 'reached', q: 'x' }).counts.reached, { all: 2, sent: 1, talking: 0, closed: 1 });
+});
+
+// The owner, 2026-11-12: "Lead page shouldnt let me send a message while a demo is being built".
+test("while a demo of the lead is being built, nothing can be sent from its page: one line says so and the page looks again, and a send from a page opened before is refused", async () => {
+  const t = await setup();
+  try {
+    const tederUp = { ...LEAD.toran, pageUrl: 'https://teder.openfrequency.co.il/s/nurit-ceramics-a1b2c3', idea: 'הסיפור של הקרמיקה' };
+    const sendable = { ...LEAD.send, options: ['both', 'toran', 'teder'], main: 'both', bothText: 'שניהם', toranText: 'רק תורן', tederText: 'רק תדר' };
+    const card = (b) => /<article class="card" id="send">(.*?)<\/article>/s.exec(b)[1];
+    // Teder's demo written (again): no message, no button, no copy; one line, and the page looks again by itself.
+    t.fake.state.lead = answer({ ...LEAD, teder: { ...none, state: 'building' }, chosen: 'both', send: { ...sendable, options: ['toran'], main: 'toran' } });
+    let b = card((await t.op.get('/admin/leads/12')).body);
+    assert.equal(b, '<h3>מה שולחים</h3><p class="muted" data-reload="20">הדמו של תדר עוד נבנה. אפשר יהיה לשלוח כשהוא מוכן.</p><p><a href="/admin/leads/12#send">לבדוק שוב</a></p>');
+    // Toran's page read again, or its sample chat made again, while Teder's is up: the same.
+    t.fake.state.lead = answer({ ...LEAD, teder: tederUp, review: { ...LEAD.review, building: true }, send: sendable });
+    b = card((await t.op.get('/admin/leads/12')).body);
+    assert.match(b, /הדמו של תורן עוד נבנה\./);
+    assert.doesNotMatch(b, /send-|mark-sent|<blockquote|<textarea/);
+    // Both being built, nothing sent yet: both named.
+    t.fake.state.lead = answer({ ...LEAD, toran: { ...none, state: 'building' }, teder: { ...none, state: 'building' }, review: null, send: { ...LEAD.send, options: [], main: null, bothText: null, toranText: null, tederText: null } });
+    assert.match(card((await t.op.get('/admin/leads/12')).body), /הדמואים של תורן ושל תדר עוד נבנים\. אפשר יהיה לשלוח כשהם מוכנים\./);
+    // Sent already and the reminder not due: when it will be says more than the build.
+    t.fake.state.lead = answer({ ...LEAD, toran: { ...LEAD.toran, sentAt: '2026-11-07T09:00:00.000Z' }, review: { ...LEAD.review, building: true }, send: { ...LEAD.send, options: [], main: null, waitingUntil: '2026-11-11T09:00:00.000Z', bothText: null, toranText: null, tederText: null } });
+    assert.match(card((await t.op.get('/admin/leads/12')).body), /ההודעה נשלחה\. התזכורת האחת תהיה מוכנה/);
+
+    // A send from a page opened before the build: not sent, and the lead says why.
+    t.fake.state.lead = answer({ ...LEAD, teder: { ...none, state: 'building' }, send: { ...sendable, options: ['toran'], main: 'toran' } });
+    const before = t.fake.posts().length;
+    const r = await t.op.post('/admin/leads/12/send-toran', {});
+    assert.equal(r.headers.location, '/admin/leads/12');
+    assert.equal(t.fake.posts().length, before, 'nothing reached Toran');
+    assert.match((await t.op.get('/admin/leads/12')).body, /<p class="flash bad" role="alert">ההודעה לא נשלחה, כי הדמו עוד נבנה\. אפשר לשלוח כשהוא מוכן\.<\/p>/);
+    // "שלחתי" on a message already sent by hand is kept: it went.
+    await t.op.post('/admin/leads/12/mark-sent', { product: 'toran' });
+    assert.equal(t.fake.posts().at(-1).path, '/internal/leads/12/mark-sent');
+    // Built: it goes.
+    t.fake.state.lead = answer({ ...LEAD, teder: tederUp, send: sendable });
+    await t.op.post('/admin/leads/12/send-both', {});
+    assert.equal(t.fake.posts().at(-1).path, '/internal/leads/12/send-both');
+    assert.doesNotMatch((await t.op.get('/admin/leads/12')).body, /data-reload/);
   } finally {
     await t.done();
   }

@@ -98,6 +98,16 @@ another topic, taken down), and has where it stands, the take-down and the delet
 links to `/admin/toran` or `/admin/teder`, and the tools on `/admin` no longer offer Toran's review queue, follow-ups and
 stores, or Teder's leads. Those pages still answer at their addresses.
 
+The same day: "On the leda page, those that were already reached to, move them to a different page". The stores we
+wrote to (a message went from either product, from our number or by hand, or they are talking to us) are on
+`/admin/leads/reached`, "פנינו אליהם", with its own tabs (waiting for an answer, talking, closed); `/admin/leads` keeps
+the ones we have not written to (new, ready, and those closed before any message) and links to it with its count. Toran
+is asked for its list once, with the search, and accounts cuts it (src/web/toran.js `leadsOfPage`). A lead's page goes
+back to the list it is on. And "Lead page shouldnt let me send a message while a demo is being built": while Toran's
+page is built or built again (`toran.state` building, `review.building`) or Teder's demo is written (`teder.state`
+building), the lead's page says so in place of what to send and looks again every 20 seconds, and a send posted from a
+page opened before is refused here.
+
 ## Consistency (Toran and Teder in the pro look)
 
 The same rules in each repo's `docs/design-pro.md`, section "The two desks side by side": the nav's order (היום, the

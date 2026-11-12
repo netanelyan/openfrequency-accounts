@@ -1,6 +1,6 @@
 import { LEADS, OPS, PRODUCT_NAMES, agoHe, stampHe } from './copy.js';
 import { adminTop, button, csrfField, esc, productMark } from './html.js';
-import { LOST_REASONS, WHERE } from './toran.js';
+import { LEAD_PAGES, LEAD_PATHS, LOST_REASONS, buildingOf, isReached } from './toran.js';
 
 // The shared lead dashboard, /admin/leads (the owner, 2026-11-08: "make the shared lead dashboard be in the admin
 // dashboard, not in one of the products"): one list of the stores we may sell to, with what Toran and Teder each have
@@ -34,10 +34,17 @@ import { LOST_REASONS, WHERE } from './toran.js';
 //   - where it stands, a take-down and a delete are all here;
 //   - nothing links to Toran's or Teder's own operator pages: only to the store's site, its profiles and the demos'
 //     own pages.
+//
+// The owner, the same day: "On the leda page, those that were already reached to, move them to a different page". So
+// the stores we wrote to are on a list of their own, /admin/leads/reached (toran.js LEAD_PAGES), with where each stands
+// since; /admin/leads keeps the ones we have not written to yet, and links to the other list with its count. A lead's
+// page goes back to the list it is on. And "Lead page shouldnt let me send a message while a demo is being built": while
+// one of its demos is being built (toran.js buildingOf), the lead's page says so in place of what to send, and looks
+// again by itself (static/admin.js [data-reload]); app.js refuses a send from a page opened before.
 
 const ext = (href, inner, cls = '') => `<a${cls ? ` class="${cls}"` : ''} href="${esc(href)}" target="_blank" rel="noopener">${inner}</a>`;
 const flashLine = (flash, bad) => (flash ? `<p class="flash${bad ? ' bad' : ''}" role="${bad ? 'alert' : 'status'}">${esc(flash)}</p>` : '');
-const empty = (title, lead) => `<div class="card empty"><b>${esc(title)}</b><p>${esc(lead)}</p></div>`;
+const empty = (title, lead) => `<div class="card empty"><b>${esc(title)}</b>${lead ? `<p>${esc(lead)}</p>` : ''}</div>`;
 const arrow = '<bdi class="ltr">↗</bdi>';
 
 /** A lead's demos as the operator picks them: both in one message, Toran's, Teder's. */
@@ -112,7 +119,7 @@ function goMenu(csrf, x, { fields = {}, main = false } = {}) {
   if (!can.length) return '';
   const picks = can.map((p, i) => leadButton(csrf, x.id, `go-${p}`, LEADS.pick[p], i ? '' : 'primary', fields)).join('');
   const label = x.chosen && can.includes(x.chosen) ? LEADS.goingWith(LEADS.pick[x.chosen]) : LEADS.goOn;
-  return `<details class="make"><summary${main ? ' class="primary"' : ''}>${esc(label)}</summary><div class="make-pick">${picks}${leadButton(csrf, x.id, 'go-none', LEADS.none, 'danger', fields)}</div></details>`;
+  return `<details class="make"><summary${main ? ' class="primary"' : ''}>${esc(label)}</summary><div class="make-pick">${picks}${leadButton(csrf, x.id, 'go-none', LEADS.pickNone, 'danger', fields)}</div></details>`;
 }
 
 // ---- the list
@@ -133,20 +140,29 @@ function creating(csrf, d, at) {
   return `<div class="lead-create">${add}${find}</div>${adding}`;
 }
 
-/** The list: the tabs by where each lead stands, the search, the rows, and Teder's leads Toran no longer has. */
-export function leadsPage({ csrf, flash = '', flashBad = false, result, where = '', q = '', all = false, at }) {
+/**
+ * One of the two lists (toran.js LEAD_PAGES): the stores we have not written to yet (page leads), with the buttons that
+ * add and find more and a link to the other list, or the ones we have (page reached), with a link back. Then its tabs
+ * by where each lead stands, the search, the rows, and Teder's leads Toran no longer has. `result.data` is Toran's list
+ * cut to the page (toran.js leadsOfPage).
+ */
+export function leadsPage({ csrf, flash = '', flashBad = false, result, page = 'leads', where = '', q = '', all = false, at }) {
+  const reached = page === 'reached';
   const top = `${adminTop({ csrf, tab: 'leads' })}
 ${flashLine(flash, flashBad)}`;
   if (!result.ok) return `${top}${empty(LEADS.down, result.why === 'not_configured' ? LEADS.notConfigured : LEADS.downLead)}`;
   const d = result.data;
-  const qs = (o) => {
+  const qs = (o, to = page) => {
     const p = new URLSearchParams(Object.entries(o).filter(([, v]) => v));
-    return `/admin/leads${p.size ? `?${p}` : ''}`;
+    return `${LEAD_PATHS[to]}${p.size ? `?${p}` : ''}`;
   };
-  const tab = (w) => `<a href="${esc(qs({ where: w, q, all: all ? '1' : '' }))}"${where === w ? ' aria-current="page"' : ''}>${esc(LEADS.where[w || 'all'])} <span class="muted">${esc(d.counts[w || 'all'] ?? 0)}</span></a>`;
+  const counts = d.counts[page];
+  const tab = (w) => `<a href="${esc(qs({ where: w, q, all: all ? '1' : '' }))}"${where === w ? ' aria-current="page"' : ''}>${esc(LEADS.where[w || 'all'])} <span class="muted">${esc(counts[w || 'all'] ?? 0)}</span></a>`;
   // Where a lead stands is said by the tab it is under; under "all", by a tag of its own.
   const stands = (w) => (where ? '' : whereTag(w));
-  const fields = Object.fromEntries(Object.entries({ back: 'list', where, q, all: all ? '1' : '' }).filter(([, v]) => v));
+  const fields = Object.fromEntries(Object.entries({ back: 'list', page: reached ? 'reached' : '', where, q, all: all ? '1' : '' }).filter(([, v]) => v));
+  // Nothing on the list at all, or nothing under this tab and search.
+  const none = q ? empty(LEADS.noneHere, LEADS.noneFound(q)) : counts.all ? empty(LEADS.noneHere, '') : reached ? empty(LEADS.reachedNone, LEADS.reachedNoneLead) : empty(LEADS.nothing, LEADS.noneLead);
   const rows = d.leads.length
     ? `<ul class="people leads-list">${d.leads
         .map(
@@ -154,7 +170,9 @@ ${flashLine(flash, flashBad)}`;
             `<li id="lead-${esc(x.id)}"><div class="lead-who"><a class="who" href="/admin/leads/${esc(x.id)}"><b>${esc(x.name)}</b></a><bdi class="ltr muted">${esc(x.domain)}</bdi></div><div class="lead-tags">${demoTags(x)}${dueTag(x)}${stands(x.where)}</div>${goMenu(csrf, x, { fields })}<div class="lead-about">${aboutLine(x)}${factsLine(x)}</div></li>`
         )
         .join('')}</ul>`
-    : empty(LEADS.none, LEADS.noneLead);
+    : d.tederOnly.length
+      ? ''
+      : none;
   const only = d.tederOnly.length
     ? `<details class="card no-contact"><summary>${esc(LEADS.tederOnly(d.tederOnly.length))}</summary><p class="muted">${esc(LEADS.tederOnlyHint)}</p><ul class="people leads-list">${d.tederOnly
         .map(
@@ -163,12 +181,17 @@ ${flashLine(flash, flashBad)}`;
         )
         .join('')}</ul></details>`
     : '';
+  // The other list: from the leads to the ones we wrote to, with how many (of the search, when there is one), and back.
+  const head = reached
+    ? `<p><a href="${esc(qs({ q }, 'leads'))}">← ${esc(LEADS.back)}</a></p>
+<div class="list-h"><h2>${esc(LEADS.reachedTitle)}</h2><p class="muted">${esc(LEADS.reachedLead)}</p></div>`
+    : `<div class="list-h"><h2>${esc(LEADS.title)}</h2><p class="muted">${esc(LEADS.lead)}</p><a class="chip to-reached" href="${esc(qs({ q }, 'reached'))}">${esc(LEADS.reachedTitle)} <span class="muted">${esc(d.counts.reached.all)}</span></a></div>
+${creating(csrf, d, at)}`;
   return `${top}
-<section id="leads"><div class="list-h"><h2>${esc(LEADS.title)}</h2><p class="muted">${esc(LEADS.lead)}</p></div>
-${creating(csrf, d, at)}
-<nav class="tabs lead-tabs" aria-label="${esc(LEADS.title)}">${['', ...WHERE].map(tab).join('')}</nav>
-<form class="row lead-search" method="get" action="/admin/leads" role="search">${where ? `<input type="hidden" name="where" value="${esc(where)}">` : ''}${all ? '<input type="hidden" name="all" value="1">' : ''}<input type="search" name="q" value="${esc(q)}" maxlength="100" placeholder="${esc(LEADS.search)}" aria-label="${esc(LEADS.search)}"><button class="quiet">${esc(LEADS.searchGo)}</button></form>
-<p class="lead-all"><a href="${esc(qs({ where, q, all: all ? '' : '1' }))}">${esc(all ? LEADS.fitStores : LEADS.allStores)}</a></p>
+<section id="leads">${head}
+<nav class="tabs lead-tabs" aria-label="${esc(reached ? LEADS.reachedTitle : LEADS.title)}">${['', ...LEAD_PAGES[page]].map(tab).join('')}</nav>
+<form class="row lead-search" method="get" action="${LEAD_PATHS[page]}" role="search">${where ? `<input type="hidden" name="where" value="${esc(where)}">` : ''}${all ? '<input type="hidden" name="all" value="1">' : ''}<input type="search" name="q" value="${esc(q)}" maxlength="100" placeholder="${esc(LEADS.search)}" aria-label="${esc(LEADS.search)}"><button class="quiet">${esc(LEADS.searchGo)}</button></form>
+${reached ? '' : `<p class="lead-all"><a href="${esc(qs({ where, q, all: all ? '' : '1' }))}">${esc(all ? LEADS.fitStores : LEADS.allStores)}</a></p>`}
 ${d.teder.ok ? '' : `<p class="muted note">${esc(LEADS.tederDown)}</p>`}
 ${rows}
 ${only}
@@ -203,6 +226,13 @@ function sendCard(csrf, x) {
   const textOf = { both: s.bothText, toran: s.toranText, teder: s.tederText };
   const ours = s.options.length > 0;
   const can = ours ? s.options : PICKS.filter((p) => textOf[p]);
+  // A demo being built (the owner, 2026-11-12: "Lead page shouldnt let me send a message while a demo is being built"):
+  // nothing to send or to copy until it is up, while a message could go, or none went yet. Once one went and the next
+  // is not due, what it waits for says more.
+  const busy = buildingOf(x);
+  if (busy.length && (can.length || (!x.toran.sentAt && !x.teder.sentAt))) {
+    return card(`<p class="muted" data-reload="20">${esc(LEADS.sendBuilding(busy.map((p) => PRODUCT_NAMES[p])))}</p><p><a href="/admin/leads/${esc(x.id)}#send">${esc(LEADS.sendBuildingAgain)}</a></p>`);
+  }
   if (!can.length) {
     if (s.waitingUntil) return card(`<p>${esc(LEADS.waiting(stampHe(s.waitingUntil)))}</p>`);
     return card(`<p class="muted">${esc(x.toran.reminderSentAt ? LEADS.sendDone : LEADS.sendNothing)}</p>`);
@@ -361,9 +391,11 @@ function endCard(csrf, x) {
 
 /** One lead's page: who the store is, what to send (the main action), the two demos, where it stands, the details. */
 export function leadPage({ csrf, flash = '', flashBad = false, result, at }) {
+  // Back to the list the lead is on: the ones we wrote to, or the leads.
+  const list = result.ok && isReached(result.lead) ? 'reached' : 'leads';
   const top = `${adminTop({ csrf, tab: 'leads' })}
 ${flashLine(flash, flashBad)}
-<p><a href="/admin/leads">← ${esc(LEADS.back)}</a></p>`;
+<p><a href="${LEAD_PATHS[list]}">← ${esc(list === 'reached' ? LEADS.reachedTitle : LEADS.back)}</a></p>`;
   if (!result.ok) return `${top}${result.why === 'none' ? empty(LEADS.notFound, '') : empty(LEADS.down, result.why === 'not_configured' ? LEADS.notConfigured : LEADS.downLead)}`;
   const x = result.lead;
   const asked = x.takedownAskedAt && x.toran.state !== 'removed' ? `<p class="flash bad" role="alert">${esc(LEADS.takedownAsked(agoHe(x.takedownAskedAt, at)))}</p>` : '';

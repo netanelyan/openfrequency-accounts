@@ -1378,12 +1378,20 @@ const SHORT = new Intl.DateTimeFormat('he-IL', { timeZone: 'Asia/Jerusalem', day
 export const LEADS = {
   tab: 'לידים',
   title: 'לידים',
-  lead: 'תורן ותדר ביחד: לכל חנות, מה כבר בנוי לה ומה נשלח אליה.',
-  where: { all: 'הכול', new: 'חדשים', ready: 'מוכנים לשליחה', sent: 'נשלח', talking: 'בשיחה', closed: 'סגורים' },
+  lead: 'החנויות שעוד לא כתבנו להן, עם מה שתורן ותדר כבר בנו לכל אחת.',
+  where: { all: 'הכול', new: 'חדשים', ready: 'מוכנים לשליחה', sent: 'מחכים לתשובה', talking: 'בשיחה', closed: 'סגורים' },
   search: 'חיפוש לפי שם או דומיין',
   searchGo: 'לחפש',
-  none: 'אין כאן לידים',
+  nothing: 'אין כאן לידים',
   noneLead: 'ליד מופיע כאן כשתורן מוצא חנות מתאימה, או כשמישהו מבקש דמו באתר.',
+  noneHere: 'אין כאן חנויות',
+  noneFound: (q) => `אין כאן חנות שהשם או הדומיין שלה כוללים "${q}".`,
+  // The stores we wrote to, on a list of their own (the owner, 2026-11-12: "those that were already reached to, move
+  // them to a different page")
+  reachedTitle: 'פנינו אליהם',
+  reachedLead: 'החנויות שכבר שלחנו להן הודעה. כאן רואים מי ענתה, ולמי הגיע הזמן לתזכורת.',
+  reachedNone: 'עוד לא פנינו לאף חנות',
+  reachedNoneLead: 'חנות עוברת לכאן כשההודעה הראשונה אליה יוצאת.',
   down: 'תורן לא ענה כרגע',
   downLead: 'הרשימה מגיעה מתורן. אפשר לנסות שוב בעוד רגע.',
   notConfigured: 'החיבור לתורן עוד לא מוגדר בשרת (OF_INTERNAL_TOKEN).',
@@ -1394,20 +1402,25 @@ export const LEADS = {
   state: { none: 'אין', building: 'נבנה', review: 'מחכה לבדיקה', ready: 'מוכן', failed: 'נכשל', removed: 'הוסר' },
   sentShort: 'נשלח',
   noDemo: 'אין דמו',
-  back: 'כל הלידים',
+  back: 'לידים',
   notFound: 'אין ליד כזה',
   // The one button for what the lead goes on with, on each row and on the lead's page, and its choices
   goOn: 'להמשיך עם…',
   goingWith: (pick) => `ממשיכים עם ${pick}`,
   pick: { both: 'תורן ותדר', toran: 'תורן', teder: 'תדר' },
   // Neither: the fourth choice, under the three (the owner, 2026-11-12: "toran/teder/both/neither")
-  none: 'לא להמשיך איתם',
+  pickNone: 'לא להמשיך איתם',
   // One lead's page
   sendTitle: 'מה שולחים',
   sendWhich: 'איזו הודעה לשלוח',
   sendNothing: 'עוד אין מה לשלוח. כשאחד הדמואים מוכן, ההודעה מופיעה כאן.',
   sendDone: 'נשלחו כבר ההודעה והתזכורת. מכאן לא כותבים להם יותר, אלא אם יכתבו.',
   waiting: (when) => `ההודעה נשלחה. התזכורת האחת תהיה מוכנה ${when}.`,
+  // While a demo is being built, in place of what to send (the owner, 2026-11-12: "Lead page shouldnt let me send a
+  // message while a demo is being built"), and a send from a page opened before
+  sendBuilding: (names) => (names.length > 1 ? `הדמואים של ${names.join(' ושל ')} עוד נבנים. אפשר יהיה לשלוח כשהם מוכנים.` : `הדמו של ${names[0]} עוד נבנה. אפשר יהיה לשלוח כשהוא מוכן.`),
+  sendBuildingAgain: 'לבדוק שוב',
+  sendBuildingRefused: 'ההודעה לא נשלחה, כי הדמו עוד נבנה. אפשר לשלוח כשהוא מוכן.',
   chosenWaits: (name, both) => (both ? `כשגם הדמו של ${name} יהיה מוכן, אפשר לשלוח את שניהם בהודעה אחת.` : `הדמו של ${name} עוד לא מוכן. כשיהיה מוכן, ההודעה שלו תופיע כאן.`),
   send: {
     first: { both: 'לשלוח את שניהם בהודעה אחת', toran: 'לשלוח את תורן', teder: 'לשלוח את תדר' },

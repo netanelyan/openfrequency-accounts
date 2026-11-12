@@ -816,6 +816,10 @@ ul.adding { display: grid; gap: 6px; margin: -6px 0 16px; padding: 0; list-style
 ul.adding li { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 ul.adding .tag { font-size: 12px; padding: 2px 10px; }
 p.lead-all { margin: 10px 0 0; font-size: 14px; }
+/* The stores we wrote to, a list of their own: its link at the end of the leads' title, with how many; on a phone it
+   comes under the title's line. */
+#leads .list-h a.to-reached { margin-inline-start: auto; align-self: center; }
+#leads .list-h a.to-reached .muted { color: var(--ink-3); font-variant-numeric: tabular-nums; }
 
 /* What cannot be undone asks once more: its pill opens a line that says what happens, and the button that does it. */
 details.lost .sure { flex: 1 0 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }

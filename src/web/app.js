@@ -37,7 +37,7 @@ import { opsCustomers } from '../accounts/ops.js';
 import { now } from '../core/clock.js';
 import { dashboardPage } from './dashboard.js';
 import { leadPage, leadsPage } from './leads.js';
-import { ACTIONS, ID, LEAD_ACTIONS, LOST_REASONS, SOURCES, WHERE, toranClient } from './toran.js';
+import { ACTIONS, ID, LEAD_ACTIONS, LEAD_PAGES, LEAD_PATHS, LOST_REASONS, SOURCES, buildingOf, leadsOfPage, toranClient } from './toran.js';
 import { siteClient, waitlistPage } from './waitlist.js';
 import { isAdminToran, operatorAssertion, proxyToToran, toranBase, touchesInternal } from './admin-toran.js';
 import { isAdminTeder, proxyToTeder, tederAt as tederInternal } from './admin-teder.js';
@@ -1246,14 +1246,26 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
           if (r && m[2] && r.file) return receiptFile(r);
           if (r && !m[2]) return receiptView(r);
         }
-        // The shared lead dashboard (src/web/leads.js): the list, and one lead's page; Toran gives both (GET /internal/leads).
-        if (p === '/admin/leads' && req.method === 'GET') {
+        // The shared lead dashboard (src/web/leads.js): the stores we have not written to yet, the ones we have
+        // (/admin/leads/reached), and one lead's page; Toran gives them all (GET /internal/leads). Toran's list is asked
+        // with the search and every tab, and cut here to the list and its tab (toran.js leadsOfPage), so each list counts
+        // the other's too. A tab that is the other list's (an old link to "sent" or "talking") opens there.
+        if ((p === LEAD_PATHS.leads || p === LEAD_PATHS.reached) && req.method === 'GET') {
           if (session.view_as_workspace_id) return redirect('/admin');
-          const where = WHERE.includes(url.searchParams.get('where')) ? url.searchParams.get('where') : '';
+          const page = p === LEAD_PATHS.reached ? 'reached' : 'leads';
+          const asked = String(url.searchParams.get('where') || '');
           const q = String(url.searchParams.get('q') || '').trim().slice(0, 100);
-          const all = url.searchParams.get('all') === '1';
-          const body = leadsPage({ csrf, flash, flashBad, result: await toran.leads({ where, q, all }), where, q, all, at: now() });
-          return send(200, layout({ title: LEADS.title, body, wide: true, banner, script: true }), { 'content-security-policy': CSP_SCRIPT });
+          const other = page === 'leads' ? 'reached' : 'leads';
+          if (!LEAD_PAGES[page].includes(asked) && LEAD_PAGES[other].includes(asked) && asked !== 'closed') {
+            return redirect(`${LEAD_PATHS[other]}?${new URLSearchParams(Object.entries({ where: asked, q }).filter(([, v]) => v))}`);
+          }
+          const where = LEAD_PAGES[page].includes(asked) ? asked : '';
+          // The stores that did not pass the score are the leads' only: every one we wrote to is on Toran's list anyway.
+          const all = page === 'leads' && url.searchParams.get('all') === '1';
+          const got = await toran.leads({ q, all });
+          const result = got.ok ? { ok: true, data: leadsOfPage(got.data, { page, where, q }) } : got;
+          const body = leadsPage({ csrf, flash, flashBad, result, page, where, q, all, at: now() });
+          return send(200, layout({ title: page === 'reached' ? LEADS.reachedTitle : LEADS.title, body, wide: true, banner, script: true }), { 'content-security-policy': CSP_SCRIPT });
         }
         m = /^\/admin\/leads\/(\d{1,9})$/.exec(p);
         if (m && req.method === 'GET') {
@@ -1283,10 +1295,10 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
 
         // A lead's button (src/web/leads.js), every one Toran's /internal/leads: what it goes on with, its demos built,
         // sent and marked, Toran's page checked and fixed, where it stands, Teder's demo worked, the page taken down,
-        // the store deleted. Back to the lead's page with Toran's line, or, for a choice made from the list (back=list),
-        // to the list as it was: at the lead's row, whose tags now say what is being built, or at the top when Toran
-        // refused, where its line is. A choice whose message can go now (Toran's ready) opens the lead at its message
-        // instead, and a store deleted goes back to the list.
+        // the store deleted. Back to the lead's page with Toran's line, or, for a choice made from a list (back=list,
+        // page=reached for the ones we wrote to), to that list as it was: at the lead's row, whose tags now say what is
+        // being built, or at the top when Toran refused, where its line is. A choice whose message can go now (Toran's
+        // ready) opens the lead at its message instead, and a store deleted goes back to the list.
         m = /^\/admin\/leads\/(\d{1,9})\/([a-z-]{1,20})$/.exec(p);
         if (m) {
           const [, id, action] = m;
@@ -1294,11 +1306,22 @@ export function publicHandler({ db, env = process.env, mailer, limiters: given =
           const back = (msg, bad) => {
             setFlash(msg, bad);
             if (!list) return redirect(`/admin/leads/${id}`);
-            const qs = new URLSearchParams(Object.entries({ where: WHERE.includes(f('where')) ? f('where') : '', q: f('q').trim().slice(0, 100), all: f('all') === '1' ? '1' : '' }).filter(([, v]) => v)).toString();
-            return redirect(`/admin/leads${qs ? `?${qs}` : ''}${bad ? '' : `#lead-${id}`}`);
+            const page = f('page') === 'reached' ? 'reached' : 'leads';
+            const qs = new URLSearchParams(Object.entries({ where: LEAD_PAGES[page].includes(f('where')) ? f('where') : '', q: f('q').trim().slice(0, 100), all: page === 'leads' && f('all') === '1' ? '1' : '' }).filter(([, v]) => v)).toString();
+            return redirect(`${LEAD_PATHS[page]}${qs ? `?${qs}` : ''}${bad ? '' : `#lead-${id}`}`);
           };
           if (session.view_as_workspace_id) return back(OPS.viewAsClosed, true);
           if (!LEAD_ACTIONS.includes(action)) return back(LEADS.badAction, true);
+          // A send from a page opened while a demo of the lead was being built, and that is still being built: not sent
+          // (the owner, 2026-11-12: "Lead page shouldnt let me send a message while a demo is being built"). Toran
+          // decides when it does not answer here.
+          if (action.startsWith('send-')) {
+            const fresh = await toran.lead(id);
+            if (fresh.ok && buildingOf(fresh.lead).length) {
+              audit(db, { actor: me, action: 'lead_action', ip, detail: { id, action, ok: false, why: 'building' } });
+              return back(LEADS.sendBuildingRefused, true);
+            }
+          }
           const by = me.name || me.email;
           const body = { by };
           if (action === 'notes') body.notes = f('notes').slice(0, 4000);

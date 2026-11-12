@@ -108,7 +108,8 @@ required step is left. The contract and the settings are in [docs/setup.md](docs
 
 The superadmin's `/admin` has five tabs. **היום** (`/admin`) is the operator's dashboard,
 which used to be on Toran's home page (toran.openfrequency.co.il now shows Toran only).
-**לידים** (`/admin/leads`) is the shared lead dashboard, Toran's and Teder's leads on one list.
+**לידים** (`/admin/leads`) is the shared lead dashboard, Toran's and Teder's leads on one list; the stores we already
+wrote to are on their own list, **פנינו אליהם** (`/admin/leads/reached`).
 **תורן** and **תדר** open the products' own sites, where the operator is in the company's
 workspace as its owner (`OF_OPERATOR_WORKSPACE`, docs/admin-split.md); the operator's pages
 inside each product (the review queue, the follow-ups, the settings, Teder's demos) are the
